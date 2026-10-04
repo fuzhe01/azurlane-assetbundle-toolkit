@@ -1841,12 +1841,61 @@ async function startSpine(s, sk){
         if(!nb)break;                       // 全剥光就保留上一轮的框（实测 yunlong_3 会走到这里）
         cur=rest; box=nb; }
       frameBox=box; }
+    /* ⚠️ **像素级二次构图**（2026-10-04，§98 —— 天津风皮肤2「缺部件」的真正修法）。
+       为什么顶点包围盒不够：各层的**坐标系互不重合**，并起来是个巨框。
+       `tianjinfeng_2` 五层在 `normal` 动画下的 bbox 实测：
+         主层 x[324, 1867] y[-137, 1359]   ← 角色在这
+         2M    x[-1080, -68] y[1388, 2271] ← 与主层 x 完全不重叠
+         2T    x[-6160, 926] y[176, 3624]  ← x 又是另一片
+       并集 = **8027×3761** ⇒ `fit()` 把画面缩到极小，每层内容都挤在角落，
+       看上去就像「躯干/下肢/大狐尾整块不显示」（实测弹窗只剩笼子+两条腿+头+一只袖子）。
+       导出页 `cg_export.html` 一直有 `contentBBox()` 做这一步（读 alpha），
+       所以导出的 CG 是对的 —— **弹窗缺的正是它**，不是渲染问题。
+       做法：draw 完在**同一帧内**读像素（页面没开 preserveDrawingBuffer，
+       换帧就读不到），把 alpha>8 的像素包围盒换算回世界坐标当新 frameBox。
+       ⚠️ 只做一次（打开时算完就固化），动画照播、机位照旧；
+       覆盖 >0.9（内容本就几乎铺满）时不动，避免反向放大产生抖动。 */
+    function pixelFit(){
+      const W=cv.width,H=cv.height;
+      if(!W||!H) return;
+      const px=new Uint8Array(W*H*4);
+      try{ gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,px); }catch(e){ return; }
+      let x0=W,y0=H,x1=-1,y1=-1;
+      for(let y=0;y<H;y++){ const row=(H-1-y)*W;
+        for(let x=0;x<W;x++){ if(px[(row+x)*4+3]>8){ if(x<x0)x0=x; if(x>x1)x1=x;
+                                            if(y<y0)y0=y; if(y>y1)y1=y; } } }
+      if(x1<=x0||y1<=y0) return;
+      /* 判据与阈值**照抄导出页** `cg_export.html` 的 `contentBBox()` 二次构图
+         （`if(frac<0.82)` + `zoom=Math.max(两轴)*pad`）—— 那套已产出 234 张正常 CG，
+         不要自己另立一套：先写 `frac>0.9 才不重构` 会让「内容分散」的皮肤被过度放大
+         （实测 tianjinfeng_2 前景角色被撑到占满画面）。 */
+      const frac=((x1-x0+1)*(y1-y0+1))/(W*H);
+      if(frac>=0.82) return;                 // 内容本就占满画面，别再动（反向放大会抖）
+      const k=base1*zoom;                    // 与 frame() 里 camera.zoom=1/k 同一套
+      const ccx=(x0+x1)/2, ccy=(y0+y1)/2;
+      camX = camX + (ccx-W/2)/k;
+      camY = camY + (H/2-ccy)/k;
+      zoom = Math.min(60, Math.max(0.05, Math.max((x1-x0+1)*SPINE_PAD/W, (y1-y0+1)*SPINE_PAD/H)));
+      /* 同步 frameBox：让后续「复位」也落在这个构图上，而不是退回顶点巨框 */
+      const nk=base1*zoom;
+      const wx0=camX+(x0-W/2)/nk, wx1=camX+(x1-W/2)/nk;
+      const wy1=camY+(y1-H/2)/nk, wy0=camY+(y0-H/2)/nk;
+      frameBox=[Math.min(wx0,wx1),Math.min(wy0,wy1),Math.max(wx0,wx1),Math.max(wy0,wy1)];
+      didPixelFit=true;                       // 已定案，别让 invalidateFit 立刻又触发
+    }
+    /* 像素级构图要在**每次取景框变化后**都重跑，否则「复位」按钮会把画面缩回
+       顶点巨框（实测：像素级构图后角色完整 → 点复位 → 只剩袖/狐尾/帽子）。
+       所以 fit() 之后统一把 didPixelFit 清掉，由下一帧重新校正。
+       帧循环里 `setTimeout(pixelFit,80)` 保证在 draw 之后读像素（同帧 backbuffer 才有效）。 */
+    let didPixelFit=false;
+    function invalidateFit(){ didPixelFit=false; }
     /* SPINE_PAD：取景留白。原为 1.1（画面四周各空 5%，实测内容只占视口高 65%），
        收紧到 1.05 —— 再小就会在部件贴边时看着挤，且「复位 / 滚轮」都还在。 */
     const SPINE_PAD=1.05;
-    function fit(){ if(!frameBox){ base1=1; return; }
+    function fit(){ if(!frameBox){ base1=1; invalidateFit(); return; }
       camX=(frameBox[0]+frameBox[2])/2; camY=(frameBox[1]+frameBox[3])/2;
-      base1=Math.min(cv.width/((frameBox[2]-frameBox[0])*SPINE_PAD), cv.height/((frameBox[3]-frameBox[1])*SPINE_PAD)); }
+      base1=Math.min(cv.width/((frameBox[2]-frameBox[0])*SPINE_PAD), cv.height/((frameBox[3]-frameBox[1])*SPINE_PAD));
+      invalidateFit(); }
     resize();
     // 动画：取各层「有时长」动画名并集（空占位 0 秒动画已过滤）
     const animUnion=[]; layers.forEach(L=>L.anims.forEach(a=>{if(animUnion.indexOf(a.name)<0)animUnion.push(a.name);}));
@@ -1900,7 +1949,22 @@ async function startSpine(s, sk){
       const dt=Math.min((now-last)/1000,.1);last=now;
       if(playing)layers.forEach(L=>{L.anim.update(dt);L.anim.apply(L.skeleton);L.skeleton.updateWorldTransform();});
       gl.clear(gl.COLOR_BUFFER_BIT); scene.camera.position.set(camX,camY,0); scene.camera.zoom=1/(base1*zoom); scene.camera.update(); scene.begin();
-      layers.forEach(L=>scene.drawSkeleton(L.skeleton,true)); scene.end(); }
+      layers.forEach(L=>scene.drawSkeleton(L.skeleton,true)); scene.end();
+      /* 像素级二次构图（§98）：必须紧跟在这一帧的 draw 之后 —— 下一帧 gl 的
+         backbuffer 已被换掉，`readPixels` 只会读到空白。窗口尺寸稳定后再做。 */
+      if(!didPixelFit && cv.width>8){ didPixelFit=true; setTimeout(pixelFit,80); } }
+    /* ⚠️ 必须先把**起始动画 apply 一次**再算取景框（2026-10-04，§98 / tianjinfeng_2 缺件）。
+       `computeFrameBox()` 量的是 `skeleton` 的**当前**顶点，而 `setAnimation()` 只是把时间轴
+       挂上去、**不 apply** —— 真正让附件出现要 `anim.update(0)+apply()`，那发生在下一帧的
+       `frame()` 里。原顺序下这里量到的仍是 **setup pose**。
+       对「附件挂在动画关键帧上」的 skel 会**整层漏掉**：
+       `tianjinfeng_2` 主层 162 槽位 setup 落笔 **0**、`normal` 动画落笔 **85**（含 `a_body` 躯干、
+       `a_hf` 狐尾、`a_tf*` 头发），`2B`/`2B2` 同理⇒ frameBox 只包住 `2M`/`2T` 的 setup 范围，
+       主层那 85 个部件落在框外 ⇒ 弹窗里躯干/下肢/大狐尾整块看不见（截图实测：角色部件跑到
+       45° 菱形背景外）。页面工具栏那句「1×缩放 · 部件 0 帧」也是同一个根因的旁证。
+       ⇒ 判据：**凡「setup 落笔 0、动画落笔很多」的层，取景框必须在 apply 之后算**。 */
+    layers.forEach(L=>{ try{ if(L.anim){ L.anim.update(0); L.anim.apply(L.skeleton); }
+                            L.skeleton.updateWorldTransform(); }catch(e){} });
     computeFrameBox(); fit();
     (function(){ const m=vmemGet(vkey);   // 回到上次看这个皮肤时的机位（世界坐标，换窗口尺寸不错位）
       if(m && isFinite(m.camX) && isFinite(m.camY))

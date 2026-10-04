@@ -5120,4 +5120,92 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
   `probe_roots.py` / `probe_layers_ink.py`：本轮取证探针（一次性）。
 - 相关：§96（上一轮，含被本条推翻的「资产缺陷」结论）、§45 / §46（`inksOf` 两类）、
   §22 条（天津风，原记录含被本条否证的两条方向）、§58（分层权威清单）、
-  WF-25（三层取证法，本轮新增并已补本条口径坑）。
+  WF-25（三层取证法，本轮新增并已补本条口径坑）。---
+
+## §98 天津风皮肤2「弹窗缺部件」：真根因是缺像素级二次构图
+
+**日期**: 2026-10-04
+**触发**: 用户「修天津风」。**45° 菱形不是缺陷**（用户确认「就是吊着的」）——
+美术本来的姿态就是角色吊在椅子上，整张画 45° 是构图如实反映。
+
+### 取证过程中下错的三个结论（都已推翻）
+
+| 我先下的结论 | 为什么错 |
+|---|---|
+| 「主层 162 槽位 `data.attachment` 全 null ⇒ 装配丢了 skin」 | **假象**：用的是 `new spine.Skeleton(data)`（全新对象没装配任何附件）。这些 skel 走「**槽位名 = region 名**」模式，附件由 runtime 按名从 atlas 查，**本来就不在 setup 里**。正确口径是 `loadPart()` 装配后的 `L.skeleton` |
+| 「`ANIM_FRAME` 默认关 ⇒ 该皮肤没带动画帧」 | 带 `--extra animFrame=1` 重导后**图逐像素未变**。而且导出 CG 本来就是完整的（已放大复核：两条腿+绿衣红蝴蝶结+白发巫女帽齐全）⇒ **不是渲染问题** |
+| 「主层 `a_body` 骨骼 rotation=131.72° 导致缺件」 | 数字本身没错（量的是 `bone.data.rotation`，即 setup 值），但**与缺件无关** |
+
+### 真根因：弹窗没有「像素级二次构图」，而各层坐标系互不重合
+
+`tianjinfeng_2` 五层在 `normal` 动画下的 bbox 实测（`probe_layers_ink.py`）：
+
+| 层 | bbox |
+|---|---|
+| 主层 `tianjinfeng_2` | x[324, **1867**] y[-137, 1359]　← 角色在这 |
+| `2M` | x[**-1080, -68**] y[1388, 2271]　← 与主层 x 完全不重叠 |
+| `2T` | x[-6160, **926**] y[176, 3624]　← x 又是另一片 |
+
+并集 = **8027×3761 的巨框** ⇒ `fit()` 把画面缩到极小，每层内容都挤在角落，
+**看上去就像「躯干/下肢/大狐尾整块不显示」**（实测弹窗只剩笼子+两条腿+头+一只袖子）。
+
+**导出页 `cg_export.html` 一直有 `contentBBox()` 做像素级二次构图（读 alpha）**，
+所以导出的 CG 是对的 —— **弹窗缺的正是这一步**。
+另有一个次序问题：`computeFrameBox()` 原本在 `setAnimation()` 之后立即调用，
+而 `setAnimation()` **只挂时间轴、不 apply**（真正 apply 在下一帧 `frame()` 里），
+所以量到的是 **setup pose** ⇒ 对「附件挂在动画关键帧上」的层会**整层漏掉**
+（主层 setup 落笔 **0**、`normal` 动画落笔 **85**，含 `a_body`/`a_hf`/`a_tf*`）。
+
+### 修法（`gallery_src/index.html`，两处）
+
+1. **`computeFrameBox()` 之前先 apply 一次起始动画**：
+   ```js
+   layers.forEach(L=>{ try{ if(L.anim){ L.anim.update(0); L.anim.apply(L.skeleton); }
+                           L.skeleton.updateWorldTransform(); }catch(e){} });
+   computeFrameBox(); fit();
+   ```
+2. **新增 `pixelFit()`：像素级二次构图**。draw 完在**同一帧内**读像素
+   （页面没开 `preserveDrawingBuffer`，换帧就读不到），把 `alpha>8` 的像素包围盒
+   换算回世界坐标。⚠️ **判据与阈值逐字照抄导出页**（`frac<0.82` 才重构、
+   `zoom=Math.max(两轴)*SPINE_PAD`）—— 自己另立一套（先写 `frac>0.9 才不动`）
+   会让内容分散的皮肤被**过度放大**（实测前景角色被撑到占满画面）。
+   `fit()` 末尾调 `invalidateFit()`，让「复位」按钮也重跑像素级构图，
+   否则复位会把画面缩回顶点巨框。
+
+### 验证
+
+| 项 | 结果 |
+|---|---|
+| `tianjinfeng_2` | 躯干、手臂、兔耳、头发**全部画出来了**（修复前只剩笼子+腿+头+一袖）；截图复核 `.diag/V2_after.png` |
+| 构图稳定性 | 收紧阈值后不再过度放大；点「复位」不再退回巨框 |
+| **健康对照 `tianjinfeng_3`（2 层）** | 前后截图 846084 → 844220 字节，**画面基本不变** ⇒ 对正常皮肤无影响 |
+| 硬链接 | `deploy_gallery --check` 4/4 同 inode |
+| JS 语法 | `node --check` 通过 |
+
+### ⚠️ 遗留：层间**对齐**仍不对（未解决）
+
+修复后角色部件虽然全画出来了，但**角色与背景不在正确相对位置**：
+笼子偏右上、角色部件（白袖/狐尾/帽子）在笼子左下方。
+`parts.json` 里五层的 `anchoredPosition` 全是 `[0,0]`、`localScale` 全 `[1,1]`、`rotZ` 全 `-0.0`
+（prefab 实测确实如此）⇒ **多出的那个偏移量没被提取**。
+这是比「缺件」更根本的一层，**需要另查**（Unity 侧 SkeletonGraphic 的骨架级偏移
+是否在 `skeleton.x/y/scaleX/scaleY`，我们读 skel 时是否已应用）。
+
+### 本轮踩的坑（都很贵）
+
+1. **量到 0 先问口径对不对，再问数据对不对**。连续两次用
+   `new spine.Skeleton(data)` 量出「附件全 null」，据此写下「装配丢 skin」的结论 ——
+   而真因是这些 skel **不把附件写在 setup 里**。
+2. **弹窗有 4 个 `.tab`（静态立绘/Spine 动态/Live2D/语音）**，点皮肤行**不会**切到
+   Spine 页 ⇒ 我前几次截图量的其实是「静态立绘」页，白查好几轮。
+   `.tab` 是 **DIV** 不是 button，按钮列表里看不到。
+3. **`Read` 同一路径的图片会返回缓存**（提示 "Image unchanged"）即使文件已换
+   ⇒ 验产物要 `shutil.copy` 成新路径再看。
+4. **探针报「环境没就绪」时一定要打子进程 stderr**。无头 Chrome 连续 4 次报
+   `Chrome not ready`（手动起却完全正常），真因在 stderr 里（GPU 缓存文件锁 + `PIPE` 写满阻塞），
+   详见 WF-25 补记。
+
+**涉及文件**: 改 `gallery_src/index.html`（`pixelFit()` + apply 时机 + `fit()` 末尾 `invalidateFit()`）。
+诊断探针：`.diag/probe_layers_ink.py`（逐层逐动画落笔 + bbox + 槽位名）、
+`.diag/probe_dialog_fit.py`（弹窗截图 + 点复位对比）、`.diag/probe_framebox_impact.py`（两种口径对比）。
+相关：§97（本条推翻 §96 与 §14 原记录的部分结论）、WF-25（三层取证法）及其补记（Chrome 启动坑）。
