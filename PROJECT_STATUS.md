@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-04 13:05
+> **生成时间**: 2026-10-04 13:50
 > 历轮会话流水（2026-09-20 ~ 09-27）已**逐字**外迁 `docs/archive/2026-09-26_PROJECT_STATUS_外迁归档.md`（A1~A15 段），§6 里已闭环的待办条目（★块第 1/2/3/4/6 条 + 既有待办第 9/11/16/17/18/19 条）于 2026-10-02 逐字外迁 **A21 段**（原位各留一行桩，编号不动）；
 > 结论性知识在 `docs/TROUBLESHOOTING.md` §25~§67 与 `docs/WORKFLOWS.md` WF-14~WF-23。本文只留当前状态。
 > **最近三轮**：画廊视觉定稿刷进正本（见 **§6 顶部 ★ 块** + §62 + WF-16 追加）｜354 张「🔇 无语音」按可救性拆细并裁定关闭（**§57**）｜静态立绘「只画游戏里开着的层」根因修掉、换入 48 张（**§55**）+ 敦刻尔克改判（**§56**）。逐轮流水已逐字外迁归档 A15 段。
@@ -172,13 +172,9 @@ docs/TROUBLESHOOTING.md §79~§85。三句话版：① 权威皮肤表换成"设
 6. ✅ **服务器"半死"已取证到底并堵掉一条无界泄漏**（已证死 `socketserver.handle_error` 往 stderr 打 traceback 时**每次客户端取消永久楔死一个 handler 线程**：2600 次掐断 ⇒ 线程 5→2605；修法落 `_gallery_server.py` 并配对照组证明没咽掉真异常，预检红路径已桩测）。**剩余靠现场不靠赌**：预检判红时会打一行进程外部 `pid/threads/handles/parentAlive`。两条否证 + 剂量学在 **§63**，流水外迁 **A21 段**。
 
 > 1~4、6~12. ✅ 已闭环，细节与结论在 `docs/archive/`（A4/A5 段）与 §13~§20；其中含 5 处手抄表错名纠正记录（hdn101/lafeiii/i13/missr/haixiao）。
-5. 🟡 **元数据重建（A/B 均已完成，交接点=C 之后）**：
-   - **脚本**：`scripts/build_ship_meta.py`（默认 `--diag` 只读，`--write` 产 `Output/ship_meta.json`）。运行：`PYTHONIOENCODING=utf-8 python scripts/build_ship_meta.py --write`。产物键=画廊 bundleID（Paintings_v2/Spine_v2/Live2D/CG_v2 目录名并集，共 4492），值=`{cn,en,faction,type,rarity,voice_actor,category,base_painting,source[,数值码]}`。
-   - **桥接路径（⚠️实测校正，覆盖旧假设）**：磁盘 stem →剥变体后缀→ 基 `painting` → `skin[painting].ship_group` →（`stats.skin_id` 命中，实测 4118/4119）→ 舰级四字段。**「用 `ship_group` 直接反查 stats」不成立**（1270 个 ship_group 仅 268 落在 stats 键），变体皮肤须经 `ship_group` 归并到舰。成品 **4492 有名字（99.93%）/ 仅 3 真无源**。解析优先级改造、76 处手抄表错名纠正、索引层加法兜底（`with_cn` 899→910→984）的流水外迁 **A15 段**。
-   - **闸门**：`py -3 scripts/diag/ship_meta_authority_diff.py`（退出码即结论）——受保护档 `painting/suffix` 字段改动必须为 0，**唯一可放行的是逐条回查秘书舰表通过的 `name_via=npc_table:*` 皮肤标题→实体名**（要求原皮肤标题仍留在 `skin_name`）；条目集合不得增减；换档只允许落在白名单新档；无源数须等于期望。见 `TROUBLESHOOTING.md` §39。
-   - **数值码→中文标签表已写进脚本常量**（NATIONALITY/RARITY/TYPE，对齐游戏内筛选词表）：nationality 1白鹰 2皇家 3重樱 4铁血 5东煌 6撒丁帝国 7北方联合 8自由鸢尾 9维希教廷 11郁金王国 96飓风 97META 98其他(布里) 102~115各联动；rarity 2普通 3稀有 4精锐 5超稀有 6海上传奇 18超稀有；type 1驱逐…24风帆。游戏筛选里的「晶环联盟」本快照(9.7.381)无对应码 → 前端归「其他」。
-   - **✅ 两个决策已定**：① `voice_actor` = **只存数字 id**（CV 姓名表未缓存，以后再补映射）；② 非核心码(98/111~115) = **经验名 + 兜底原样保留**，不逐个核。
-   - ✅ **B 已完成（2026-09-20）**：`build_gallery_index.py` 元数据主源切 `ship_meta.json`，根因（舰名原取皮肤名 → 改取 `ship_data_statistics.name`，237 个舰级占位符归零）见本条第 8 项。**⚠️ 该条决议里"下一步 = C（前端按 `category` 分区）/ D（Live2D 动作播放）"两项均已落地**（C 见 §10 前端行、D 见 §2.5），此待办作废。
+5. ✅ **元数据重建（A/B/C/D 全部落地，2026-10-04 销账）**：
+    - **脚本** `scripts/build_ship_meta.py`（`--diag` 只读 / `--write` 产 `Output/ship_meta.json`）；**闸门** `scripts/diag/ship_meta_authority_diff.py`（退出码即结论）。
+    - 桥接路径、数值码→中文标签表（NATIONALITY/RARITY/TYPE）、`voice_actor` 只存数字 id 等决议已写进脚本常量与 docstring；A/B/C/D 四步与 `name_via=npc_table:*` 唯一放行口径见 docs/TROUBLESHOOTING.md §39。
 > 6~12. ✅ 已闭环（细节见归档 A5 段、结论 §13~§20）。**接手前端先读 WF-16 六条硬规则**。
 
 > 诊断产物/缓存均在 `.diag/`（不入库，本机可继续用）。画廊前端**直接改 `gallery_src/` 里的正本即生效**（与 `Output/gallery_v2/` 已硬链，2026-09-26 起 4/4）；`py -3 scripts/deploy_gallery.py --check` 查有没有静默断链，`--relink` 补链，默认模式是断链后的 copy 回退。换机器/清过 `Output/` 后先 `py -3 scripts/fetch_gallery_vendor.py` 补运行时库（只双击 `Output\gallery_v2\` 里的 bat）。
@@ -198,7 +194,7 @@ docs/TROUBLESHOOTING.md §79~§85。三句话版：① 权威皮肤表换成"设
    攻关全过程（含 5 次改判、每条否证都配了对照）见归档 A6 段 + `TROUBLESHOOTING.md` §30~§37 + **WF-19 / WF-20**。
 8. ✅ **ship_meta `{namecode:XX}` 占位符名（已于 2026-09-20 随 B 根因修复关闭）**：根因=`build_ship_meta.py` 舰名取 `ship_skin_template.name`（皮肤名，含占位符）——**改取 `ship_data_statistics.name`（0 占位符）**后，237 个 ship 级占位符全归零、名称与阵营自洽（`weizhang`→尾张、`xinzexi`→新泽西 等）。残余 ~52 占位符全为 `story` 类（NPC/剧情/2b 联动变体，本就无 stats 舰名，非缺漏）。**2026-09-25 追加**：`name_code` 表已可读（456 行）**且 `{namecode:NNN}` ↔ `name_code.id` 已证成**（自称率 2.13% vs 随机重分配零假设 0.03% = 80×；1760/1760 码可查；替换后语义自洽：拉菲→[比叡]、布里→[明石]）⇒ 需要真名时可直接解占位符，不必再靠 stats 绕。见 §36。详见 §6 第 5 条 B 已完成。
 9. ✅ **Live2D 动作数据全量重导已落到 269 个模型（2026-09-24）**：`clips 8154 / shell 7（=资产层真为空的 7 条）/ misassign 0 / PartOpacity 79 模型`、曲线总数 **944,136→2,662,615**、`l2d_sweep` 全量 **269/269 失败 0**；`hit_verify` 全库基线已重标定（269 模型 / 3309 部位，**判据 = WIRING 必须为 0**，旧「806/807」口径作废，见 §27）。⚠️ **数据源天花板（别再攻）**：约 **7% 的贝塞尔段无法从 Unity 数据还原**（四种切线候选最高只拟合 16.7%，且那是平凡情形）→ 只能用线性弦近似。过程含一次原地覆写事故与三道闸门加装 → **§25** 与 WF-16；已完成 runbook 与旧基线讨论见归档 **A7 段**，本轮流水 **A21 段**。
-10. ⏳ **Live2D 动作语音：全量导出 + 出声验收 + 技能沉淀（2026-09-23）**
+10. ✅ **Live2D 动作语音：全量导出 + 出声验收 + 技能沉淀（2026-09-23）**
    管线与判据见 **`docs/WORKFLOWS.md` WF-17**，命令语义与实测证据见 **`docs/TROUBLESHOOTING.md` §23**。
    **✅ 全线完成**：v1 `--all` 覆盖 270 皮肤 → 253 命中 ACB（5914 ogg / 323 MB）；**语音 v2（2026-09-27）**按船级包去重解码 → `Audio/CV2/` + `skin_voice.json`，**889 包 / 41,193 音频 / 2424.5 MB / 可定位 4140 皮肤**，零回退闸门 + 三格实播全过。
    修掉的系统性语义错：cue 尾部 `_N` 是**皮肤序号**（旧脚本当随机变体全导、前端 `Math.random()` 抽一条 ⇒ 三皮肤船 2/3 概率播到**别的皮肤**的台词，§47）。剩余 354 无解的构成与裁定见 **§57**，「走设备补取」已否证（§49）。过程流水外迁 **A15 段**。

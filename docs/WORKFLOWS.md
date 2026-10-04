@@ -2020,3 +2020,36 @@ f-string 内嵌反斜杠直接 `SyntaxError`。两条详见 **§72**。
 ⇒ 区分两套语义要靠**字段名**（`'label' in v` 判皮肤、`'name' in v` 判船），不靠键本身。
 
 **涉及文件**: `scripts/diag/gallery_index_diff_check.py`、`scripts/build_gallery_index.py`（`true_label`/`_real_name`）
+
+#### WF-15 追加（2026-10-04）：`.diag` 清理判据 —— 哪些能删、哪些是承重
+
+`.diag` 在 `.gitignore` 里，**名字叫"临时区"但里面混着承重数据**。这条追加把实测结论固定下来，
+免得下个会话按"临时区"的字面理解把它清空 —— 那会断掉皮肤真名链路的**输入源**。
+
+**判据：`.diag` 下按"能否重取"分三类，不按目录名猜。**
+
+| 路径 | 体积（2026-10-04） | 能不能删 | 理由 |
+|---|---|---|---|
+| `.diag/chrome_*`、`panel_ui*` | **4.58 GiB**（30 个） | ✅ 用现成脚本 | `py -3 scripts/diag/clean_diag_profiles.py --yes`。三道判据：`chrome_*` 前缀 + **无活跃 chrome/msedge 进程引用**（PowerShell CIM 查 CommandLine）+ 最后修改早于 `--min-age`（默认 30 分钟）。每跑一次 CDP 探针就多留一份几百 MB，**跑完就清** |
+| `.diag/sharecfg_re/memdump/` | **2.31 GiB**（1471 个 .bin） | ✅ 已删 | `16_mem_lunt.py dump` 从模拟器重取。逆向早已完结（密钥已找到、32 张表已解出），11 个脚本只把它当**输入**读，没有谁依赖它常驻 |
+| `.diag/sharecfg_re/dump/` | **304 MiB**（Il2CppDumper 产物：`dump.cs`/`il2cpp.h`/`script.json`） | ✅ 已删 | 同上，从 `global-metadata.dat` + `libil2cpp.so` 重新跑 Il2CppDumper 即可 |
+| **`.diag/sharecfg_re/{lua_json,cfg_json,cfg_json_scalar}`** | **289 MiB**（772/32/32 文件） | ⛔ **承重，别删** | **是 `42_publish_gamecfg.py` 的 `SRC`（唯一输入源）**。删了就得重新从模拟器跑 `34→35→37→41` 逆向才能取皮肤名 |
+| `.diag/sharecfg_re/lua_out/` | 47.6 MiB（778 项） | ⚠️ 可清但先确认 | `35_export_sharecfg_lua.py` 的中间产物；`41` 的输入是 `lua_json` 不是它 |
+| `inputs/azdata/*.json`、`inputs/gamecfg/*.json` | — | ⛔ 承重 | 见上方白名单表 |
+
+**⚠️ 这条判据为什么重要**：`.diag/sharecfg_re` 3.0 GiB 里，**只有 289 MiB 是承重的**，
+其余 2.7 GiB 是可重取的中间产物。原先"`.diag` 整个目录名都在 gitignore ⇒ 可以清"
+的直觉会**同时清掉皮肤真名的输入源**。
+
+**验证方式（清理后必跑）**：
+
+```bash
+py -3 -c "import sys; sys.path.insert(0,'scripts'); import skin_table; skin_table.load(verbose=True)"
+# 期望：azdata N 行 + 设备侧 M 行 → K 行（丢行 0）
+```
+
+**回收量参考**：2026-10-04 一次清理 `.diag` 从 **14.6 GiB → 7.5 GiB**（chrome profile 4.58 + memdump/dump 2.55）。
+剩下的 7.5 GiB 大头是 `l2d_new*`（1.6 GiB）、`inactivefix_*`（1.1 GiB）、`pipeline`（1.0 GiB）——
+那些是**立绘/Live2D 的重跑暂存区**，是否可清要按"对应产物已换入"逐条判，本轮未动。
+
+**涉及文件**: `scripts/diag/clean_diag_profiles.py`、`tools/sharecfg_re/42_publish_gamecfg.py`（`SRC` 路径）
