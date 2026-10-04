@@ -2109,4 +2109,46 @@ py -3 -c "import sys; sys.path.insert(0,'scripts'); import skin_table; skin_tabl
   `attType` / `hasPage` / `boneChain` / `localV`，一次运行即可定位到层。
 - `gallery_src/cg_export.html` —— `inksOf` **判据未变**，只加否证结论注释。
 - 诊断案例与三条否证假设：`docs/TROUBLESHOOTING.md` §96。
-- 相关：§45 / §46（`inksOf` 判据原始出处）、§22 条待办、`PROJECT_STATUS.md` §6 第 22 条。
+- 相关：§45 / §46（`inksOf` 判据原始出处）、§22 条待办、`PROJECT_STATUS.md` §6 第 22 条。### 操作坑（本轮新增）：无头 Chrome 卡在启动早期，报「not ready」但等多久都没用
+
+**症状**: CDP 探针报 `Chrome not ready (等 300s 仍无 page tab)`，但手动起同样的 Chrome 完全正常
+（`/json` 1 秒内返回 5 个 tab）。
+
+**根因**（stderr 里才有，不报的话只能靠猜）：Chrome 卡在启动早期，stderr 只有两类错误：
+
+```
+Failed to open persistent cache files in directory
+  "...\.diag\chrome_xxx\GPUPersistentCache\DawnGraphiteCache\H6POM..."  error: 0: 另一个程序正在使用此文件
+Failed to open named pipe server process 48100: 拒绝访问 (0x5)
+```
+
+0x20 = 文件被上一个未退净的 Chrome 占着 ⇒ GPU 持久缓存建不起来 ⇒ **page tab 根本不出现**。
+`cdp_slot.profile()` 按 `os.getpid()` 分配目录，每次跑都新建 profile，
+前一个 Chrome 没退净就撞上（实测 `.diag/` 堆到 **62 个** `chrome_*` 目录）。
+
+**修法**: 加三个开关，**禁用 GPU**，同一命令 1 秒就绪：
+
+```python
+CHROME_FLAGS = ['--disable-gpu', '--disable-gpu-compositing',
+                '--disable-features=Vulkan,DawnGraphiteCache']
+```
+
+截图走 `--enable-unsafe-swiftshader` 软件光栅，禁 GPU 不影响画面正确性。
+
+**⇒ 教训（两条，都很贵）**：
+1. **`run_cg_export.py` / `spine_bounds_probe.py` 那批既有探针也该加这三个开关** ——
+   它们没加，所以本轮第 22 条与第 14 条各撞过一次「Chrome not ready」。
+   现象极具误导性：**给足超时也没用**（不是慢，是根本没起来），
+   而手动起 Chrome 一切正常 ⇒ 容易误判成「探针写错了」。
+2. **探针报「环境没就绪」时，一定要把子进程 stderr 打出来**。
+   本轮最初只报 `Chrome not ready`，导致连续 4 次重跑都在改无关的地方
+   （放宽超时、加固定 sleep、换等待逻辑）—— 真正的线索一直在 stderr 里。
+
+配套改动：
+- 等待逻辑从「查不到就重试 240×0.5s」改成「**先固定 `sleep(5)`** 再查」，
+  并把重试上限提到 600 次（300s）。理由：新建 profile 时 tab 会短暂消失，
+  「查不到就重试」的循环可能正好错过那个窗口。
+- `stdout/stderr` 从 `DEVNULL` 改成 `PIPE`，并在失败分支里 `communicate()` 取
+  最后 1500 字节打出来 —— 否则诊断信息全丢。
+- 清理后 `.diag/chrome_*` 从 62 降到 14（用现成的
+  `scripts/diag/clean_diag_profiles.py --yes`，它自带「无活跃进程引用」判据）。
