@@ -83,6 +83,50 @@ def _clean_cn(v):
         return ''
     return v
 
+# ---------- 占位符展开（2026-10-04，§94）----------
+# 表里一批皮肤名的 `name` 是 `{namecode:NNN}` 形态（`进击，{namecode:257}！`、`{namecode:27}、伴你在海边！`），
+# `_clean_cn` 把它们判成"无有效名" ⇒ 标签回落成「皮肤N」。实测 35 条残留里 16 条是这种。
+# `name_code` 表可读（456 行），`{namecode:17}` → 时雨、`{namecode:22}` → 雪风，展开即可用。
+#
+# ⚠️ **不能无条件展开**：配置表里存在**占位符指向另一个实体**的情况——
+# `shiyu_2` 的 name 是 `进击，{namecode:257}！`，而 `namecode:257` = **伊490**，
+# 但这行属于时雨组（ship_group=30115）。展开会得到「进击，伊490！」挂在时雨卡上 ⇒ 是错的。
+# ⇒ 判据：**展开结果必须含这张卡自己的舰名**，否则判为不可用、保持现标签。
+# 实测 8 条可安全展开、1 条（shiyu_2）指向别的实体被挡。
+_NAME_CODE = None
+def _name_code():
+    global _NAME_CODE
+    if _NAME_CODE is None:
+        p = os.path.join(ROOT, 'inputs', 'gamecfg', 'name_code.json')
+        try:
+            _NAME_CODE = json.load(open(p, encoding='utf-8'))
+        except Exception:
+            _NAME_CODE = {}
+    return _NAME_CODE
+
+def expand_placeholder(v, ship_name=''):
+    """展开 `{namecode:NNN}` → 中文名；**展开后必须含 `ship_name`** 才认。
+
+    返回 '' 表示不可用（无占位符 / 码查不到 / 展开结果与所属舰不符），调用方据此回落。
+    """
+    if not v or not PLACEH.search(v):
+        return ''
+    out = v
+    # ⚠️ `PLACEH` 是**无捕获组**正则（`\{namecode:\d+\}`），`findall()` 返回的是整个匹配串
+    # `'{namecode:27}'` 而不是码 `'27'` —— 直接拿来查表必然 miss，整段静默失效。
+    # ⇒ 这里自己提码，不要复用 `PLACEH.findall()`。
+    for code in re.findall(r'\{namecode:(\d+)\}', v):
+        rec = _name_code().get(code) or {}
+        nm = (rec.get('name') or '').strip()
+        if not nm:
+            return ''                      # 码查不到 ⇒ 不猜
+        out = out.replace('{namecode:%s}' % code, nm)
+    if PLACEH.search(out):
+        return ''                          # 还有没展开干净的
+    if ship_name and ship_name not in out:
+        return ''                          # ⚠️ 占位符指向别的实体（实测 shiyu_2→伊490）
+    return out.strip()
+
 # 社区快照/拼音表译名与游戏官方中文名差异修正（与 build_ship_meta 保持一致，兜底路径也生效）
 NAME_FIX = {'贾斯科涅': '加斯科涅'}
 
@@ -152,12 +196,16 @@ ART_ONLY = {'n': '无背景版', 'hx': '和谐版'}
 # 这些是"来源标记"：查真名时剥掉，但**不进标签**（用户 2026-10-04 裁定）
 SOURCE_SUF = {'wjz', 'doa', 'ex', 'tolove', 'ger'}
 
-def _real_name(stem):
+def _real_name(stem, ship_name=''):
     """磁盘 stem -> 权威表里的皮肤真名（查不到或像垃圾串则回空串）。
 
     顺序：① 整名直接查 ② 逐层剥「画法变体 + 来源标记 + 数字」查。
     ⚠️ 数字**只在剥完之后命中失败时**才继续往下剥——优先整名/全名匹配，
     保证 `qiye_7` 拿到的是它自己那行（Wind Catcher）而不是基船名（企业）。
+
+    占位符（`{namecode:NNN}`）在这一层**不算命中**——`_clean_cn` 会把它判成无效名，
+    要等 `true_label` 拿到带占位符的原文后交给 `expand_placeholder` 展开（§94）。
+    传 `ship_name` 是为了那道"展开结果必须含本卡舰名"的把关。
     """
     # ① 整名 + 画法变体/来源标记全剥（数字保留）
     toks = stem.split('_')
@@ -188,10 +236,32 @@ def true_label(stem, base, ship_name=''):
     `haixiao_doa` 剥掉 `doa` 拿到的「海咲」就是它自己的正确皮肤名
     （这张卡恰好也叫海咲，**不能**因为"名字等于舰名"就误杀，那会把 58 条 `_doa` 打回原形）。
     """
-    name, tail, from_strip_num = _real_name(stem)
+    name, tail, from_strip_num = _real_name(stem, ship_name)
     if name and not (from_strip_num and name == ship_name):
         marks = [ART_ONLY[t] for t in tail if t in ART_ONLY]
         return '·'.join([name] + marks)
+    # 占位符兜底（§94）：`_clean_cn` 把 `{namecode:NNN}` 判成无效名 ⇒ 上一路必然拿不到。
+    # 这里直接读该行的**原文**再展开，并过那道"展开结果必须含本卡舰名"的把关。
+    # ⚠️ `npc` 前缀的一律不处理（用户 2026-10-04：「有 npc 前缀的可以不用管」）——
+    #    那些是剧情 NPC 键，表里的 name 多半是 `？？？` 或别的实体，展开出来也是错的。
+    if not stem.lower().startswith('npc'):
+        toks = stem.split('_')
+        t2 = []
+        while len(toks) > 1 and (toks[-1] in ART_ONLY or toks[-1] in SOURCE_SUF):
+            t2.insert(0, toks.pop())
+        for cand in ['_'.join(toks), stem]:
+            raw = (SHIP_META.get(cand) or {}).get('skin_name') or ''
+            if PLACEH.search(raw or ''):
+                ex = expand_placeholder(raw, ship_name)
+                # ⚠️ 展开结果**等于本卡舰名**时不能当皮肤名用：那说明这一行就是本体
+                # （如 `luoen_3` 的 name 是 `{namecode:439}` → 罗恩，而它是罗恩的第 3 套皮肤）。
+                # 换上去会让标签变成与卡片标题重复的「罗恩」，而正确答案是保留「皮肤3」
+                # —— 因为表里确实没有第 3 套的皮肤名。宁可留占位式标签也不给错信息。
+                if ex and ex != ship_name:
+                    # 画法变体标注要跟着一起带上，否则 `liangyue_2_n` 会显示成
+                    # 「凉月、伴你在海边！」而丢掉「·无背景版」，与同卡其它皮肤标法不一致。
+                    marks = [ART_ONLY[t] for t in t2 if t in ART_ONLY]
+                    return '·'.join([ex] + marks)
     return variant_label(stem, base)
 
 # ---------- ship_meta 反查：base → 代表性条目（同 base 多 stem 中挑 cn 干净/ship/有阵营 的最优）----------
