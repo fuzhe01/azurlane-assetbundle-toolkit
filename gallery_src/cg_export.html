@@ -131,6 +131,55 @@ async function loadPart(base,pn,textures,cfg){
    会把它当成内容（实测 aluomangshi_2 自报"覆盖 0.83"看着健康，图却是一大片黑里嵌一小块舞台）。
    全库判据取证见 docs/TROUBLESHOOTING.md §45/§46。 */
 const inkCache=new Map(), inkCv={c:null,ctx:null};
+
+/* 离群槽位剔除（2026-10-04，docs/TROUBLESHOOTING.md §97，用户拍板走这条路）。
+   实测样本：`yuanchou_2_hx`（远山 Tintin 和谐版）的槽位 `BG_desk` ——
+     · MeshAttachment，4 顶点的矩形，`verticesLen=8 / bonesLen=0` ⇒ **几何完全合法、不是解表错位**
+     · 尺寸 3198×5124 **正常**，但局部顶点坐标 **(-294183, 48339368)**、世界坐标 (-29638, 4833859)
+     · 同角色另一张桌子 `desk_new` 的顶点是 (-1392, 9978) ⇒ 同类物件，量级差 **1000 倍**
+     · 本体 `yuanchou_2` **没有这个槽位**（只有 `BG_desk_paper1/2`）⇒ 和谐版专有
+     · 6 个动画（1/2/3/4/5/normal）× 每动画 13 帧实测，位置**一模一样**、从不归位
+   用户判断「游戏内显示是正常的」—— 与上述一致：**这份 skel 里存的就是这个离谱坐标，
+   游戏另有一套摆位机制**（Unity 侧改 mesh / 额外偏移）。所以正确修法是**取景时把它排除**，
+   不是改数据（改了反而与游戏内不一致）。
+
+   ⚠️ 判据为什么不能直接用「离 min/max 最远的那个」：
+   **离群点自己会把 min/max 尺度撑大**，拿它当基准就是自证失败（阈值跟着离群值一起放大，
+   永远剔不干净）。所以基准取**分位数**——对少数极端离群值不敏感：
+     · 中心 = 各槽位中心点的**中位数**
+     · 尺度 = 各槽位中心到该中心的距离的 **90 分位**（不是最大值）
+     · 剔除条件 = 距离 > 6 × 90分位 **且** 面积 > 30 × 全体中位面积
+   两个条件是 **AND**：只「远」不「大」的可能是真实的角色部件（飞出去的道具之类），
+   只「大」不「远」的正是 §45/§46 那类该由 inksOf 处理的巨幕。
+
+   ⚠️ 保守边界：`TOTAL` 不足 8 个槽位、或 90 分位距离为 0 时**原样返回**（不判），
+   宁可漏剔不可错剔。逐层计日志便于事后核对剔了几个。 */
+let dropOutlierLog=[];
+function dropOutliers(list){
+  try{
+    if(!Array.isArray(list)||list.length<8)return list;      // 槽位太少，判不准 → 不动
+    // 每条先把「中心 / 距离 / 面积」算好并与 list 同序保存。
+    // ⚠️ 距离算完要**降序排一份副本**取 90 分位，但**不能拿排序后的数组按 i 索引** ——
+    // 排序打乱了与 list 的对应关系，那样判据会拿别人的距离去剔这个槽位。
+    const cen=list.map(e=>[(e.r[0]+e.r[2])/2,(e.r[1]+e.r[3])/2]);
+    const areas=list.map(e=>Math.max(1,(e.r[2]-e.r[0])*(e.r[3]-e.r[1])));
+    const srt=a=>a.slice().sort((x,y)=>x-y);
+    const medArea=srt(areas)[areas.length>>1];
+    const medX=srt(cen.map(c=>c[0]))[cen.length>>1];
+    const medY=srt(cen.map(c=>c[1]))[cen.length>>1];
+    const dist=cen.map(c=>Math.hypot(c[0]-medX,c[1]-medY));
+    const p90=srt(dist)[Math.min(dist.length-1,Math.floor(dist.length*0.90))];
+    if(!(p90>0))return list;                                 // 全叠在一点 → 不判
+    const distLim=p90*6, areaLim=medArea*30;
+    const keep=[],kill=[];
+    list.forEach((e,i)=>{(dist[i]>distLim&&areas[i]>areaLim?kill:keep).push(e);});
+    if(kill.length&&keep.length>=3){
+      dropOutlierLog=dropOutlierLog.concat(kill.map(e=>({box:e.r.map(x=>Math.round(x))})));
+      return keep;
+    }
+  }catch(e){ return list; }                                   // 判据自身出错 → 原样，不阻断导出
+  return list;
+}
 function inksOf(a,col){
   // 缺省方向：查不到落笔证据时**假定它落笔**（`return true`）。
   // ⚠️ 2026-10-04 试过改成 `return false`（想剥掉"取不到贴图"的附件），**实测有害**：
@@ -177,6 +226,7 @@ function framingBox(skeletons){let cur=[];
       cur.push({a,col,r:[x0,y0,x1,y1]});
     }catch(e){continue;}
   }
+  cur=dropOutliers(cur);
   const union=(l)=>{ if(!l.length)return null; const r=[1e9,1e9,-1e9,-1e9];
     for(const e of l){if(e.r[0]<r[0])r[0]=e.r[0];if(e.r[1]<r[1])r[1]=e.r[1];
                       if(e.r[2]>r[2])r[2]=e.r[2];if(e.r[3]>r[3])r[3]=e.r[3];} return r; };
