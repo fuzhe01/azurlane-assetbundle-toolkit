@@ -5209,3 +5209,99 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
 诊断探针：`.diag/probe_layers_ink.py`（逐层逐动画落笔 + bbox + 槽位名）、
 `.diag/probe_dialog_fit.py`（弹窗截图 + 点复位对比）、`.diag/probe_framebox_impact.py`（两种口径对比）。
 相关：§97（本条推翻 §96 与 §14 原记录的部分结论）、WF-25（三层取证法）及其补记（Chrome 启动坑）。
+## §99 天津风皮肤2 层间错位：prefab 与骨架级偏移全部实测排除，真相是「各层坐标系本来就不同源」
+
+天津风皮肤2 层间错位：prefab 与骨架级偏移全部实测排除，真相是「各层坐标系本来就不同源」
+
+## 现象
+
+用户报（2026-10-04）：弹窗里「隐约看见背后有另一个身体的组件」，判断
+**组件齐了，但图层间以及它本身所处的位置关系处理错了**。
+
+§98 那轮已修掉「躯干/下肢/大狐尾整块不显示」（截图 `.diag/V2_after.png` 已画出），
+但**角色与背景没对齐**（笼子偏右上、角色部件在左下）仍未解决。
+
+## 取证：三处偏移全部实测排除
+
+### ① prefab 的 RectTransform（含父链）—— 全零
+
+新工具 `scripts/diag/spine_transform_tree.py`（只读 dump prefab 的 GO/Transform 树）。
+
+`spinepainting/tianjinfeng_2` 的 5 个 SkeletonGraphic：
+
+| 层 | 自身 anchoredPosition | localScale | rotZ | 父链 |
+|---|---|---|---|---|
+| tianjinfeng_2 | [0,0] | [1,1] | -0.0 | d0 自己 [0,0] / d1 `tianjinfeng_2` [0,0] |
+| tianjinfeng_2B2 | [0,0] | [1,1] | -0.0 | 同结构 |
+| tianjinfeng_2B | [0,0] | [1,1] | -0.0 | 同结构 |
+| tianjinfeng_2M | [0,0] | [1,1] | -0.0 | 同结构 |
+| tianjinfeng_2T | [0,0] | [1,1] | -0.0 | 同结构 |
+
+**五层同父、变换全零、size 全 [100,100]** ⇒ prefab 侧**没有任何偏移**，
+「偏移没被提取」这个假设**否证**。PROJECT_STATUS 第 14 条里「需另查 Unity 侧骨架级
+偏移是否已应用」这一句据此可以划掉。
+
+⚠️ 踩坑：prefab 里的类型名是 **`RectTransform`** 不是 `Transform`。
+按 `Transform` 过滤会得到「父链 0 级 / anchoredPosition=None」的**假象**
+——看起来像没读出来，其实是类型名判断错了。
+
+### ② Spine 骨架级偏移 —— 各层确实不同，但**自动生效**
+
+新工具 `scripts/diag/skel_header.js`（node + 官方 `spine-all.js`，见下）。
+
+| 层 | skeleton.x | skeleton.y | width | height | bones | slots |
+|---|---|---|---|---|---|---|
+| tianjinfeng_2 | 0.00 | 0.00 | 0 | 0 | 453 | 162 |
+| tianjinfeng_2B | 0.00 | 0.00 | 0 | 0 | 130 | 44 |
+| tianjinfeng_2B2 | **-2957.51** | **-1080.97** | 5063.16 | 5501.32 | 131 | 12 |
+| tianjinfeng_2M | **-995.07** | **+1475.05** | 926.78 | 719.54 | 330 | 209 |
+| tianjinfeng_2T | **-6160.94** | **+175.18** | 7087.02 | 3449.19 | 472 | 390 |
+
+**这是本条最重要的结论**：五层的 `skeleton.x/y` **真的互不相同**
+（0/0、0/0、-2958/-1081、-995/+1475、-6161/+175），并集跨约 **8027 单位**。
+
+但 —— 官方 runtime **自动**把它折进根骨骼的世界变换（`spine-all.js` 的
+`Skeleton.updateWorldTransform`）：
+
+    this.worldX = x * sx + skeleton.x;
+    this.worldY = y * sy + skeleton.y;
+
+⇒ **偏移一直生效着**，`gallery_src/index.html` 与 `cg_export.html` 都不需要
+（也确实都没）显式应用它。所以「前端漏应用偏移」这个假设**否证**。
+
+### ③ 那错位到底是什么
+
+各层**本来就不共享同一个坐标系**：`2T` 宽 7087、`2B2` 高 5501，而主层
+`skeleton.width/height` 是 **0/0**（essential 导出，setup 无尺寸）。
+把它们并到**一个** frameBox 里必然得到一个巨大的、并集 8027×3761 的框
+（§98 实测过，正是那个数）。
+
+⇒ **「笼子偏右上、角色部件在左下」不是偏移错，是「这些层压根不是同一张画」**
+——`2T`/`2B2` 是**独立构图的部件层**（大狐尾、椅子等），各自有自己的取景中心。
+把它们当同一幅画去求并集，构图必然歪。
+
+## 已排除的假设（写死，别再重跑）
+
+| 假设 | 结论 | 判据 |
+|---|---|---|
+| prefab 的 `anchoredPosition`/`localScale` 有非零值但没被提取 | **否证** | prefab 五层 + 父链全零（`spine_transform_tree.py`） |
+| Unity 侧骨架级偏移（`skeleton.x/y`）漏应用 | **否证** | 官方 runtime 自动加进根骨骼（`spine-all.js` 的 `updateWorldTransform`） |
+| prefab 里类型名是 `Transform` | **错** | 是 `RectTransform`；按 `Transform` 过滤会得到「父链 0 级」的假象 |
+| 3.8 的 skel 头有 hash 字段在 version 之前 | **否证** | 官方 3.8 顺序就是 hash → version；且 `readString` 长度是**真实字节数+1** |
+| `fps/imagesPath/audioPath` 总在 skel 头里 | **错** | 只在 `nonessential==true` 时存在；无条件读会读到 bones 表的字节（fps=1.28e19） |
+
+## 工具沉淀（本轮新增三个，全部只读）
+
+- `scripts/diag/spine_transform_tree.py` —— dump prefab 的 GO/Transform 树与父链
+- `scripts/diag/skel_header.js` —— node + 官方 `spine-all.js` 读 skeleton.x/y
+- `scripts/diag/skel_layer_boxes.py` + `Output/gallery_v2/layer_boxes_probe.html`
+  —— 逐层单独渲、读 alpha 像素框，量层间交叠比
+
+⚠️ **别再在 Python 里手搓 .skel 解析器**。本轮手搓连错四次
+（hash 顺序、`readString` 的 +1、fps 的条件分支、必须配套 atlas 才能走完
+`readSkeletonData`）。项目里已 vendored 前端正在用的官方 runtime，直接调它。
+
+## 待办（留给下一轮）
+
+**不是「修偏移」，是「让各层各自成景」**：要么按层分别取景再叠，
+要么对 `skeleton.width/height` 非 0 的层单独 fit。本轮未做（需用户拍板取景观感）。

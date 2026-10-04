@@ -1,7 +1,7 @@
 ---
 name: spine-web-runtime-integration
 description: 在网页里集成 Spine 3.8 (spine-webgl) 运行时做动态立绘渲染与批量出图，覆盖 .skel/.json 骨架分流、atlas 多页加载、必须 setSkin（否则命名 skin 独有部件整块不显示）、setup pose 与动画第 0 帧是两种语义、相机视口与 fit 包围盒陷阱（含"恒不渲染的巨幕遮罩撑爆取景"与"不透明纯色黑底撑爆取景"两类，以及判据必须落在取景那一刻）、readPixels 在实时 viewer 里不可用、0 秒占位动画过滤、TDZ 变量遮蔽、无头 CDP 验收判据。当需要让 .skel/.atlas 模型在浏览器里动起来、反馈"模型缺胳膊少腿/比例怪/层加载失败/导出出来是中间一小块四周全黑"、或要批量渲染 Spine 立绘成 PNG 时使用。触发词：Spine 网页播放、spine-webgl、spine-all.js、SkeletonBinary、SkeletonJson、atlas 图集页、setSkin、皮肤、SceneRenderer、比例怪、缺下半身、部件不显示、setup pose、CG 导出、层失败、动态立绘渲染、骨骼动画截图、取景、包围盒、画面太小、只占中间一小块、四周全黑、fit。不适用于 AssetBundle 侧的 Spine 资源还原与页纹理补齐（那是 unity-assetbundle-painting-restore），也不适用于 Live2D 网页集成（live2d-web-runtime-integration）。
-version: 1.1.0
+version: 1.1.1
 ---
 
 # Spine 网页运行时集成与批量出图
@@ -233,6 +233,69 @@ const anims = (data.animations || []).filter(a => a.duration > 0.01)
 - [ ] 状态对象与循环内局部变量不同名（查 TDZ 遮蔽）
 - [ ] 停止时 `cancelled` 置位 + `cancelAnimationFrame` 都做
 - [ ] 验收包含逐张看图 + 同视口对照，不以"加载成功/槽位数"收工
+- [ ] 读骨架级 `x/y` 走官方 runtime（§11），不手搓二进制解析
+- [ ] 多层错位先按 §12 三步判据否证，别直接当"偏移丢了"去补
+
+
+## 11. 读 .skel 的骨架级信息：**用官方 runtime，别手搓二进制解析**
+
+要拿 `skeletonData.x / y / width / height`（各层原点偏移），**不要**在 Python /
+任意语言里手搓 Spine 二进制格式。手搓过一次，连错四处：
+
+| 坑 | 现象 | 正解 |
+|---|---|---|
+| `readString` 长度字段是「真实字节数 **+1**」 | 版本串读成 `.8.99`（少首字符 `3`），后续每个 float 全错位 | 漏掉这个 ±1 整体偏移 1 字节 |
+| `fps/imagesPath/audioPath` **只在 `nonessential==true` 时存在** | 无条件读 ⇒ 读到 bones 表字节 ⇒ `fps=1.28e19` | 先读 `nonessential` 再分支 |
+| 要拿 x/y 必须走完整个 `readSkeletonData`，它需要**配套 atlas** 做 attachmentLoader | 只读文件头拿不到，或炸在 `Region not found in atlas` | 同名 `.atlas` 文本 + `spine.TextureAtlas` + `spine.FakeTexture({width,height})` |
+| `readSkeletonData` 收的是 **Uint8Array 视图**不是裸 ArrayBuffer | `DataView(data.buffer)` 里 `.buffer` 为 undefined | 传 `Uint8Array` |
+
+**正确做法**：在 node 里 `vm` 加载前端正在用的 `spine-all.js`（官方 UMD 之外的那种
+`var spine; (function(spine){…})(spine||(spine={}))` 形态），然后调
+`new spine.SkeletonBinary(new spine.AtlasAttachmentLoader(atlas)).readSkeletonData(view)`。
+本项目实现：`scripts/diag/skel_header.js <目录|.skel>`。
+
+⚠️ 若走 node `vm` 沙箱：**ArrayBuffer / DataView 必须同 realm**，整个读取要放在
+沙箱内闭包里做（`vm.runInContext` 里定义读取函数，再把字节拷进沙箱自己的 ArrayBuffer）。
+另外 `spine-all.js` 尾部给 three.js 的 mesh 做了 `THREE.Mesh` 继承，
+要先摆一个 `THREE` 桩否则加载就 `ReferenceError`。
+
+## 12. 多层的「坐标系不同源」是常态，不是 bug
+
+**症状**：多层 Spine 画在一起时，用户看到「角色与背景没对齐」「背后还有另一个身体」，
+而逐层的 `anchoredPosition` / `localScale` / 父链变换**实测全是零或 1**。
+
+**判据顺序**（每一步都能独立否证一个假设，别跳）：
+
+1. **prefab 侧**：`SkeletonGraphic` 自己的 `RectTransform` **以及整条父链**的
+   `anchoredPosition` / `localScale` / `rotZ`。全零 ⇒ prefab 没有偏移，
+   「偏移没被提取」否证。
+   ⚠️ prefab 里的类型名是 **`RectTransform`** 不是 `Transform`；按 `Transform`
+   过滤会得到「父链 0 级 / 值为 None」的**假象**，看起来像没读出来。
+2. **骨架侧**：各层 `skeletonData.x / y` **常常真的不同**（本项目某皮肤实测
+   0/0、0/0、-2958/-1081、-995/+1475、-6161/+175，跨度约 8000 单位）。
+   ⚠️ **但偏移一直生效** —— 官方 `updateWorldTransform` 里
+   `worldX = x * sx + skeleton.x`，根骨骼自动加上。前端**不需要**显式应用。
+   所以「前端漏应用偏移」也是否证。
+3. **真相**：各层**本就不共享同一个坐标系**（`skeleton.width` 7087 的层与
+   `width=0` 的层并到一起必然歪）。**修法不是「补偏移」，而是「让各层各自成景」**
+   （逐层 fit 再叠，或对 `skeleton.width/height` 非 0 的层单独取景）。
+
+**推论：顶点世界框不是落笔框**。`skeleton.bones[].worldX/Y` **不含**
+`skeleton.x/y`，直接把它当取景框会得到一个巨大的并集（实测 8027×3761），
+`fit()` 之后每层内容缩成极小、挤在角落 —— 看着就像「整块部件不显示」。
+**要判层间是否错位，必须真渲一帧读 alpha 像素框**（`scripts/diag/skel_layer_boxes.py`
++ 测量页；逐层单独渲 ⇒ 覆盖率与两两交叠比才有意义）。
+
+**测量页放哪**：必须在 Web 服务器根目录**之内**。本项目服务器 `directory=Output/`
+⇒ 页面放 `Output/gallery_v2/xxx.html`，`spine-all.js` 在 `/gallery_v2/vendor/`（同目录），
+`Spine_v2/` 在 `/Spine_v2/`（上一级），资源前缀 `../`。放仓库根的 `.diag/` 会 404。
+
+**测量页建 GL 上下文前必须先把 canvas 挂到 DOM**：未挂载的 canvas 量出来是 0×0，
+`ManagedWebGLRenderingContext` 拿到 0 宽高，之后 `readPixels` 全 0、
+`drawImage` 报 `width or height of 0`。
+
+**渲染 API 是 `scene.begin()` / `scene.drawSkeleton(sk, true)` / `scene.end()`**，
+**没有 `scene.add()`**（写了会报 `scene.add is not a function`）。
 
 ## 涉及文件与延伸
 
@@ -244,5 +307,8 @@ const anims = (data.animations || []).filter(a => a.duration > 0.01)
 - skin 影响面扫描：`scripts/diag/spine_skin_scan.py`（每 part 一行 JSON + `SUMMARY` 行；>8 分钟走 `run_detached.py`）
 - 逐槽细节：`scripts/diag/spine_skin_probe.py <目录> <槽名正则>`
 - 取景异常定位：`scripts/diag/spine_bounds_probe.py <目录>`
-- 工作流与判据：`docs/WORKFLOWS.md` WF-14（含"CG 层光加 setSkin 不解决问题"）、WF-16
-- 事故记录：`docs/TROUBLESHOOTING.md` §42（缺整块身体）、§44（含"mojibake 是我自己日志的假象"更正）
+- 工作流与判据：`docs/WORKFLOWS.md` WF-14（含"CG 层光加 setSkin 不解决问题"）、WF-16、WF-26
+- 骨架级偏移取证：`scripts/diag/skel_header.js`（node + 官方 runtime）+ `scripts/diag/spine_transform_tree.py`（prefab 父链）
+- 层间落笔框与交叠比：`scripts/diag/skel_layer_boxes.py` + 测量页 `Output/gallery_v2/layer_boxes_probe.html`
+- 文档编号体检：`scripts/diag/check_doc_numbering.py`（见 `docs/WORKFLOWS.md` WF-26）
+- 事故记录：`docs/TROUBLESHOOTING.md` §42（缺整块身体）、§44（含"mojibake 是我自己日志的假象"更正）、§98（弹窗缺像素级二次构图）、§99（多层坐标系不同源，附三条否证）
