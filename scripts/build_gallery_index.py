@@ -51,9 +51,17 @@ PLACEH = re.compile(r'\{namecode:\d+\}')
 # 字，还有一整串问号、以及长的拼音/十六进制回显。一旦当组名用，卡片上就会出现
 # `▅海▊▇洛▅■芬特▇▆`（实测组 hierophant）或 `？？？`（实测 dosair / unknown1）。
 # 判据按「像不像一个真名」写，**不按组名开例外名单**。
-# ⚠️ 纯 ASCII 那条只挡**长串**：`2B` / `A2` 是尼尔联动角色的真名（实测被误杀过一次），
-#    而 `544845544F574552`、`ladyE` 这类才是回显 —— 用长度 5 分开这两类。
-NOT_A_NAME = re.compile(r'^[\s？?！!。，,、\-—·]*$|[\u2580-\u259f]|^[A-Za-z0-9_\-\.\s]{5,}$')
+# ⚠️ 纯 ASCII 那条**只挡十六进制回显**（2026-10-04 修，见 docs/TROUBLESHOOTING.md 对应条目）：
+#    旧写法 `^[A-Za-z0-9_\-\.\s]{5,}$` 想挡 `544845544F574552` 这类回显，却把**正常的英文皮肤名**
+#    一起杀了 —— 实测全表 55 行被误杀，含 `qiye_7`→Wind Catcher、`haman_6`→Blushing Fellow、
+#    `shengluyisi_4`→Luxury Handle、`bominghan_5`→Briar Maid、`duli_6`→Relaxation.I。
+#    收窄成「只含 0-9A-Fa-f 且长度 ≥ 8」后：`2B`/`A2` 放行（尼尔联动真名）、英文单词放行，
+#    而 `544845544F574552`（13 位纯十六进制）仍被挡。
+HEX_ECHO = re.compile(r'^[0-9A-Fa-f]{8,}$')
+NOT_A_NAME = re.compile(r'^[\s？?！!。，,、\-—·]*$|[\u2580-\u259f]')
+def _looks_like_echo(v):
+    """十六进制回显单独判：NOT_A_NAME 的字符类写法会误杀英文真名（见上）。"""
+    return bool(HEX_ECHO.match(v))
 def _derived(cn, e):
     """这个名字能撑起的三项字段（配置优先、Wiki 按中文名兜底）。"""
     m = meta_by_cn.get(cn, {}) if cn else {}
@@ -71,7 +79,9 @@ def _clean_cn(v):
     """占位符/空/不像真名的 cn 视为无有效名；首尾空白先去掉再判
     （实测 `仲裁者·英普拉·IV ` 带一个尾空格 —— 那是真名，不该和占位符一起被挡）。"""
     v = (v or '').strip()
-    return '' if (not v or PLACEH.search(v) or NOT_A_NAME.search(v)) else v
+    if not v or PLACEH.search(v) or NOT_A_NAME.search(v) or _looks_like_echo(v):
+        return ''
+    return v
 
 # 社区快照/拼音表译名与游戏官方中文名差异修正（与 build_ship_meta 保持一致，兜底路径也生效）
 NAME_FIX = {'贾斯科涅': '加斯科涅'}
@@ -419,9 +429,40 @@ for s in silhouettes:
     s['shipCn'] = s['ship'] in alive
 silhouettes.sort(key=lambda x: (x['ship'], x['key']))
 
+# ---------- 形态族外迁（`_alter`/`_memory`/`_dark`）----------
+# 判据是**归属**而不是"有没有这个后缀"：`E.form_root(key)` 剥掉画法层之后若仍带形态后缀，
+# 再看它等不等于这张卡的 id —— 等于就是这张卡自己的条目（META 卡的无背景版 `X_alter_n`，不动），
+# 不等于才是挂错了宿主（本体卡下的 `hermit_alter`，搬走）。全库 147 条里 45 条属后者。
+# `_hx` 按用户要求留在皮肤页做"和谐前后"对比，只有形态族自带的 `_hx` 才跟着本尊走。
+FAMILY_CN = {'alter': '改造', 'memory': '记忆', 'dark': '暗黑'}
+variants = []
+for sh in ship_list:
+    keep = []
+    for sk in sh['skins']:
+        root = E.form_root(sk['key'])
+        fm = E.FORM_SUF.search(root)
+        if not fm or root == sh['id'].lower():
+            keep.append(sk)
+            continue
+        name = _clean_cn((SHIP_META.get(root) or {}).get('cn')) or root
+        v = {'key': sk['key'], 'label': sk['label'], 'image': sk['image'],
+             'root': root, 'family': fm.group(1), 'familyCn': FAMILY_CN[fm.group(1)],
+             'name': name, 'host': sh['id'], 'hostName': sh['name']}
+        for f in ('voiceCount', 'voiceText'):
+            if sk.get(f):
+                v[f] = sk[f]
+        variants.append(v)
+    sh['skins'] = keep
+ship_list = [sh for sh in ship_list if sh['skins']]
+alive = {sh['id'] for sh in ship_list}
+for v in variants:
+    v['hostOk'] = v['host'] in alive          # 宿主卡点不开的话，前端那条链接就是死的
+variants.sort(key=lambda x: (x['family'], x['root'], x['key']))
+
 cnt = {
     'ships': len(ship_list), 'with_cn': sum(1 for s in ship_list if s['hasCn']),
     'silhouettes': len(silhouettes),
+    'variants': len(variants),
     'skins': sum(len(s['skins']) for s in ship_list),
     'spine': len(skins and [k for k,v in skins.items() if v['spine']]),
     'live2d': sum(1 for v in skins.values() if v['live2d']),
@@ -433,7 +474,8 @@ cnt = {
     'ship': sum(1 for s in ship_list if s['category'] == 'ship'),
     'story': sum(1 for s in ship_list if s['category'] == 'story'),
 }
-index = {'generated': 'v2', 'counts': cnt, 'ships': ship_list, 'silhouettes': silhouettes}
+index = {'generated': 'v2', 'counts': cnt, 'ships': ship_list,
+         'silhouettes': silhouettes, 'variants': variants}
 os.makedirs(GAL, exist_ok=True)
 json.dump(index, open(os.path.join(GAL, 'index.json'), 'w', encoding='utf-8'),
           ensure_ascii=False)

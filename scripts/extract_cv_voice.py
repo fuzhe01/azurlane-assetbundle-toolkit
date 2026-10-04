@@ -59,6 +59,11 @@ ALTER_SUF = re.compile(r'_alter$')
 #   · `_hei`/`_heihei` 黑化：**独立发声实体** ⇒ 既不剥、也不许走同船回退。
 #     拿本体台词派给黑化版，与 §57 判死的 `_wjz` 那三类同源。
 HEI_SUF = re.compile(r'(_heihei|_hei)$')
+#   · `_alter`/`_memory`/`_dark` 形态族：立绘属于**另一张卡**（META / 「记忆」/ 「暗黑」形态），
+#     不是宿主船的皮肤。用户 2026-10-03 拍板：画廊里不进皮肤区、单独成档。
+#     ⚠️ 语音层仍按 §83 允许 `_alter` 末级回退到本体（那是"没有自己的行就别错派"的取数规则），
+#     与画廊的分区规则是两回事，别拿这条去改语音层。
+FORM_SUF = re.compile(r'_(alter|memory|dark)$')
 # 「第几号皮肤」尾缀：定位船名(stem)时要剥掉；_g/_h 这类不带数字的也是独立皮肤
 SKIN_TAIL = re.compile(r'(_\d+|_h|_g|_meta|_asmr|_gv|_rw|_bj|_jz|_alter|_heihei|_hei)$')
 SONG = re.compile(r'^vocal_')           # 歌曲人声，不是台词
@@ -331,6 +336,20 @@ def art_root(k, present):
         cur = cur[:m.start()]
         if cur in present:
             best = cur
+
+
+def form_root(k):
+    """这张立绘**属于哪个实体**：只穿画法后缀(`_n`/`_hx`…)，不穿形态后缀。
+
+    `aisaikesi_alter_n` -> `aisaikesi_alter`（META 那张卡自己的无背景版，本来就归它），
+    `qiye_dark_memory`  -> `qiye_dark_memory`（企业的 `_dark_memory` 是外来实体，画廊据此判外迁）。
+    和 `art_root` 的区别是这里不问"在不在表里"，只要剥到剥不动 —— 分区要的是名字归属，不是取数。"""
+    cur = k.lower()
+    while True:
+        m = ART_SUF.search(cur)
+        if not m:
+            return cur
+        cur = cur[:m.start()]
 
 
 def assign_pending_idx(res, cue_sets):

@@ -129,34 +129,37 @@ def build_indexes(skin, stats):
     return painting2skin, painting_ci, stats_by_group
 
 
-def _walk(stem, table, fold=False):
-    """逐层剥变体后缀在 table 里找；返回 (命中层数 0/1, 键, 行) 或 None。"""
+def resolve_base(stem, painting2skin, painting_ci, stats_by_group=None):
+    """磁盘 stem -> (基painting, source, 皮肤行)。
+
+    逐层剥后缀，**每一层都先精确、后大小写不敏感**（不是"精确走完再回退"）。
+    根因：`DERIV` 把 `ii|iii|iv` 当变体后缀，于是 `dahuangfengii` 剥一层就撞上基船
+    `dahuangfeng`，而表里明明有它自己那行 `dahuangfengII` —— 实体名里的罗马数字被
+    当成了"第二套皮肤"，船名于是丢了 `II`。整名能在 ci 索引里命中，说明表里就有
+    这个资源名（只差大小写），它比"剥出来的另一个名字"更接近正身。
+    ci 命中还要**该行的 ship_group 有舰级统计**才算终，否则继续剥：`xia_DOA_wjz` 整名
+    确实命中一行(900302)，但那是没有舰级字段的剧情资源行，剥一层得到的 `xia_DOA`
+    才是同一实体带舰级字段的那行。走完都没有，才用第一个 ci 命中兜底。
+    """
     s = stem
+    ci_fb = None
     for depth in range(8):
-        k = s.lower() if fold else s
-        if k in table:
-            return depth, k, table[k]
+        if s in painting2skin:
+            return s, ('painting' if depth == 0 else 'suffix'), painting2skin[s]
+        k = s.lower()
+        r = painting_ci.get(k)
+        if r is not None:
+            ent = (r.get('painting') or k, ('painting_ci' if depth == 0 else 'suffix_ci'), r)
+            if stats_by_group is None or r.get('ship_group') in stats_by_group:
+                return ent
+            if ci_fb is None:
+                ci_fb = ent
         ns = DERIV.sub('', s)
         if ns == s:
             break
         s = ns
-    return None
-
-
-def resolve_base(stem, painting2skin, painting_ci):
-    """磁盘 stem -> (基painting, source, 皮肤行)。
-
-    先按原逻辑**精确**匹配（大小写敏感、逐层剥后缀），命中即返回，保证既有条目一字不改；
-    只有精确匹配整轮走完都没命中，才走大小写不敏感回退（source 带 _ci 标记，可事后单独审）。
-    """
-    hit = _walk(stem, painting2skin)
-    if hit:
-        depth, key, row = hit
-        return key, ('painting' if depth == 0 else 'suffix'), row
-    hit = _walk(stem, painting_ci, fold=True)
-    if hit:
-        depth, key, row = hit
-        return (row.get('painting') or key, 'painting_ci' if depth == 0 else 'suffix_ci', row)
+    if ci_fb is not None:
+        return ci_fb
     return None, None, None
 
 
@@ -206,7 +209,7 @@ def build_meta(skin, stats, wiki, verbose=False):
     wiki_by_name = {x['name']: x for x in wiki if x.get('name')}
     meta = {}
     for stem in sorted(bundle_ids()):
-        base, source, sk_row = resolve_base(stem, painting2skin, painting_ci)
+        base, source, sk_row = resolve_base(stem, painting2skin, painting_ci, stats_by_group)
         entry = {'cn': stem, 'en': '', 'faction': '', 'type': '', 'rarity': '',
                  'voice_actor': 0, 'category': 'story', 'base_painting': base, 'source': source or 'unresolved'}
         if base:
