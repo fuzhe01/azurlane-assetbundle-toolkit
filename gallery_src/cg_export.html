@@ -131,7 +131,15 @@ async function loadPart(base,pn,textures,cfg){
    会把它当成内容（实测 aluomangshi_2 自报"覆盖 0.83"看着健康，图却是一大片黑里嵌一小块舞台）。
    全库判据取证见 docs/TROUBLESHOOTING.md §45/§46。 */
 const inkCache=new Map(), inkCv={c:null,ctx:null};
-function inksOf(a,col){const reg=a.region; if(!reg||!reg.page)return true;
+function inksOf(a,col){
+  // 缺省方向：查不到落笔证据时**假定它落笔**（`return true`）。
+  // ⚠️ 2026-10-04 试过改成 `return false`（想剥掉"取不到贴图"的附件），**实测有害**：
+  //   `yuanchou_2_hx` 的 `BG_desk` 是**正常的 MeshAttachment**（region 640×1025、
+  //   hasPage=true、UV 合法、贴图区有内容），`inksOf` 判 true 是对的 —— 它的问题不在附件，
+  //   而在**骨骼变换**：世界坐标 (-29319, 4833859)，把包围盒撑到 30593×4834428
+  //   ⇒ CG 渲成 64×2400 细条。把它当"不落笔"剥掉会掩盖真因、且可能误伤真贴图。
+  //   ⇒ 判据保持原样；这类"骨骼飞出"要在**上游**（骨骼/动画数据）修，不在取景层糊。
+  const reg=a.region; if(!reg||!reg.page)return true;
   const key=reg.page.name+'|'+reg.name+'|'+(reg.index||0)+'|'+col.r+','+col.g+','+col.b+','+col.a;
   const seen=inkCache.get(key); if(seen!==undefined)return seen;
   let hit=true;
