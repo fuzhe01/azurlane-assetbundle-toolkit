@@ -1861,9 +1861,19 @@ async function startSpine(s, sk){
       const px=new Uint8Array(W*H*4);
       try{ gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,px); }catch(e){ return; }
       let x0=W,y0=H,x1=-1,y1=-1;
+      /* 判据：**不透明近黑 = 画布留白，不算内容**（与导出页 `contentBBox()` 逐字同源）。
+         为什么必须加这一条（2026-10-04 天津风皮肤2 实测）：菱形背景那层是**不透明**的
+         （菱形外四角实测 (12,18,28)/(7,21,30)/(27,21,36)/(8,21,31)，alpha 全 255），
+         只判 `alpha>8` 会把整块画布都算成内容 ⇒ frac=1.00 ⇒ 二次构图被跳过
+         ⇒ 菱形外四个角（约三成面积）留在画面里，正是用户报的「构图歪 / 挤在中间」。
+         ⚠️ 与 §46「不透明纯色板撑大框要剔掉」是**同源不同向**：那条剔纯色板，
+         这条把近黑留白算成框外。两条判据别混。 */
+      const DARK=40;
       for(let y=0;y<H;y++){ const row=(H-1-y)*W;
-        for(let x=0;x<W;x++){ if(px[(row+x)*4+3]>8){ if(x<x0)x0=x; if(x>x1)x1=x;
-                                            if(y<y0)y0=y; if(y>y1)y1=y; } } }
+        for(let x=0;x<W;x++){ const o=(row+x)*4;
+          if(px[o+3]<=8)continue;                                // 全透明：留白
+          if(Math.max(px[o],px[o+1],px[o+2])<DARK)continue;      // 不透明近黑：也是留白
+          if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } }
       if(x1<=x0||y1<=y0) return;
       /* 判据与阈值**照抄导出页** `cg_export.html` 的 `contentBBox()` 二次构图
          （`if(frac<0.82)` + `zoom=Math.max(两轴)*pad`）—— 那套已产出 234 张正常 CG，

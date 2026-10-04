@@ -41,6 +41,18 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 /* ?animFrame=1 → 导出"默认动画第 0 帧"而不是纯 setup pose。
    默认关闭：231 张既有产物是 setup pose 语义，不因为 4 个皮肤就整体改定义。 */
 const ANIM_FRAME=new URLSearchParams(location.search).get('animFrame')==='1';
+/* ?part=<层名> → **只导出这一层**（逗号分隔可多层）。
+   为什么需要：多层 Spine 的「层间关系」**无法用顶点框判断** ——
+   实测 `tianjinfeng_2` 五层的骨骼顶点框几乎完全相同（都 6008×5785、交叠 100%，
+   因为骨骼里有大量远端占位/隐藏骨骼），所以必须**逐层出图**看每层各自画了什么。
+   逐层导出后该皮肤的真相才浮出来：`2B2`=整个房间背景（45° 菱形）、`2M`=同一个角色的
+   第二个姿态（倒吊在笼子里，绿发红裙）、`2T`=零星粒子、`2B`=空。
+   ⚠️ 必须配合 `tag=`：否则诊断图会**覆盖正式产物** `CG_v2/<key>.png`。
+   ⚠️ 必须配合 `animFrame=1` 才看得到真实部件 —— setup pose 下大量层的附件数是 0
+   （附件挂在动画关键帧的 AttachmentTimeline 上，§42/§98）。 */
+const QS=new URLSearchParams(location.search);
+const ONLY_PARTS=(QS.get('part')||'').split(',').map(s=>s.trim()).filter(Boolean);
+const OUT_TAG=(QS.get('tag')||'').replace(/[^\w.\-]/g,'_');   // 文件名后缀，防路径注入
 
 // 收集待导出：按 Spine_v2 目录去重
 const jobs=[];{const seen=new Set();
@@ -257,10 +269,12 @@ async function exportOne(job,longSide){
   const layers=[]; const errs=[];
   const pcfg=await partsCfg(base,job.folder);
   for(const pn of job.parts){
+    if(ONLY_PARTS.length && ONLY_PARTS.indexOf(pn)<0) continue;   // ?part= 层过滤
     try{ layers.push(await loadPart(base,pn,textures,pcfg[pn])); }
     catch(e){ errs.push(pn+': '+(e.message||e)); }
   }
-  if(!layers.length){ for(const t in textures)try{textures[t].dispose()}catch(e){} throw new Error(errs.join(' | ')||'无部件'); }
+  if(!layers.length){ for(const t in textures)try{textures[t].dispose()}catch(e){}
+    throw new Error((ONLY_PARTS.length?'?part='+ONLY_PARTS.join(',')+' 没匹配到任何层；':'')+(errs.join(' | ')||'无部件')); }
   // 取景框：见上方 framingBox（与画廊弹窗同一判据）
   const fb=framingBox(layers.map(L=>L.skeleton));
   if(!fb){ for(const t in textures)try{textures[t].dispose()}catch(e){} throw new Error('包围盒为空'); }
@@ -286,9 +300,21 @@ async function exportOne(job,longSide){
   // 二次构图：像素 alpha 包围盒（顶点包围盒会被超大半透明部件撑爆，如冒险号/阿拉曼什）
   function contentBBox(){
     const px=new Uint8Array(W*H*4); gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,px);
+    /* 判据：**不透明近黑 = 画布留白，不算内容**。
+       为什么必须加这一条（2026-10-04 天津风皮肤2 实测）：菱形背景那层是**不透明**的
+       （四角实测 (12,18,28)/(7,21,30)/(27,21,36)/(8,21,31)，alpha 全 255），
+       只判 `alpha>8` 会把整块画布都算成内容 ⇒ frac=1.00 ⇒ 二次构图被跳过
+       ⇒ 菱形外的四个角（约三成面积）留在成品里。
+       阈值 40：菱形内实测 (52,33,50)/(86,33,58) 等都 > 40，四角全部 < 40。
+       ⚠️ 这与 §46 那条「不透明纯色板」是**同源不同向**的问题：那次是纯色板**撑大**框要剔掉，
+       这次是近黑**留白**要算成框外。两条判据别混。 */
+    const DARK=40;
     let x0=W,y0=H,x1=-1,y1=-1;
     for(let y=0;y<H;y++){const row=(H-1-y)*W;
-      for(let x=0;x<W;x++){ if(px[(row+x)*4+3]>8){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } } }
+      for(let x=0;x<W;x++){ const o=(row+x)*4;
+        if(px[o+3]<=8)continue;                                  // 全透明：留白
+        if(Math.max(px[o],px[o+1],px[o+2])<DARK)continue;         // 不透明近黑：也是留白
+        if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } }
     return x1<0?null:[x0,y0,x1,y1];
   }
   const bb=contentBBox();
@@ -303,7 +329,9 @@ async function exportOne(job,longSide){
     }
   }
   const blob=await new Promise((rs,rj)=>cv.toBlob(b=>b?rs(b):rj(new Error('toBlob 失败')),'image/png'));
-  const r=await fetch('/save_cg?name='+encodeURIComponent(job.folder),{method:'POST',body:blob});
+  /* ?tag= 落到文件名后缀：逐层诊断图**绝不能覆盖正式产物** CG_v2/<key>.png。 */
+  const saveName=OUT_TAG ? job.folder+'_'+OUT_TAG : job.folder;
+  const r=await fetch('/save_cg?name='+encodeURIComponent(saveName),{method:'POST',body:blob});
   if(!r.ok)throw new Error('save 失败 HTTP '+r.status);
   for(const t in textures)try{textures[t].dispose()}catch(e){}
   return {W,H,bw:Math.round(bw),bh:Math.round(bh),frac:+frac.toFixed(2),errs};

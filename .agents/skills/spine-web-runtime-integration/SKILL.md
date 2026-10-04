@@ -1,7 +1,7 @@
 ---
 name: spine-web-runtime-integration
 description: 在网页里集成 Spine 3.8 (spine-webgl) 运行时做动态立绘渲染与批量出图，覆盖 .skel/.json 骨架分流、atlas 多页加载、必须 setSkin（否则命名 skin 独有部件整块不显示）、setup pose 与动画第 0 帧是两种语义、相机视口与 fit 包围盒陷阱（含"恒不渲染的巨幕遮罩撑爆取景"与"不透明纯色黑底撑爆取景"两类，以及判据必须落在取景那一刻）、readPixels 在实时 viewer 里不可用、0 秒占位动画过滤、TDZ 变量遮蔽、无头 CDP 验收判据。当需要让 .skel/.atlas 模型在浏览器里动起来、反馈"模型缺胳膊少腿/比例怪/层加载失败/导出出来是中间一小块四周全黑"、或要批量渲染 Spine 立绘成 PNG 时使用。触发词：Spine 网页播放、spine-webgl、spine-all.js、SkeletonBinary、SkeletonJson、atlas 图集页、setSkin、皮肤、SceneRenderer、比例怪、缺下半身、部件不显示、setup pose、CG 导出、层失败、动态立绘渲染、骨骼动画截图、取景、包围盒、画面太小、只占中间一小块、四周全黑、fit。不适用于 AssetBundle 侧的 Spine 资源还原与页纹理补齐（那是 unity-assetbundle-painting-restore），也不适用于 Live2D 网页集成（live2d-web-runtime-integration）。
-version: 1.1.1
+version: 1.1.2
 ---
 
 # Spine 网页运行时集成与批量出图
@@ -235,6 +235,8 @@ const anims = (data.animations || []).filter(a => a.duration > 0.01)
 - [ ] 验收包含逐张看图 + 同视口对照，不以"加载成功/槽位数"收工
 - [ ] 读骨架级 `x/y` 走官方 runtime（§11），不手搓二进制解析
 - [ ] 多层错位先按 §12 三步判据否证，别直接当"偏移丢了"去补
+- [ ] 多层问题**逐层出图**看（`?part=`+`?tag=`+`?animFrame=1`），别用顶点框/skeleton.x 下结论（§12）
+- [ ] 像素级取景的判据含「不透明近黑 = 留白」；导出页与弹窗两处同源改
 
 
 ## 11. 读 .skel 的骨架级信息：**用官方 runtime，别手搓二进制解析**
@@ -259,43 +261,60 @@ const anims = (data.animations || []).filter(a => a.duration > 0.01)
 另外 `spine-all.js` 尾部给 three.js 的 mesh 做了 `THREE.Mesh` 继承，
 要先摆一个 `THREE` 桩否则加载就 `ReferenceError`。
 
-## 12. 多层的「坐标系不同源」是常态，不是 bug
+## 12. 多层的层间关系：**只能逐层出图看，坐标类判据全部会骗人**
 
-**症状**：多层 Spine 画在一起时，用户看到「角色与背景没对齐」「背后还有另一个身体」，
-而逐层的 `anchoredPosition` / `localScale` / 父链变换**实测全是零或 1**。
+**症状**：多层 Spine 画在一起，用户说「构图歪 / 挤在中间 / 背后还有一个身体」。
 
-**判据顺序**（每一步都能独立否证一个假设，别跳）：
+**先说三条会浪费时间的错误判据**（2026-10-04 全部实测否证）：
 
-1. **prefab 侧**：`SkeletonGraphic` 自己的 `RectTransform` **以及整条父链**的
-   `anchoredPosition` / `localScale` / `rotZ`。全零 ⇒ prefab 没有偏移，
-   「偏移没被提取」否证。
-   ⚠️ prefab 里的类型名是 **`RectTransform`** 不是 `Transform`；按 `Transform`
-   过滤会得到「父链 0 级 / 值为 None」的**假象**，看起来像没读出来。
-2. **骨架侧**：各层 `skeletonData.x / y` **常常真的不同**（本项目某皮肤实测
-   0/0、0/0、-2958/-1081、-995/+1475、-6161/+175，跨度约 8000 单位）。
-   ⚠️ **但偏移一直生效** —— 官方 `updateWorldTransform` 里
-   `worldX = x * sx + skeleton.x`，根骨骼自动加上。前端**不需要**显式应用。
-   所以「前端漏应用偏移」也是否证。
-3. **真相**：各层**本就不共享同一个坐标系**（`skeleton.width` 7087 的层与
-   `width=0` 的层并到一起必然歪）。**修法不是「补偏移」，而是「让各层各自成景」**
-   （逐层 fit 再叠，或对 `skeleton.width/height` 非 0 的层单独取景）。
+1. ❌ **「`skeletonData.x/y` 各层不同 ⇒ 错位」** —— `skeletonData.x/y` 是 **Spine 编辑器的
+   画布尺寸元数据**，官方 `Skeleton` 构造时写死 `this.x = 0; this.y = 0`，
+   **`data.x` 不会被拷进去**。`updateWorldTransform` 里那句 `worldX = x * sx + skeleton.x`
+   里的 `skeleton.x` 恒为 0，所以偏移**从来没有**被自动应用。
+   典型误读：看到 `data.x` 各层是 `-2957 / -995 / -6160` 就断定「层间错位」——
+   A/B 两版（保留 vs 置零）渲染**逐字相同**。
+2. ❌ **「用骨骼顶点框判断层间关系」** —— 骨骼里有大量**远端占位/隐藏骨骼**，
+   顶点框会撑到整块画布。实测五层的 `bones[].worldX/Y` 框**几乎完全相同**
+   （都 6008×5785、交叠 100%），而这五层实际画的东西完全不同。
+   ⇒ 顶点框只能当「粗略外接」的 sanity check，**不能**当判据。
+3. ❌ **「剔掉背景层再取景」** —— 直觉上背景撑爆了框就剔掉它，但**剔了取景框会收紧、
+   画面会被裁**，反而丢内容（实测裁掉了菱形的一角）。背景**照样要画**，
+   只是不该**决定取景框**。
 
-**推论：顶点世界框不是落笔框**。`skeleton.bones[].worldX/Y` **不含**
-`skeleton.x/y`，直接把它当取景框会得到一个巨大的并集（实测 8027×3761），
-`fit()` 之后每层内容缩成极小、挤在角落 —— 看着就像「整块部件不显示」。
-**要判层间是否错位，必须真渲一帧读 alpha 像素框**（`scripts/diag/skel_layer_boxes.py`
-+ 测量页；逐层单独渲 ⇒ 覆盖率与两两交叠比才有意义）。
+**正解：逐层出图，人眼看。** 给 `cg_export.html` 加两个参数（可复用）：
 
-**测量页放哪**：必须在 Web 服务器根目录**之内**。本项目服务器 `directory=Output/`
-⇒ 页面放 `Output/gallery_v2/xxx.html`，`spine-all.js` 在 `/gallery_v2/vendor/`（同目录），
-`Spine_v2/` 在 `/Spine_v2/`（上一级），资源前缀 `../`。放仓库根的 `.diag/` 会 404。
+    ?part=<层名>      只导出这一层（逗号分隔可多层）
+    ?tag=<后缀>       输出文件名加后缀 —— **绝不能省**，否则诊断图覆盖正式产物
+    ?animFrame=1      应用动画第 0 帧，否则 setup pose 下大量层附件数为 0
 
-**测量页建 GL 上下文前必须先把 canvas 挂到 DOM**：未挂载的 canvas 量出来是 0×0，
-`ManagedWebGLRenderingContext` 拿到 0 宽高，之后 `readPixels` 全 0、
-`drawImage` 报 `width or height of 0`。
+驱动脚本见 `scripts/diag/skel_layer_boxes.py`（层清单/落笔框/交叠比）与
+逐层出图用法（本仓库 `run_cg_export.py --extra 'animFrame=1&part=X&tag=Y'`）。
 
-**渲染 API 是 `scene.begin()` / `scene.drawSkeleton(sk, true)` / `scene.end()`**，
-**没有 `scene.add()`**（写了会报 `scene.add is not a function`）。
+### 逐层出图后真正的判据：不透明近黑 = 画布留白
+
+**症状**：成品是 45° 菱形，菱形外四个角是**一大片黑**（约三成面积），内容缩在中间。
+
+**根因**：像素级二次构图（`contentBBox()` / `pixelFit()`）判的是 `alpha > 8`。
+而菱形背景那层是**不透明**的 —— 菱形**外**四角实测 `(12,18,28)` / `(7,21,30)` /
+`(27,21,36)` / `(8,21,31)`，**alpha 全 255** ⇒ 整块画布都被算成内容
+⇒ `frac = 1.00` ≥ 阈值 `0.82` ⇒ **二次构图被跳过** ⇒ 黑边留在成品里。
+
+**修法**：判据加一条「不透明近黑 = 留白」：
+
+    if (a <= 8) continue;                              // 全透明
+    if (max(r,g,b) < 40) continue;                     // 不透明近黑，也是留白
+
+阈值 40 的取法：**量**菱形外与菱形内的实际颜色（外 21–36 / 内 52–86），取中间。
+**不要拍脑袋定 30 或 50** —— 会误裁真实暗部。
+
+⚠️ **与「不透明纯色板撑大框」是同源不同向，别混**：
+那条是**剔掉**纯色板（它把框撑大）；这条是**算成框外**（它是留白）。方向相反。
+
+⚠️ 导出页与弹窗的这两个函数本来就是**逐字复制的**，改一处必须同步另一处。
+
+**验证**：同视口对照 —— 目标皮肤看尺寸/四角是否变、**健康对照必须逐像素比 + 看图**
+（尺寸比要先排除 `--size` 不同的干扰；逐像素差大不等于坏，可能只是取景收紧了一档，
+**必须看图确认内容零损失**才算过）。
 
 ## 涉及文件与延伸
 
@@ -311,4 +330,6 @@ const anims = (data.animations || []).filter(a => a.duration > 0.01)
 - 骨架级偏移取证：`scripts/diag/skel_header.js`（node + 官方 runtime）+ `scripts/diag/spine_transform_tree.py`（prefab 父链）
 - 层间落笔框与交叠比：`scripts/diag/skel_layer_boxes.py` + 测量页 `Output/gallery_v2/layer_boxes_probe.html`
 - 文档编号体检：`scripts/diag/check_doc_numbering.py`（见 `docs/WORKFLOWS.md` WF-26）
-- 事故记录：`docs/TROUBLESHOOTING.md` §42（缺整块身体）、§44（含"mojibake 是我自己日志的假象"更正）、§98（弹窗缺像素级二次构图）、§99（多层坐标系不同源，附三条否证）
+- 逐层出图：`cg_export.html?part=<层>&tag=<后缀>&animFrame=1`（驱动 `scripts/diag/run_cg_export.py --extra ...`）
+- 层间落笔框与交叠比：`scripts/diag/skel_layer_boxes.py`（浏览器逐层渲，**共享 glctx**）
+- 事故记录：`docs/TROUBLESHOOTING.md` §42（缺整块身体）、§44（含"mojibake 是我自己日志的假象"更正）、§98（弹窗缺像素级二次构图）、§99（多层坐标系不同源，附三条否证）、**§100（菱形背景是不透明近黑 ⇒ 二次构图被跳过；真根因，否证了 §99）**
