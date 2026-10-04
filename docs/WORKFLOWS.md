@@ -2053,3 +2053,60 @@ py -3 -c "import sys; sys.path.insert(0,'scripts'); import skin_table; skin_tabl
 那些是**立绘/Live2D 的重跑暂存区**，是否可清要按"对应产物已换入"逐条判，本轮未动。
 
 **涉及文件**: `scripts/diag/clean_diag_profiles.py`、`tools/sharecfg_re/42_publish_gamecfg.py`（`SRC` 路径）
+---
+
+### WF-25 定位「某个 Spine 皮肤渲染异常」：三层取证法
+
+**日期**: 2026-10-04（为 §6 第 22 条 `yuanchou_2_hx` 的 CG 细条而建）
+
+### 适用场景
+
+某张 Spine 皮肤渲出来不对 —— 画面缩成中间一小块、偏心、或者长宽比塌成一条。
+`docs/TROUBLESHOOTING.md` §45/§46 记过两类成因（框撑太大 / 不落笔附件），
+§96 查出**第三类：mesh 顶点数据本身坏**。三类要用同一套判据分开。
+
+### 判据：一层异常对应三个不同的「层」
+
+| 层 | 怎么量 | 异常长什么样 | 该谁负责 |
+|---|---|---|---|
+| **附件** | `region` / `hasPage` / UV / 贴图区像素 | `hasPage=false`、UV 非法、贴图区空白 | 取景层 `inksOf` 判「不落笔」 |
+| **骨骼** | `boneChain` 逐级 `x/y/worldX/worldY` | 某一级 world 坐标离谱，链上其他级正常 | 动画/骨骼数据 |
+| **顶点** | mesh `localV`（局部顶点包围盒 + 尺寸） | `localV.far` 巨大而 `w/h` 正常 | **资产本身坏，改不了** |
+
+**关键**：只看**世界坐标**分不出后两种。`yuanchou_2_hx` 的 `BG_desk`
+世界坐标 (-29638, 4833859)、骨骼链三级全正常（worldY 只 -78/-153），
+但**局部顶点 (-294184, 48339368)、尺寸 320×513 正常** ⇒ 顶点整体被平移。
+
+### 步骤
+
+1. **先定位是谁**：`py -3 scripts/diag/spine_bounds_probe.py <stem>`
+   看 `bbox` 与 `farthest`（按 `far` 降序）—— 元凶必然在 `farthest` 前几名。
+2. **再定哪一层坏**：同一份输出的每个条目现在带
+   `attType` / `hasPage` / `boneChain` / `localV`，对着上表判。
+   ⚠️ `localV.w=0` 是**正常**的 —— 那是 `a.vertices` 里只有一组坐标、
+   包围盒由缩放后的 `computeWorldVertices` 给出，不是数据缺失。
+3. **对照本体**：同一个角色的非 `_hx` 版本跑一遍。**只有和谐版有 ⇒ 数据异常，不是代码问题。**
+4. **别急着改判据**：若坏的是顶点，在取景层剔除只是**掩盖坏数据**。
+   按 `AGENTS.md`「没有权威依据不许猜」，判为资产缺陷 + 记录不改
+   （同 `_hei` 剪影 / `yinggelahan_3` 缺行 / §6 第 12/15 条的先例）。
+
+### 踩过的坑
+
+- ⚠️ **`inksOf` 的缺省方向不要动**。曾把 `if(!reg||!reg.page) return true` 改成
+  `return false`，想剥掉「取不到贴图」的附件 —— 实测有害：`BG_desk` 的
+  `region` 解析完全正常（`hasPage=true`、UV 合法、贴图区有内容），
+  改成 `false` 只会**掩盖真因**并可能误伤真有贴图的附件。判据原样保留，
+  否证结论以注释形式留在 `gallery_src/cg_export.html` 里。
+- ⚠️ **项目里没有 puppeteer**，所有 CDP 探针都是 Python + websocket
+  （`scripts/cdp_slot.py` + `scripts/diag/*.py`）。写新探针照抄
+  `spine_bounds_probe.py` 的连接方式，别去找 node 包。
+- ⚠️ `spine_bounds_probe.py` 的第二个参数是**皮肤名**（`data.skins` 的名字），
+  不是数字 id；多皮肤角色要自己挑对。
+
+### 涉及文件
+
+- `scripts/diag/spine_bounds_probe.py` —— 本轮增强：每个条目多输出
+  `attType` / `hasPage` / `boneChain` / `localV`，一次运行即可定位到层。
+- `gallery_src/cg_export.html` —— `inksOf` **判据未变**，只加否证结论注释。
+- 诊断案例与三条否证假设：`docs/TROUBLESHOOTING.md` §96。
+- 相关：§45 / §46（`inksOf` 判据原始出处）、§22 条待办、`PROJECT_STATUS.md` §6 第 22 条。

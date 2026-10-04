@@ -103,11 +103,41 @@ JS = r"""
       let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
       for(let j=0;j<c;j+=2){ if(v[j]<minX)minX=v[j]; if(v[j]>maxX)maxX=v[j]; if(v[j+1]<minY)minY=v[j+1]; if(v[j+1]>maxY)maxY=v[j+1]; }
       const col = sl.color || sl.data.color;
+      // ⚠️ 2026-10-04（§96）：只报**世界坐标**无法区分三种成因 ——
+      //   ① 附件本身坏（region/UV/贴图不对）② 骨骼变换坏（骨骼链某级飞了）
+      //   ③ mesh 顶点数据坏（局部顶点被整体平移）
+      // 实测 `yuanchou_2_hx` 的 `BG_desk` 是第③种：世界坐标 (-29638, 4833859)、
+      // 骨骼链三级全正常，而**局部顶点 (-294184, 48339368)、尺寸 320×513 正常**
+      // ⇒ 顶点整体被平移。骨骼链与局部顶点一并输出，这样一次运行就能定位到哪一层坏。
+      let boneChain=null, localV=null;
+      if(sl.bone){
+        const ch=[]; let b=sl.bone;
+        while(b){ ch.push({n:b.data.name, x:Math.round(b.x), y:Math.round(b.y),
+                           wx:Math.round(b.worldX||0), wy:Math.round(b.worldY||0),
+                           sx:+(b.scaleX||0).toFixed(3), sy:+(b.scaleY||0).toFixed(3),
+                           rot:+(b.rotation||0).toFixed(2)}); b=b.parent; if(ch.length>8)break; }
+        boneChain=ch;
+      }
+      if(a.vertices && a.vertices.length){
+        const arr=a.vertices, bc=(a.bones&&a.bones.length)?a.bones.length:1;
+        // RegionAttachment 的 vertices 布局是 [x,y] × boneCount；带权重的 mesh 先取第 1 骨骼槽
+        let lx0=1e9,lx1=-1e9,ly0=1e9,ly1=-1e9;
+        for(let q=0;q<bc && q*2+1<arr.length;q++){
+          const xx=arr[q*2], yy=arr[q*2+1];
+          if(xx<lx0)lx0=xx; if(xx>lx1)lx1=xx; if(yy<ly0)ly0=yy; if(yy>ly1)ly1=yy;
+        }
+        if(lx1>=lx0) localV={x0:Math.round(lx0),y0:Math.round(ly0),
+                             w:Math.round(lx1-lx0),h:Math.round(ly1-ly0),
+                             far:Math.round(Math.max(Math.abs(lx0),Math.abs(lx1),
+                                                    Math.abs(ly0),Math.abs(ly1)))};
+      }
       rows.push({slot:sl.data.name, att:(a.name||''), w:Math.round(maxX-minX), h:Math.round(maxY-minY),
                  x:Math.round(minX), y:Math.round(minY), far:Math.max(Math.abs(minX),Math.abs(maxX),Math.abs(minY),Math.abs(maxY)),
                  a:col?+(col.a).toFixed(3):null, r:col?+(col.r).toFixed(2):null,
                  bsx:+sl.bone.scaleX.toFixed(2), bsy:+sl.bone.scaleY.toFixed(2),
-                 reg:(a.width||0)+'x'+(a.height||0)});
+                 reg:(a.width||0)+'x'+(a.height||0),
+                 hasPage:!!(a.region&&a.region.page), attType:a.constructor?a.constructor.name:'',
+                 boneChain, localV});
     }
     rows.sort((p,q)=>q.far-p.far);
     return {n:rows.length,
