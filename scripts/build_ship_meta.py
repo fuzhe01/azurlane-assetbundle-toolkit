@@ -129,6 +129,33 @@ def build_indexes(skin, stats):
     return painting2skin, painting_ci, stats_by_group
 
 
+# 舰名尾缀清洗（2026-10-04，§93）
+# ① `ship_data_statistics` 里有 10 个 NPC 行的**官方名自带方位标注**：
+#    「（后排）」`BLACK★ROCK SHOOTER（后排）`/`基洛夫·META（后排）`/`拉斐尔`/`抚顺.改`/
+#    `朴茨茅斯冒险号`/`云仙`/`虎`/`马可波罗（后排 原皮）`，
+#    「（前排）」`比叡·META（前排）`/`克莱蒙梭（前排）`。
+#    同一行的 `english_name` 是干净的（`BLACK★ROCK SHOOTER`）⇒ 去掉不丢信息。
+#    `ship_skin_template` 那侧本来就没有这个后缀 ⇒ **两边不一致**才让旧产物看起来像"脏值"。
+# ② 另有 7 个舰名在**源表里自带尾空格**（`宝多六花 ` / `筑紫 ` / `格里芬 ` / `焦苏埃·卡尔杜齐 ` /
+#    `帕萨迪纳 ` / `新条茜 ` / `托里拆利 ` / `尼科洛索·达雷科 ` / `迪盖·特鲁因 `）。
+#    ⚠️ 尾空格不是"错"——`仲裁者·英普拉·IV ` 也带尾空格且是真名。首尾空白对任何名字都不是
+#    有效字符，顺带 strip 是安全的；但**别把它记成"表里有脏数据"**，源表就是这么写的。
+# 用户 2026-10-04 裁定去掉方位标注。
+#
+# ⚠️ 判据必须收窄在「尾部 + 成对括号 + 括号内只含已知方位词」，否则会剥掉真名里的括号：
+#    `克利夫兰(μ兵装)`（实测 26 个条目）、`泛用型强化武装(工作用)`、`Vow mode（誓言模式）`、
+#    `Liebestrank（迷魂酒/爱情魔药）` 全部必须原样保留。实测 14 例正反对照全过。
+_NAV_SUF = re.compile(r'[（(]\s*(?:后排|前排)(?:\s*原皮)?\s*[)）]\s*$')
+def clean_ship_name(v):
+    """去掉舰名尾部的「（后排）」「（前排）」「（后排 原皮）」这类方位标注，并 strip 首尾空白。"""
+    prev = None
+    v = (v or '').strip()
+    while prev != v:
+        prev = v
+        v = _NAV_SUF.sub('', v).strip()
+    return v
+
+
 def resolve_base(stem, painting2skin, painting_ci, stats_by_group=None):
     """磁盘 stem -> (基painting, source, 皮肤行)。
 
@@ -221,7 +248,7 @@ def build_meta(skin, stats, wiki, verbose=False):
             entry['skin_name'] = sk.get('name') or stem
             sv = stats_by_group.get(sk.get('ship_group'))
             if sv:
-                entry['cn'] = sv.get('name') or sk.get('name') or stem
+                entry['cn'] = clean_ship_name(sv.get('name')) or sk.get('name') or stem
                 entry['en'] = sv.get('english_name', '')
                 entry['faction'] = NATIONALITY.get(sv.get('nationality'), '其他')
                 entry['rarity'] = RARITY.get(sv.get('rarity'), '')
@@ -248,7 +275,7 @@ def build_meta(skin, stats, wiki, verbose=False):
             if src:
                 entry['source'] = src
                 sv = stats_by_group.get((row or {}).get('ship_group'))
-                name = (sv or {}).get('name') or (row or {}).get('name') or npc_cn
+                name = clean_ship_name((sv or {}).get('name')) or (row or {}).get('name') or npc_cn
                 entry['cn'] = pfx + (name or stem)
                 if sv:   # 舰级字段属于同一实体，可以带；但仍是剧情资源，不进"舰船"筛选
                     entry['en'] = sv.get('english_name', '')

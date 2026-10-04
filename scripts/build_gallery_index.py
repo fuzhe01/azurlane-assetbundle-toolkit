@@ -132,6 +132,68 @@ def variant_label(stem, base):
             parts.append(t)
     return '·'.join(parts)
 
+# ---------- 真名解析（2026-10-04，§92 / WF-24）----------
+# 原来 label 只有上面 `variant_label()` 一处赋值 ⇒ 2701/4487 条显示成「皮肤10」，
+# 而游戏叫它「泳池里的默契训练」。真名唯一来源是权威表的 `skin_name`
+# （ship_meta 里的字段），**不是**目录名反推。
+#
+# 三条踩过的坑（详见 docs/TROUBLESHOOTING.md §92）：
+#  1. 表盘 painting 键**大小写不一致**（表 `haixiao_DOA` vs 盘 `haixiao_doa`）⇒ 查表必须
+#     精确优先、再大小写归一（`SHIP_META` 的键是磁盘 stem，这里两个池子都要试）。
+#  2. **只剥画法变体，绝不剥数字**。`_N` 是皮肤序号，剥了只剩船名 ⇒ 45 条 `qiye_7` 之类
+#     会全变成「企业」，宁可留缺口也不给错名。
+#  3. `_clean_cn` 必须已收窄十六进制判据（`_looks_like_echo`），否则英文真名
+#     `Wind Catcher` 这类会被当回显杀掉。
+#
+# 画法变体里**只有 `_n`/`_hx` 会进标签**（用户 2026-10-04 裁定：这两个是"同一张画的
+# 不同呈现"，要能对比）；`_wjz`/`_doa`/`_ex`/`_tolove`/`_ger` 是**来源标记不是呈现方式**，
+# 配真名后直接消失——`_doa` 尤其重要，用户明确说它是"死或生联动的标记、不是原皮这种皮肤类型"。
+ART_ONLY = {'n': '无背景版', 'hx': '和谐版'}
+# 这些是"来源标记"：查真名时剥掉，但**不进标签**（用户 2026-10-04 裁定）
+SOURCE_SUF = {'wjz', 'doa', 'ex', 'tolove', 'ger'}
+
+def _real_name(stem):
+    """磁盘 stem -> 权威表里的皮肤真名（查不到或像垃圾串则回空串）。
+
+    顺序：① 整名直接查 ② 逐层剥「画法变体 + 来源标记 + 数字」查。
+    ⚠️ 数字**只在剥完之后命中失败时**才继续往下剥——优先整名/全名匹配，
+    保证 `qiye_7` 拿到的是它自己那行（Wind Catcher）而不是基船名（企业）。
+    """
+    # ① 整名 + 画法变体/来源标记全剥（数字保留）
+    toks = stem.split('_')
+    tail = []
+    while len(toks) > 1 and (toks[-1] in ART_ONLY or toks[-1] in SOURCE_SUF):
+        tail.insert(0, toks.pop())
+    for cand in ['_'.join(toks)] + ([stem] if tail else []):
+        e = SHIP_META.get(cand) or {}
+        n = _clean_cn(e.get('skin_name') or e.get('cn'))
+        if n:
+            return n, list(tail), False
+    # ② 还没拿到，才剥数字。⚠️ 这一层拿到的大概率是**裸船名**（`qiye_7`→企业），
+    #    调用方靠 flag=True 把它挡掉。
+    cur = stem.split('_')
+    while len(cur) > 1 and re.fullmatch(r'\d+', cur[-1]):
+        cur.pop()
+        e = SHIP_META.get('_'.join(cur)) or {}
+        n = _clean_cn(e.get('skin_name') or e.get('cn'))
+        if n:
+            return n, tail, True
+    return '', tail, False
+
+def true_label(stem, base, ship_name=''):
+    """权威真名 + 该有的画法变体标注；查不到真名就回落原来的 variant_label。
+
+    ⚠️ 防错只对**剥数字那一层**生效：`qiye_7` 剥掉 `_7` 拿到的是基船名「企业」，
+    那是船名不是皮肤名，必须丢掉。但**整名/剥来源标记命中的一律照用**——
+    `haixiao_doa` 剥掉 `doa` 拿到的「海咲」就是它自己的正确皮肤名
+    （这张卡恰好也叫海咲，**不能**因为"名字等于舰名"就误杀，那会把 58 条 `_doa` 打回原形）。
+    """
+    name, tail, from_strip_num = _real_name(stem)
+    if name and not (from_strip_num and name == ship_name):
+        marks = [ART_ONLY[t] for t in tail if t in ART_ONLY]
+        return '·'.join([name] + marks)
+    return variant_label(stem, base)
+
 # ---------- ship_meta 反查：base → 代表性条目（同 base 多 stem 中挑 cn 干净/ship/有阵营 的最优）----------
 _base2stems = {}
 for _stem in SHIP_META:
@@ -215,7 +277,8 @@ def add_skin(stem, rel_image):
     sh = ship_of(base)
     sk = skins.get(stem)
     if sk is None:
-        sk = {'key': stem, 'label': variant_label(stem, base), 'image': rel_image,
+        sh_name = ships.get(base, {}).get('name', '') if base in ships else ''
+        sk = {'key': stem, 'label': true_label(stem, base, sh_name), 'image': rel_image,
               'spine': False, 'live2d': ''}
         skins[stem] = sk
         sh['skins'].append(sk)
@@ -423,6 +486,29 @@ for sh in ship_list:
     sh['skins'] = keep
 # 只剩剪影的船（1 艘）从主网格摘掉——它的全部"皮肤"都是剪影，留着就是一张假卡
 ship_list = [sh for sh in ship_list if sh['skins']]
+
+# ---------- 探索者连线关卡 NPC 外迁（2026-10-04 用户拍板）----------
+# `tansuozhe*`（探索者）、`lingyangzhe*`（领航员）、`linghangyuan*`（领航学院）这三族共 45 条，
+# 权威皮肤表里**一行都没有**（既不在 ship_skin_template 也不在 ship_data_statistics），
+# 它们不是任何舰船的皮肤，而是关卡里反复出现的 NPC。留在皮肤区只会显示成「皮肤1/皮肤2」。
+# ⇒ 与 `_hei` 剪影同档处理：从皮肤区摘出去，只从顶部「剧情剪影」进。
+#
+# ⚠️ 判据按**基名**而不是全名匹配：族内既有 `_1/_2/_3` 皮肤序号，也有 `_n` 画法变体
+#    （`linghangyuan1_2`、`lingyangzhe3_2_n`、`tansuozhe_2_n`），还有 `npclingyangzhe3_2`
+#    这种带 npc 前缀的。写成"族名 + 若干数字段 + 可选 _n"才盖得全。
+EXPLORER_BASE = re.compile(r'^(?:npc)?(?:tansuozhe|lingyangzhe|linghangyuan)\d*(?:_\d+)*(?:_n)?$')
+for sh in ship_list:
+    keep = []
+    for sk in sh['skins']:
+        if not EXPLORER_BASE.match(sk['key'].lower()):
+            keep.append(sk)
+            continue
+        silhouettes.append({
+            'key': sk['key'], 'label': sk['label'], 'image': sk['image'],
+            'ship': sh['id'], 'srcSkin': '', 'shipName': sh['name']})
+    sh['skins'] = keep
+ship_list = [sh for sh in ship_list if sh['skins']]
+
 # 来源船必须真能在主网格点开，否则前端那条链接是死的（`shipCn` 就是这个意思）
 alive = {sh['id'] for sh in ship_list}
 for s in silhouettes:

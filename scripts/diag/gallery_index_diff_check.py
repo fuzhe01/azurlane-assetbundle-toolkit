@@ -70,6 +70,12 @@ def diff(old, new, allow_ship, allow_skin, packs, expect=None):
     expect = expect or {}
     o_s, o_k = index_of(old)
     n_s, n_k = index_of(new)
+    # 皮肤级声明：--expect 传 {"<皮肤key>": {...}} 时按皮肤 key 取，{"<船id>": {...}} 时按船取。
+    # ⚠️ 键空间**可能重叠**（`kelaimengsuo` 既是船 id 也是皮肤 key），靠 `k in o_k` 单判会
+    # 让它只走皮肤那条、船级声明永不被检查（实测：篡改船名后报的是皮肤的错）。
+    # ⇒ 用 `label` / `name` 这种**字段名**区分两套语义，而不是靠键本身。
+    expect_skin = {k: v for k, v in expect.items()
+                   if k in o_k and 'label' in v}
     rep = collections.Counter()
     bad = []
     misfit = []
@@ -79,19 +85,40 @@ def diff(old, new, allow_ship, allow_skin, packs, expect=None):
     # 新版剪影清单里，且键满足黑化后缀，还不得同时留在皮肤区里；所以这不是按名字开的例外名单，
     # 拿它掩盖一次真删除会在下面三条断言里撞车。
     sil = {s.get('key') for s in (new.get('silhouettes') or []) if s.get('key')}
-    not_hei = sorted(k for k in sil if not HEI_TAIL.search(k.lower()))
-    if not_hei:
-        bad.append('剪影清单里混进了非 `_hei` 条目: %s' % not_hei[:5])
+    # 剪影区现在住两类东西（用户 2026-10-03 / 10-04 两次拍板）：
+    #   ① `_hei`/`_heihei` 黑脸剪影（§88/§90）
+    #   ② 探索者连线关卡 NPC（`tansuozhe*`/`lingyangzhe*`/`linghangyuan*`，§93）——
+    #      权威表里一行都没有，不是任何舰船的皮肤。
+    # ⚠️ 原来这里只认 `_hei`，探索者 NPC 一进来就报「混进了非 _hei 条目」；
+    #   连带它们原来那张卡（linghangyuan1 等 19 艘）在下面被报「船掉出索引」。
+    # 判据按"键形态"写死，不按名字开例外清单。
+    EXPLORER = re.compile(r'^(?:npc)?(?:tansuozhe|lingyangzhe|linghangyuan)\d*(?:_\d+)*(?:_n)?$')
+    not_sil_kind = sorted(k for k in sil
+                          if not HEI_TAIL.search(k.lower()) and not EXPLORER.match(k.lower()))
+    if not_sil_kind:
+        bad.append('剪影清单里有既非 `_hei` 也非探索者 NPC 的条目: %s' % not_sil_kind[:5])
     still = sorted(k for k in sil if k in n_k)
     if still:
         bad.append('剪影条目同时还在皮肤区里（外迁没做干净）: %s' % still[:5])
-    ghost = sorted(k for k in sil if k not in o_k and k not in {x for x in n_k})
+    # ⚠️ 旧版把「不在**皮肤区**」当成「两边都不认识」，于是**一直待在剪影区**的条目
+    # （如 aerjiliya_hei）每轮都报 ghost——实测剪影数 16→16 零变化，它却红了。
+    # 判据必须是「两边皮肤区都没有、**且旧剪影区也没有**」才是真幽灵。
+    old_sil = {s.get('key') for s in (old.get('silhouettes') or []) if s.get('key')}
+    ghost = sorted(k for k in sil
+                   if k not in o_k and k not in {x for x in n_k} and k not in old_sil)
     if ghost:
         bad.append('剪影清单里有两边都不认识的条目: %s' % ghost[:5])
 
     for gone in sorted(set(o_s) - set(n_s)):
         if gone in sil:
             rep['船外迁为剪影'] += 1
+            continue
+        # ⚠️ 还有一种合法消失：**卡上所有皮肤都搬进了剪影**（探索者连线 NPC，§93），
+        # 那这张卡自己也就没有皮肤可显示了 ⇒ 整张卡从主网格摘掉（与 §90「只剩剪影的船
+        # 从主网格摘掉」同一条规则）。判据：它至少有一条皮肤确实进了新版剪影清单。
+        # 这不是按名字开例外——`gone in sil or 有皮肤在 sil 里` 双向可核。
+        if any(sk.get('key') in sil for sk in (o_s[gone].get('skins') or ())):
+            rep['船因皮肤全部外迁而摘掉'] += 1
             continue
         bad.append('船掉出索引: %s' % gone)
     for add in sorted(set(n_s) - set(o_s)):
@@ -206,6 +233,15 @@ def diff(old, new, allow_ship, allow_skin, packs, expect=None):
                               % (key, k, a.get(k), b.get(k)))
             elif empty(a.get(k)) and not empty(b.get(k)):
                 rep['皮肤标量补全:%s' % k] += 1
+            elif expect_skin and k in expect_skin.get(key, {}):
+                # 声明过的期望变化：**值必须正好等于声明的那个**（与船级 expect 同机制）。
+                # 本轮用它承载「皮肤名从「皮肤N」换成游戏真名」这 3891 条有意变化：
+                # 清单外的改名照样判回退，声明了却没换成照样红。
+                if b.get(k) == expect_skin[key][k]:
+                    rep['皮肤标量按声明变化:%s' % k] += 1
+                else:
+                    bad.append('皮肤标量变化与声明不符: %s.%s 期望 %r 实得 %r'
+                               % (key, k, expect_skin[key][k], b.get(k)))
             else:
                 bad.append('皮肤标量回退: %s.%s %r→%r' % (key, k, a.get(k), b.get(k)))
     return rep, bad, misfit
