@@ -135,16 +135,46 @@ ROMAN = {'ii': '改', 'iii': '改三', 'iv': '改四'}
 # 后缀真实语义（用户 2026-09-20 确认）：_hx 是和谐处理版立绘（非调色变体），_n 是不显示背景的立绘（非夜战场景）
 VARMAP = {'hx': '和谐版', 'n': '无背景版', 'g': 'G', 'meta': 'META', 'asmr': 'ASMR', 'gv': '改造'}
 JUNK = {'22', '33', 'unknown3'}  # 明显测试残留
+# 「来源标记」类后缀：查基名时要剥，但**不进标签**（用户 2026-10-04 裁定，§92/§94）。
+# `_doa` 是死或生联动的来源标记（**不是**"原皮"这种皮肤类型）；`_wjz` 是无舰装。
+# ⚠️ 这个集合必须在 `normalize()` 之前定义 —— 组键合成与真名查找**共用**它，
+#    两处各写一份就会造出 `gushouchuan_tolove` 这种"表里不存在的实体 id"，
+#    后果是**一个角色被拆成多张同名卡片**（实测 55 组）。见 normalize() 里的注释。
+ART_ONLY = {'n': '无背景版', 'hx': '和谐版'}   # 画法变体：要剥、且**进标签**（可对比）
+SOURCE_SUF = {'wjz', 'doa', 'ex', 'tolove', 'ger'}   # 来源标记：要剥、不进标签
+
+def _is_real_entity(key):
+    """这个 key 是不是一个**真实存在的实体**，而不是"带后缀的磁盘键"。
+
+    ⚠️ 2026-10-04 加：`SHIP_NAME_MAP`（手抄舰名表）里**混着若干不是舰名的条目** ——
+    实测 `gushouchuan_tolove`（值 '古手川'）也有一行。看着是当初有人把磁盘键直接抄进去的。
+    后果：`normalize('gushouchuan_tolove_wjz')` 的剥离循环**第一轮就命中它而 break**，
+    返回 `gushouchuan_tolove` 当组键 ⇒ 「古手川唯」被拆成 3 张同名卡片。
+
+    **判据**：带 `_tolove`/`_ger` 这类**来源标记**的 key 一律不是实体 ——
+    游戏里没有叫「古手川唯 to love」的舰船。`SHIP_NAME_MAP` 本身不动（手抄表改名的风险
+    大过收益），只在合成组键时把这类条目排除。
+    """
+    tk = key.split('_')
+    return not (set(tk[1:]) & SOURCE_SUF)
 
 def normalize(stem):
     """返回 (base, extra_label_tokens)。剥离尾部变体标记直到命中拼音表或无可剥。"""
     toks = stem.split('_')
-    # 从尾部剥离变体标记（数字/hx/n/g/meta/asmr/罗马数字等）
+    # 从尾部剥离变体标记（数字/hx/n/g/meta/asmr/罗马数字/**tolove/ger** 等）
+    # ⚠️ 2026-10-04 修：`_tolove` / `_ger` 原先**不在这个白名单里**（它们只在下面
+    # `SOURCE_SUF` 中），于是剥到 `_tolove` 就 `break`，`normalize('gushouchuan_tolove')`
+    # 返回 `'gushouchuan_tolove'` —— 这个实体在表里根本不存在，却被当成独立组键，
+    # 于是**一个角色被拆成 3 张卡**（gushouchuan / gushouchuan_tolove / gushouchuan_tolove_wjz
+    # 三张卡片标题都是「古手川唯」）。同理 `_doa` 在 `na_doa` 上也不剥，
+    # 造出 `na_doa` 这个假组（截图里「雫」被拆成 na / na_doa 两张卡）。
+    # ⇒ 判据统一用 `SOURCE_SUF | VARMAP`，**两处后缀集合不许各写一份**。
     while len(toks) > 1:
-        if '_'.join(toks) in PINS:
+        if '_'.join(toks) in PINS and _is_real_entity('_'.join(toks)):
             break
         t = toks[-1]
-        if re.fullmatch(r'\d+', t) or t in VARMAP or t in ROMAN or t in ('s1','s2','s3'):
+        if (re.fullmatch(r'\d+', t) or t in VARMAP or t in ROMAN
+                or t in SOURCE_SUF or t in ('s1', 's2', 's3')):
             toks.pop()
         else:
             break
@@ -192,9 +222,7 @@ def variant_label(stem, base):
 # 画法变体里**只有 `_n`/`_hx` 会进标签**（用户 2026-10-04 裁定：这两个是"同一张画的
 # 不同呈现"，要能对比）；`_wjz`/`_doa`/`_ex`/`_tolove`/`_ger` 是**来源标记不是呈现方式**，
 # 配真名后直接消失——`_doa` 尤其重要，用户明确说它是"死或生联动的标记、不是原皮这种皮肤类型"。
-ART_ONLY = {'n': '无背景版', 'hx': '和谐版'}
-# 这些是"来源标记"：查真名时剥掉，但**不进标签**（用户 2026-10-04 裁定）
-SOURCE_SUF = {'wjz', 'doa', 'ex', 'tolove', 'ger'}
+# ⚠️ `ART_ONLY` / `SOURCE_SUF` 已挪到文件上方（`normalize()` 之前）—— 组键合成与真名查找共用。
 
 def _real_name(stem, ship_name=''):
     """磁盘 stem -> 权威表里的皮肤真名（查不到或像垃圾串则回空串）。

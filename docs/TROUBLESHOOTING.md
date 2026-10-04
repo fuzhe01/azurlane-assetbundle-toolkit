@@ -4843,3 +4843,100 @@ Spine/Live2D/语音三个标签全灰（符合"无配音"）；索引 counts `sh
 （新增 `_name_code()` / `expand_placeholder()`，`true_label` 增占位符兜底分支）。
 相关：§92（三条根因）、§93（防错判据要带作用域）、§6 第 8 条（`{namecode:NN}` 已证可解）、
 WF-24（这套流程）、WF-24 追加（兜底判据两头收）。
+
+
+---
+
+## §95 一个角色被拆成多张同名卡片：组键合成的假 id
+
+**日期**: 2026-10-04
+**触发**: 用户看截图发现「古宇川端」3 张卡、「金色勋章」3 张、「萨拉托勒姆」3 张、「雫」「香迪」各 2 张。
+**性质**: 真实缺陷，已修。
+
+### 症状
+
+同一个角色在网格里出现多张**标题完全相同**的卡片。实测**卡片标题重复的组：55**。
+
+### 根因：`normalize()` 的剥离白名单漏了「来源标记」后缀
+
+`normalize(stem)` 决定「哪些皮肤归同一张卡」，它从磁盘 stem 尾部剥后缀直到命中拼音表。
+它的白名单原本只有 `VARMAP`（6 个）+ `ROMAN` + 数字 + `s1/s2/s3`：
+
+- **`_tolove` / `_ger` / `_doa` / `_wjz` / `_ex` 不在其中**（它们当时只定义在 `SOURCE_SUF` 里）
+- ⇒ 剥到这些就 `break`，于是造出 `gushouchuan_tolove`、`na_doa`、`xiangdi_doa`
+  这种**表里根本不存在的实体 id** 当组键
+- 后果：`gushouchuan` / `gushouchuan_tolove` / `gushouchuan_tolove_wjz` 三张卡标题都是「古手川唯」
+
+### 还有一层：`SHIP_NAME_MAP` 里混着不是舰名的条目
+
+即使补了白名单，`normalize('gushouchuan_tolove_wjz')` 第一轮就会命中
+`'_'.join(toks) in PINS` 而 break —— 因为**手抄表 `SHIP_NAME_MAP` 里有一行
+`gushouchuan_tolove` → '古手川'**（当初有人把磁盘键直接抄进去了）。
+游戏里没有叫「古手川唯 to love」的舰船。
+
+⇒ 加判据 `_is_real_entity(key)`：**带 `SOURCE_SUF` 的 key 一律不是实体**。
+`SHIP_NAME_MAP` 本身**不动**（手抄表改名的风险大于收益），只在合成组键时排除。
+
+### 修法（两处，缺一不可）
+
+1. `ART_ONLY` / `SOURCE_SUF` **上移到 `normalize()` 之前**，剥离条件改成
+   `t in VARMAP or t in ROMAN or t in SOURCE_SUF or 数字 or s1/s2/s3`
+   —— **判据统一用同一份集合，两处不许各写一份**（这正是 §85 错派的成因）
+2. 剥离循环的提前 break 加 `_is_real_entity()` 把关
+
+### 结果
+
+- 卡片标题重复 **55 → 40 组**；**28 个假组键消除、32 张皮肤归位真船**
+- `ships 987 → 961`，但 `skins` 恒为 4397、**皮肤键零增删、label 零变化、非 label 零变化**
+  （纯粹是卡片合并，不动任何一条皮肤数据）
+- 剩下 40 组**不是这一类**：31 组是 `npc*` 前缀（本体舰 vs 剧情里的同一个人，
+  游戏里确实是两个条目），9 组是两个中文名真相同的舰（柯蕾/可畏、加贺/加贺战列、
+  `missr`/`richard_white`）—— 本来就该分开
+
+### 闸门补了两条判据（都被这轮逼出来的）
+
+1. **「假组键消失」是合法消失形态**：判据 = 该假 id 的**皮肤全部还在**且已挂到别的船
+2. **「皮肤随假组键并回同一实体」**：`na_doa`→`na`、`zi_shanluan_ex` 从 `zi`（三浦 梓）
+   挪回 `zi_shanluan`（紫）。判据用**船 id 前缀关系**，**不用舰名** ——
+   「三浦 梓」与「紫」互不为子串，按舰名判会误报。
+
+反向对照实测：把 `strength` 的皮肤改挂到 `missd`（无前缀关系）⇒
+`[FAIL] 皮肤换船: strength strength→missd` exit 1 ⇒ 新判据不是放行一切。
+
+### 一条环境事实：回归偶发失败不等于改动引起
+
+本轮首次回归 **2 件未通过**（5 全量按部位点击、6 台词与全局开关），
+报错是 `WebSocketConnectionClosedException: Connection to remote host was lost`
+—— 探针的浏览器连接断了，与索引改动无关。判据：① 失败栈里没有任何断言/判据行，
+全是 websocket 传输层；② 那次只跑了 1230s（前几轮 2400s+），第 5 件中途断、后面连锁失败；
+③ **所有回归样本的标签在新旧索引里一字未变**。
+⇒ 下次遇到先清 `chrome_*` profile 再重跑，别急着怀疑代码。
+
+**涉及文件**: 改 `scripts/build_gallery_index.py`（`normalize`/`_is_real_entity`/两个常量上移）、
+`scripts/diag/gallery_index_diff_check.py`（两条新判据）。
+相关：§85（同一套语义写两份的成因）、§92（`SOURCE_SUF` 首次定义）、§94（`ART_ONLY`/`SOURCE_SUF` 拆分）。
+
+### 附带事故：换入只换了 index.json，前端读的 index.js 一直是旧的
+
+**症状**: 「克莱蒙梭（后排）」在 `ship_meta` 里已清、`index.json` 里也是干净的，
+但**页面上还显示「克莱蒙梭（前排）」**，硬刷新也没用。
+
+**根因**: `build_gallery_index.py` 一次写出**两个**文件：
+`index.json`（脚本/探针读）与 `index.js`（`window.GALLERY=...`，**`index.html` 实际
+加载的就是它**，为的是 `file://` 双击也能读到数据）。
+本轮换入一直只 `shutil.copy2` 了 json ⇒ `index.js` 停在 10:05 而 json 是 14:11。
+**这是我的操作疏漏，不是代码缺陷** —— 但它证明「换入」必须是原子动作、不能靠人记得拷两个文件。
+
+**修法**: 新增 `scripts/diag/swap_index.py`，把换入收敛成一个命令：
+`py -3 scripts/diag/swap_index.py <候选目录> --yes`，三条硬判据：
+① 候选目录里两个文件**都必须存在**（缺一即拒 ⇒ 防半换）；
+② 两者**内容必须一致**（剥掉 `window.GALLERY=` 前缀后与 json 逐字段比）；
+③ 换入后现网两个文件 mtime 必须相同。
+另带 `--check` 模式：只查现网两个文件是否一致（这条以后应当 routinely 跑）。
+
+**验证**: 正常换入 exit 0；造「只有 json」的候选 → `[ERROR] 候选目录缺 ['index.js']` exit 2；
+造「js 与 json 不一致」的候选 → `[ERROR] 内容不一致` exit 2；现网 `--check` **绿**。
+
+⇒ **教训**: 一份数据被**两个文件**承载时，换入必须走脚本、走断言；
+「我拷了主文件」不等于「换入了」。探针若读 json、页面读 js，两边不一致时**只有页面会错**，
+而 json 那边的闸门全绿 —— **这类双载体必须在换入处断言，不能靠验证覆盖面**。

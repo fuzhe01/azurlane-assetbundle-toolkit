@@ -120,6 +120,15 @@ def diff(old, new, allow_ship, allow_skin, packs, expect=None):
         if any(sk.get('key') in sil for sk in (o_s[gone].get('skins') or ())):
             rep['船因皮肤全部外迁而摘掉'] += 1
             continue
+        # ⚠️ 2026-10-04 修：另一种合法消失 —— **假组键**。
+        # `normalize()` 原先不剥 `_tolove`/`_doa`/`_wjz`，造出 `gushouchuan_tolove`、
+        # `na_doa` 这种"表里不存在的实体 id"当组键 ⇒ 一个角色被拆成多张同名卡片。
+        # 修好后这些假 id 消失、其皮肤并回真船。判据：该假 id 的**皮肤全部还在**，
+        # 且都已挂到别的船上（双向可核），不是真删除。
+        if gone in o_k and all(k in n_k for k in
+                              [x['key'] for x in (o_s[gone].get('skins') or ())]):
+            rep['假组键消失(皮肤已并回真船)'] += 1
+            continue
         bad.append('船掉出索引: %s' % gone)
     for add in sorted(set(n_s) - set(o_s)):
         rep['船新增'] += 1
@@ -216,7 +225,17 @@ def diff(old, new, allow_ship, allow_skin, packs, expect=None):
             bad.append('皮肤字段消失: %s %s' % (key, sorted(lost - allow_skin)))
         a, b = scalars(sk, {'_ship'}), scalars(t, {'_ship'})
         if sk['_ship'] != t['_ship']:
-            bad.append('皮肤换船: %s %s→%s' % (key, sk['_ship'], t['_ship']))
+            # ⚠️ 2026-10-04：假组键被合并时，同一张皮肤会**换船**。合法形态有两种：
+            #   ① 两边指向**同一实体**（舰名相同）—— `na_doa`→`na`；
+            #   ② **新船 id 是旧船 id 的前缀或反之**（同一艘船的两张卡被合并，舰名可能不同）——
+            #      `zi_shanluan_ex` 从 `zi`（三浦 梓）挪回 `zi_shanluan`（紫）。用 id 判比
+            #      用舰名判准（舰名互不为子串：「三浦 梓」vs「紫」）。
+            # 判据仍双向可核：**皮肤本身没变、只换了归属**，且两船 id 有前缀关系。
+            old_id, new_id = sk['_ship'], t['_ship']
+            if old_id == new_id or old_id.startswith(new_id) or new_id.startswith(old_id):
+                rep['皮肤随假组键并回同一实体'] += 1
+            else:
+                bad.append('皮肤换船: %s %s→%s' % (key, old_id, new_id))
         for k in sorted(set(a) | set(b)):
             if a.get(k) == b.get(k):
                 rep['皮肤标量未变'] += 1
