@@ -122,7 +122,7 @@ def main():
     for s in spec['segments']:
         print(f'  · {s["label"]}: 原第 {s["lines"][0]}-{s["lines"][1]} 行'
               f'（{s["lines"][1] - s["lines"][0] + 1} 行）→ '
-              f'{"留 " + str(len(s["stub"].rstrip(chr(10)).split(chr(10))) + " 行桩") if s.get("stub") else "不留桩"}')
+              f'{"留 " + str(len(s["stub"].rstrip(chr(10)).split(chr(10)))) + " 行桩" if s.get("stub") else "不留桩"}')
 
     arc_abs = os.path.join(ROOT, arc)
     # 归档文件**可能是本轮新建的**：历史上每次都往一个已存在的 A 段文件里追加，这条路径没跑到过，
