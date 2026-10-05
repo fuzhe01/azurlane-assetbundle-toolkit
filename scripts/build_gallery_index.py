@@ -430,13 +430,20 @@ if SPINE_NO_PARTS:
     sys.exit(1)
 
 # Spine setup-pose 全屏 CG（cg_export.html 导出到 CG_v2/，目录名=皮肤 stem）
+# ⚠️ 只接受**已有同名立绘**的 stem。取证时写进 CG_v2 的中间图（`tianjinfeng_2_CHK.png`、
+#    `_DARKFIX`、`_ALL_anim`、`_L_tianjinfeng_2`、`*_CMP_*` 这些）不是皮肤，
+#    过去会被 `add_skin` 就地造出一张假船卡（实测 11 张）。跳过必须**点名打印**，不许静默。
+cg_orphans = []
 for p in glob.glob(os.path.join(OUT, 'CG_v2', '*.png')):
     stem = os.path.splitext(os.path.basename(p))[0]
     sk = skins.get(stem)
     if sk is None:
-        add_skin(stem, '')
-        sk = skins[stem]
+        cg_orphans.append(os.path.basename(p))
+        continue
     sk['cg'] = 'CG_v2/' + os.path.basename(p)
+if cg_orphans:
+    print('[i] CG_v2 里 %d 张图没有同名立绘，按中间产物跳过、不进索引：%s'
+          % (len(cg_orphans), ', '.join(sorted(cg_orphans))))
 
 # Live2D
 for d in glob.glob(os.path.join(OUT, 'Live2D', '*')):

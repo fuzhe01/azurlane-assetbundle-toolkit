@@ -25,6 +25,7 @@
 """
 import argparse
 import collections
+import collections
 import importlib.util
 import json
 import os
@@ -49,6 +50,40 @@ def row_backed(t, tab_paint):
         return False
     kl, bl = k.lower(), str(b).lower()
     return bl in tab_paint and kl.startswith(bl) and len(bl) > len(str(a))
+
+
+def dup_row_fix(t, bp, rows_by_paint, picked, groups_with_stats):
+    """方向性判据：同一 painting 在皮肤表里有**多行**时，只放行「无配音且查不到舰级行 → 有配音且查得到」这一个方向。
+
+    背景：自机化时游戏不新增 painting 目录，而是给同一个 painting **再加一行**（带真
+    `voice_actor` 和一个能在 `ship_data_statistics` 里查到的 `ship_group`）。旧代码
+    `painting2skin.setdefault()` 让迭代序第一行（剧情那行）胜出 ⇒ 17 张已自机化的卡
+    （11 张 META + 霞飞/阿尔及利亚/不屈/沃克兰/弗兰德尔/加斯科涅）显示「无阵营 + 无语音」。
+
+    和 `row_backed` 一样放在模块级：闸门里的判据没法测就等于橡皮章。
+    它是一条**任何组都能套、且只放行正确方向**的规则，不是给那 17 张卡开的后门：
+      · 该 painting 必须真的有多行（单行一律 False，防"其实没换行也放行"）；
+      · `rows[0]` 是旧规则(setdefault)的胜行，必须不满足 good、新行必须满足 good
+        —— 反向（把有 CV 的换成没 CV 的）一律红；
+      · 只允许行派生的字段；`category` 还额外要求 story→ship 这一个方向。
+    影响面由 `diag/painting_dup_probe.py` 用同一套 good 定义独立复核。
+    """
+    k, f, a, b = t
+    if f not in ('cn', 'en', 'faction', 'type', 'rarity', 'category'):
+        return False
+    rows = rows_by_paint.get(bp) or []
+    if len(rows) < 2:
+        return False
+    old_r, new_r = rows[0], picked.get(bp)
+    if old_r is None or new_r is None or old_r.get('id') == new_r.get('id'):
+        return False
+
+    def good(r):
+        return (r.get('voice_actor') or -1) > 0 and r.get('ship_group') in groups_with_stats
+
+    if not good(new_r) or good(old_r):
+        return False
+    return (a, b) != ('ship', 'story') if f == 'category' else True
 
 
 def load_new():
@@ -85,11 +120,55 @@ def stats_picks(mod, skin, stats):
         if g in by_group and (g not in base or v['id'] < base[g]):
             base[g] = v['id']
     old = {g: min(vs, key=lambda x: x['id']) for g, vs in by_group.items()}
-    new = {}
+    cand_by_group = {}
     for g, vs in by_group.items():
-        cand = [s for s in vs if s.get('skin_id') == base.get(g)] or vs
-        new[g] = min(cand, key=lambda x: x['id'])
-    return old, new, base
+        cand_by_group[g] = [s for s in vs if s.get('skin_id') == base.get(g)] or vs
+    new = {g: min(vs, key=lambda x: x['id']) for g, vs in cand_by_group.items()}
+    # 第三条规则（今天的正本）：候选集内取「(nationality,type,rarity) 众数」那一族的
+    # 非占位英文名行中的最小 id。`maj` 与 `support` 供 `majority_fix` 判方向。
+    TUPLE = lambda r: (r.get('nationality'), r.get('type'), r.get('rarity'))
+    support, maj = {}, {}
+    for g, vs in cand_by_group.items():
+        cnt = collections.Counter(TUPLE(r) for r in vs)
+        modal, _n = cnt.most_common(1)[0]
+        reps = [r for r in vs if TUPLE(r) == modal] or vs
+        reps = [r for r in reps if str(r.get('english_name') or '').strip().lower()
+                not in ('', 'simulation')] or reps
+        support[g], maj[g] = cnt, min(reps, key=lambda x: x['id'])
+    return old, new, base, maj, support, TUPLE
+
+
+def majority_fix(t, g, support, prev_pick, maj_pick, TUPLE):
+    """方向性判据：组内候选行自相矛盾时，只放行「少数派行 → 多数派行」这一个方向。
+
+    §56 那次只补了「先要求 skin_id == 基皮肤」，但脏行**可以本身就是基皮肤行**：
+    `ship_data_statistics` 的 id=900399 单条把 加斯科涅 的 nationality 写成 2(皇家)、
+    id=900398 单条把 弗兰德尔 的 type 写成 18(超巡)，而同组其余 5 行都是 9/5。
+    于是「组内 min(id)」让 1 条 outlier 压掉 5 条一致行。
+
+    判据是可回查的支持度比较，不是"新值看起来更顺眼"：
+      · 必须是同一个 painting 组、且确实换了行；
+      · 新行的 (阵营,舰种,稀有度) 组合在候选集里的支持度必须**严格大于**旧行；
+        并列一律 False（拿不出多数派就不许自动放行）；
+      · 反向（多数派→少数派）支持度变小，天然被这条挡住。
+    第二条单向子句：同族（三列全同）之内只允许「占位英文名 → 真英文名」改 `en`，反向一律 False。
+    """
+    k, f, a, b = t
+    if f not in ('cn', 'en', 'faction', 'type', 'rarity') or g is None:
+        return False
+    o, n = prev_pick.get(g), maj_pick.get(g)
+    if o is None or n is None or o['id'] == n['id']:
+        return False
+    cnt = support.get(g)
+    if cnt and cnt[TUPLE(n)] > cnt[TUPLE(o)]:
+        return True
+    # 同族之内的另一种单向改善：旧行 `english_name` 是占位（空 / `simulation`，全表 44 行），
+    # 新行是真英文名。只放行 `en` 这一列——同族里两行的 `name` 也可能不同（§93 那类
+    # 「（后排）」后缀），那属于另一条判据的范围，不许混在这里一起盖章。
+    PH = ('', 'simulation')
+    return (f == 'en' and TUPLE(n) == TUPLE(o)
+            and str(o.get('english_name') or '').strip().lower() in PH
+            and str(n.get('english_name') or '').strip().lower() not in PH)
 
 
 def main():
@@ -102,7 +181,20 @@ def main():
     new, wiki, mod, skin, stats = load_new()
     fails = []
     painting2skin, _pci, _sbg = mod.build_indexes(skin, stats)
-    old_pick, new_pick, base_of = stats_picks(mod, skin, stats)
+    # 「同一 painting 多行」的原始候选集 + 「哪些 ship_group 查得到 stats 行」，供 dup_row_fix 回查
+    rows_by_paint = {}
+    for v in skin.values():
+        p = v.get('painting')
+        if p:
+            rows_by_paint.setdefault(p, []).append(v)
+    _sid2skin = {v['id']: v for v in skin.values() if 'id' in v}
+    groups_with_stats = {_sid2skin[s['skin_id']]['ship_group'] for s in stats.values()
+                         if s.get('skin_id') in _sid2skin}
+    old_pick, new_pick, base_of, maj_pick, support, TUPLE = stats_picks(mod, skin, stats)
+    # 自检：闸门复算出的「众数代表行」必须**就是正本 `build_indexes` 实际选中的那一行**。
+    # 不复算这一条，判据就是在给一个不存在的规则盖章。
+    maj_drift = [g for g, r in maj_pick.items()
+                 if _sbg.get(g) is not None and _sbg[g]['id'] != r['id']]
     # 只有这几列是从 stats 行派下来的，改它们才可能是「换 stats 行」引起的
     STATS_FIELDS = {'en', 'faction', 'type', 'rarity'}
 
@@ -144,17 +236,46 @@ def main():
                  for r in skin.values() if isinstance(r, dict)}
 
 
-    npc_ok = [t for t in hard if justified(t)]
-    fix_ok = [t for t in hard if not justified(t) and base_fix(t)]
-    bad = [t for t in hard if not justified(t) and not base_fix(t) and not row_backed(t, tab_paint)]
-    row_ok = [t for t in hard if not justified(t) and not base_fix(t) and row_backed(t, tab_paint)]
+    def _dup(t):
+        return dup_row_fix(t, new[t[0]].get('base_painting'), rows_by_paint,
+                           painting2skin, groups_with_stats)
+
+    def _maj(t):
+        sk = painting2skin.get(new[t[0]].get('base_painting'))
+        return majority_fix(t, (sk or {}).get('ship_group'), support,
+                            new_pick, maj_pick, TUPLE)
+
+    # 每条改动都必须落到某一条**方向性判据**上；落不进就是回退。
+    # 判据之间互斥地按顺序取第一条成立的，所以计数不会重复计同一处。
+    PROOFS = (('皮肤标题→NPC 实体名', justified),
+              ('脏 stats 行→基皮肤行', base_fix),
+              ('快照缺行→权威表已有行', lambda t: row_backed(t, tab_paint)),
+              ('剧情行→自机行', _dup),
+              ('少数派脏行→多数派行', _maj))
+
+    def proof(t):
+        for nm, fn in PROOFS:
+            if fn(t):
+                return nm
+        return ''
+
+    ok_by = collections.OrderedDict((nm, [t for t in hard if proof(t) == nm]) for nm, _ in PROOFS)
+    bad = [t for t in hard if not proof(t)]
+    fix_ok = ok_by['脏 stats 行→基皮肤行']
+    dup_ok = ok_by['剧情行→自机行']
+    maj_ok = ok_by['少数派脏行→多数派行']
     groups_fixed = {new[t[0]].get('base_painting') for t in fix_ok}
-    print('1) 受保护档(painting/suffix) %d 条 -> 字段改动 %d 处：'
-          '"皮肤标题→NPC 实体名" %d 处（逐条回查表） + "脏 stats 行→基皮肤行" %d 处 / %d 组（方向性判据）'
-          ' + "快照缺行→权威表已有行" %d 处（回查皮肤表）'
-          '，其余 %d 处（须为 0）'
-          % (sum(1 for v in old.values() if v.get('source') in PROTECTED),
-             len(hard), len(npc_ok), len(fix_ok), len(groups_fixed), len(row_ok), len(bad)))
+    dup_cards = sorted({t[0] for t in dup_ok})
+    maj_groups = sorted({(painting2skin.get(new[t[0]].get('base_painting')) or {}).get('ship_group')
+                         for t in maj_ok})
+    print('1) 受保护档(painting/suffix) %d 条 -> 字段改动 %d 处，按方向性判据归类：'
+          % (sum(1 for v in old.values() if v.get('source') in PROTECTED), len(hard)))
+    for nm, ts in ok_by.items():
+        print('   · %-22s %d 处' % (nm, len(ts)))
+    print('   其余 %d 处（须为 0）| 复算众数行与正本选行不一致 %d 组（须为 0）'
+          % (len(bad), len(maj_drift)))
+    print('   · 换行放行的卡 %d 张: %s' % (len(dup_cards), ' '.join(dup_cards) or '无'))
+    print('   · 众数改判的组: %s' % (maj_groups or '无'))
     for g in sorted(groups_fixed):
         sk = painting2skin.get(g)
         o, n = old_pick.get((sk or {}).get('ship_group')), new_pick.get((sk or {}).get('ship_group'))
@@ -165,6 +286,8 @@ def main():
         print('   ! %s %s: %r -> %r' % t)
     if bad:
         fails.append('受保护档被改动')
+    if maj_drift:
+        fails.append('闸门复算的众数行与正本 build_indexes 实际选行不一致')
 
     add = [k for k in new if k not in old]
     drop = [k for k in old if k not in new]

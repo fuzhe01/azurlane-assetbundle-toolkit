@@ -5356,3 +5356,59 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
   菱形的 45° 美术构图完整保留、两个她都清楚可见。
 - 健康对照 `tianjinfeng_3` 差异 0.21%（基本一致）；`yunlong_3`、`aluomangshi_2`
   逐像素差 23–26% 但**看图确认只是裁掉外圈黑边、内容零损失**（取景确实收紧了一档）。
+
+---
+
+## §101. 同一 painting 两行：剧情行压住自机行，11 张 META 卡显示「无阵营 + 无语音」（2026-10-05）
+
+**症状**：画廊里 海伦娜·META / 约克城·META / 反击·META 等 **11 张**卡阵营空、无语音，
+而游戏里她们是有 CV 的自机。触发点是用户问「灵敏 META 自机化了，跑资产更新台就行吗」。
+
+**根因（两层，第二类是查第一类时挖出来的）**
+1. **皮肤表同一 painting 有两行**：全库 142 组冲突（涉及 309 行）。自机化时游戏**不新增 painting
+   目录**，而是给同一 painting **再加一行**（带真 `voice_actor` + 能在 `ship_data_statistics`
+   查到的 `ship_group`，号段 970xxxx）。而 `build_ship_meta.build_indexes()` 用
+   `painting2skin.setdefault(p, v)` ⇒ **迭代序首行（剧情行）胜出**。17 组属此类。
+2. **`stats_by_group` 的「组内 min(id)」会被同为基皮肤行的脏行打穿**。§56 修过一次，但当时只补了
+   「先要求 `skin_id == 基皮肤`」——漏了脏行**本身就是基皮肤行**：`900399` 单条把 加斯科涅 的
+   nationality 写成 2(皇家)、`900398` 单条把 弗兰德尔 的 type 写成 18(超巡)，同组其余 5 行都是 9/5。
+
+**修法**
+1. painting 冲突时，**只有当候选行同时满足「有配音」且「组查得到 stats 行」、而现状行不满足**才换行；
+   并列一律维持首行。
+2. `stats_by_group` 改成「候选集内 (nationality, type, rarity) **众数**那一族的最小 id 行」，
+   族内再避开占位英文名（`''` / `simulation`，全表 44 行）——否则 加斯科涅 的 `en` 会直接显示
+   `simulation`。全库 969 组只有 13 组分歧、**0 组并列**。
+3. 顺带修一处静默失败：`build_gallery_index.py` 对 `CG_v2/*.png` 里**没有同名立绘**的
+   取证中间图（`tianjinfeng_2_CHK` / `_DARKFIX` / `_ALL_anim` / `*_CMP_*`，实测 11 张）
+   过去会 `add_skin` 就地造出假船卡 ⇒ 改成跳过 + **点名打印**，不许静默。
+
+**判据（四道，全部 exit 0）**
+- `diag/painting_dup_probe.py`：影响面 142 组 / 17 组改判，逐条回查表；
+- `diag/stats_majority_probe.py`：带硬断言「探针复算的代表行必须 == 正本 `build_indexes` 实际选行」
+  （0 不一致）——**判据不许只对着复刻逻辑成立**；
+- `ship_meta_authority_diff` 新增两条**方向性判据** `dup_row_fix` / `majority_fix`：157 处改动全部
+  归到某条判据下，其余 0；`majority_fix` 还要求「同族内只允许占位英文名→真英文名改 `en`」，
+  同族改 `cn` 不许混在这里盖章；
+- `gallery_index_diff_check` 新增 `--meta-old/--meta-new` **两头同源核对**：索引里每个变化的值必须
+  **同时**等于改前与改后的元数据（只对新值等于给索引器自己漂移开门）。26 例反向对照
+  （`test_meta_gate_proofs.py`：`row_backed` 8 + `dup_row_fix` 9 + `majority_fix` 9）。
+
+**结果**：79 张卡变化、**字段变空 0**、条目数 4507 不变；11 张 META 独立成卡
+（`ships` 961→972、`skins` 4397→4413、16 个皮肤位 voiceCount 23~24——语音包**早就在盘上**，
+`Output/Audio/CV2/cv-<ship_group>/` 各 23~25 个 wav，不需要重跑 `audio` 档）。
+
+**已排除的假设**
+- ❌「加一档 `id` 取大当 tie-break」：会把 `qiye_dark`(企业→`？？？？？`)、`linghangyuan1_5`
+  (超级AI-TC→`？？`)、`unknown5`(构建者→仲裁者) 一起改判——那三类是**不同实体复用同一 painting**，
+  号段大小不代表归属。
+- ❌「`unlock_desc=不会显示` 可以当立绘过滤判据」（用户纠正）：那是**解锁提示文案**，
+  `linghangyuan2_3` 照样是要展示的领航员皮肤。
+- ⚠️ 灵敏·META 本轮**不会**变：她的自机行还没进设备侧配置表（盘上 `sharecfgdata` 停在 09-24），
+  要等配置表链（`tools/sharecfg_re/34→35→41→37→42`）并进资产更新台、重发布 `inputs/gamecfg` 之后才会独立成卡。
+
+**涉及文件**：`scripts/build_ship_meta.py`（`build_indexes` 两处选行）、`scripts/build_gallery_index.py`
+（CG 中间产物过滤）、`scripts/diag/{painting_dup_probe,stats_majority_probe}.py`（★新增）、
+`scripts/diag/ship_meta_authority_diff.py`、`scripts/diag/gallery_index_diff_check.py`、
+`scripts/diag/test_meta_gate_proofs.py`。相关：§56（min(id) 被脏行打穿的第一版）、§82（权威表缺行
+导致 label 回落）、§93、§95、WF-26。

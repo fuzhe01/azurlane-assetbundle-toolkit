@@ -33,6 +33,40 @@ def empty(v):
     return v is None or v == '' or v == [] or v == 0
 
 
+# 索引里的船级标量 ←→ `ship_meta.json` 的字段名对照
+META_FIELD_FOR = {'name': 'cn', 'faction': 'faction', 'type': 'type', 'rarity': 'rarity'}
+
+
+def meta_blessed_ship(sid, k, a, b, mo, mn):
+    """这处船级标量变化必须**两头都对上元数据**：旧值 == 旧 ship_meta，新值 == 新 ship_meta。
+
+    为什么要求两头：只对新值的话，"索引自己漂到新值"和"索引跟着元数据改"分不开；
+    旧值也对不上就说明这条改动不是从元数据派生的（索引器漂移），必须判红。
+    元数据本身能改什么由 `ship_meta_authority_diff` 的方向性判据把关，这里只做同源核对。
+    """
+    if not mn or k not in META_FIELD_FOR:
+        return False
+    f = META_FIELD_FOR[k]
+    ov = str((mo.get(sid) or {}).get(f, '') or '')
+    nv = str((mn.get(sid) or {}).get(f, '') or '')
+    return ov == str(a.get(k) or '') and nv == str(b.get(k) or '') and ov != nv
+
+
+def meta_blessed_skin(key, av, bv, mo, mn):
+    """皮肤 label 的变化必须能由**该皮肤自己那行元数据的舰名变化**逐字推导出来。
+
+    例：`xiafei_hx.label` 「霞飞-战斗天使·和谐版」→「霞飞·和谐版」，
+    正好等于把旧 label 里的旧 `cn` 换成新 `cn`。推不出来就是索引器自己改的字，判红。
+    """
+    if not mn or av is None or bv is None:
+        return False
+    o, n = mo.get(key) or {}, mn.get(key) or {}
+    if o == n:
+        return False
+    oc, nc = str(o.get('cn') or ''), str(n.get('cn') or '')
+    return bool(oc) and bool(nc) and oc != nc and str(bv) == str(av).replace(oc, nc)
+
+
 def skin_packs(azdata):
     """painting(小写) → 该立绘所属语音包号集合（皮肤行 id // 10）。"""
     d = json.load(open(azdata, encoding='utf-8'))
@@ -66,8 +100,9 @@ def index_of(doc):
     return ships, skins
 
 
-def diff(old, new, allow_ship, allow_skin, packs, expect=None):
+def diff(old, new, allow_ship, allow_skin, packs, expect=None, meta=None):
     expect = expect or {}
+    mo, mn = meta or ({}, {})
     o_s, o_k = index_of(old)
     n_s, n_k = index_of(new)
     # 皮肤级声明：--expect 传 {"<皮肤key>": {...}} 时按皮肤 key 取，{"<船id>": {...}} 时按船取。
@@ -206,6 +241,8 @@ def diff(old, new, allow_ship, allow_skin, packs, expect=None):
             elif empty(a.get(k)) and not empty(b.get(k)):
                 # 从"没有"变成"有" = 补全，不是回退（撤掉错派语音后台词层接管就是这一类）
                 rep['船标量补全:%s' % k] += 1
+            elif meta_blessed_ship(sid, k, a, b, mo, mn):
+                rep['船标量随元数据变化:%s' % k] += 1
             else:
                 bad.append('船标量回退: %s.%s %r→%r' % (sid, k, a.get(k), b.get(k)))
 
@@ -261,6 +298,8 @@ def diff(old, new, allow_ship, allow_skin, packs, expect=None):
                 else:
                     bad.append('皮肤标量变化与声明不符: %s.%s 期望 %r 实得 %r'
                                % (key, k, expect_skin[key][k], b.get(k)))
+            elif meta_blessed_skin(key, a.get(k), b.get(k), mo, mn):
+                rep['皮肤标量随元数据变化:%s' % k] += 1
             else:
                 bad.append('皮肤标量回退: %s.%s %r→%r' % (key, k, a.get(k), b.get(k)))
     return rep, bad, misfit
@@ -275,6 +314,10 @@ def main():
     ap.add_argument('--expect', default='',
                     help='JSON：{组键: {字段: 期望新值}}。本次**有意**的改名写在这里，'
                          '值对不上或清单外的改名照样判红（比按字段放行强：那只等于关掉这项检查）')
+    ap.add_argument('--meta-old', default='',
+                    help='改前的 ship_meta.json；与 --meta-new 一起给出时，船级 name/faction/type/rarity '
+                         '与皮肤 label 的变化必须**两头都对上元数据**才放行（不是按字段放行，那等于关掉检查）')
+    ap.add_argument('--meta-new', default='', help='改后的 ship_meta.json')
     a = ap.parse_args()
     for p in (a.old, a.new):
         if not os.path.isfile(p):
@@ -285,9 +328,16 @@ def main():
     if not os.path.isfile(a.azdata):
         print('[ERROR] 读不到皮肤表 %s —— 没有它无法区分「归零是修正还是回退」，拒绝放行' % a.azdata)
         return 2
+    if bool(a.meta_old) != bool(a.meta_new):
+        print('[ERROR] --meta-old / --meta-new 必须同时给（只给一头就没法判方向）')
+        return 2
     expect = json.load(open(a.expect, encoding='utf-8')) if a.expect else {}
+    meta = (json.load(open(a.meta_old, encoding='utf-8')),
+            json.load(open(a.meta_new, encoding='utf-8'))) if a.meta_old else None
     rep, bad, misfit = diff(old, new, set(a.allow_ship.split(',')) - {''},
-                            set(a.allow_skin.split(',')) - {''}, skin_packs(a.azdata), expect)
+                            set(a.allow_skin.split(',')) - {''}, skin_packs(a.azdata), expect, meta)
+    if meta:
+        print('[i] 元数据同源核对已开：%s ↔ %s' % (a.meta_old, a.meta_new))
     if expect:
         print('[i] --expect 声明 %d 组；未变红的声明项按「有意变化」计数' % len(expect))
     for k in sorted(rep):

@@ -2280,3 +2280,45 @@ CHROME_FLAGS = ['--disable-gpu', '--disable-gpu-compositing',
 主文档被改坏时（`re.sub` 事故），`git show HEAD:PROJECT_STATUS.md` 回到基线，
 再用**一个临时 .py 脚本**重放本轮全部编辑（每步都带内容断言）。
 比开编辑器一条条改安全：断言会告诉你哪条丢了，而肉眼看不出文档已被打散。
+
+### WF-26: 元数据「取行规则」类改动 —— 方向性判据 + 两头同源核对（2026-10-05）
+
+**目标**：改 `build_ship_meta.py` 里「同一 painting 多行 / 同一组多 stats 行」这类**选行规则**时，
+既能一次修掉一批卡，又不把另一批卡改坏。判据不是"什么都不能变"，而是
+**"每一处变化都必须落到一条只放行正确方向的判据上"**。
+
+**四步（顺序是硬性的）**
+1. **只读影响面探针**：先把冲突集数出来（`diag/painting_dup_probe.py`：142 组 / 309 行），
+   并让探针跑**候选规则**，打印"改判多少 / 补回多少 / 回退多少"，退出码即结论。
+2. **临时区重跑 + 逐字段 diff**：`build_ship_meta.py --write --out .diag/pipeline/meta_afterN/`，
+   与正式区比 `条目增删 / 每字段变化数 / 字段变空数`——**变空数必须为 0**（`''`/`-1`/`0`/`？`/
+   `{namecode:` 都算空）。
+3. **闸门加"方向性判据"，不是加例外名单**：`ship_meta_authority_diff` 的受保护档
+   （`source ∈ {painting, suffix}`）每多一类合法改动，就加一条**任何组都能套、反向必拦**的判据
+   （`base_fix` / `row_backed` / `dup_row_fix` / `majority_fix`），并给它配反向对照样本
+   （`test_meta_gate_proofs.py`，现 26 例）。判据函数必须放**模块级**——闸门里的判据没法测就等于橡皮章。
+4. **下游索引做"两头同源核对"**：`gallery_index_diff_check --meta-old A --meta-new B` 要求索引里
+   每个变化的值**同时**等于改前与改后的元数据。只核对新值 = 给"索引器自己漂了"开门。
+
+**判据**
+- 探针复算的代表行必须与正本 `build_indexes` 实际选中的行**逐组相同**（`stats_majority_probe.py`
+  里是硬断言，不一致直接判红）；
+- 元数据闸门：`其余 N 处（须为 0）` + `条目集合增删 0` + `仍无源 == 期望值`；
+- 索引闸门：白名单外零差异，且无掉船/掉皮肤/丢本船语音；
+- 目视：新独立成卡的 16 个皮肤位 `voiceCount` 必须 23~24（语音包早就在 `Output/Audio/CV2/`，
+  这类改动**不需要**重跑 `audio` 档）。
+
+**踩坑**
+- ⚠️ **别拿"号段更大 = 更新"当 tie-break**：`qiye_dark`(企业→`？？？？？`)、`linghangyuan1_5`
+  (超级AI-TC→`？？`)、`unknown5`(构建者→仲裁者) 都是**不同实体复用同一 painting**，
+  加 `id` 取大就把它们一起改判了。⇒ 只放行「cv 与 stats 同时从无到有」这一种。
+- ⚠️ 众数代表行会选中 `english_name='simulation'` 的行（全表 44 行占位），卡片英文名直接显示
+  `simulation` ⇒ 族内还要避开占位名。
+- ⚠️ 换入前必查 `git status`：`Output/gallery_v2/index.json` 是**共享产物**，重建它会同时把
+  别的会话遗留在 `CG_v2/` 的取证中间图变成 11 张假船卡（本轮顺手把这条改成"跳过并点名打印"）。
+- ⚠️ 整档 `derive` 会跑 `deploy_gallery.py` 用正本刷平运行目录 ⇒ 工作树里有**别人未提交**的
+  `gallery_src/*` 时不能跑整档，只能手工做「换入 + 重建索引 + 只读 `--check`」。
+
+**涉及文件**：`scripts/build_ship_meta.py`、`scripts/build_gallery_index.py`、
+`scripts/diag/{painting_dup_probe,stats_majority_probe,ship_meta_authority_diff,gallery_index_diff_check,test_meta_gate_proofs}.py`。
+相关：§56、§82、§95、§101、WF-15、WF-23。

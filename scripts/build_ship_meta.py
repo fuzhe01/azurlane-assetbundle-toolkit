@@ -88,19 +88,6 @@ def load():
 
 
 def build_indexes(skin, stats):
-    painting2skin = {}
-    spell = collections.defaultdict(set)
-    for v in skin.values():
-        p = v.get('painting')
-        if p:
-            painting2skin.setdefault(p, v)
-            spell[str(p).lower()].add(p)
-    # 大小写不敏感索引：配置里写 `2B_2`/`aijiangDD`/`npclafeiII_4`/`suweiaitongmengNew`，
-    # 而磁盘 bundle 目录名一律小写 -> 精确比对会把这些整批判成"无源"（实测 27 个）。
-    # 只收"该小写键全表只有一种拼法"的，避免 U556/u556 这类同键多拼法被猜错。
-    painting_ci = {k: v for k, v in
-                   ((k, painting2skin[min(s, key=str)])
-                    for k, s in spell.items() if len(s) == 1)}
     skinid2skin = {v['id']: v for v in skin.values() if 'id' in v}
     # 舰级字段按 ship_group 归并：stats.skin_id -> 该皮肤所属组 -> 组级舰信息
     # （变体皮肤 gin_2 的 id 不被 stats.skin_id 直接引用，但与其基皮肤同 ship_group）
@@ -109,6 +96,35 @@ def build_indexes(skin, stats):
         g = skinid2skin.get(sv.get('skin_id'), {}).get('ship_group')
         if g is not None:
             by_group[g].append(sv)
+
+    # 同一 painting 有 142 组多行（实测 2026-10-05，涉及 309 行）：剧情/NPC 那行先出现，
+    # 而自机化时游戏**新增**一行同 painting 的行（带真 voice_actor + 能查到 stats 的 ship_group）。
+    # 原先 `setdefault` 让首行胜出 ⇒ 17 张已自机化的卡（11 张 META + 霞飞/阿尔及利亚/不屈/
+    # 沃克兰/弗兰德尔/加斯科涅）显示「无阵营 + 无语音」，而游戏里她们有 CV。
+    # 判据只认「配音与舰级信息同时从无到有」这一种改判，并列一律维持首行：
+    # ⚠️ 不能加"id 取大"当 tie-break——`qiye_dark`(企业→？？？？？)、`linghangyuan1_5`
+    #    (超级AI-TC→？？)、`unknown5`(构建者→仲裁者) 都是**不同实体复用同一 painting**，
+    #    号段大小不代表哪行是该目录的归属。判据与影响面由 diag/painting_dup_probe.py 复核。
+    def _row_rank(r):
+        good = (r.get('voice_actor') or -1) > 0 and r.get('ship_group') in by_group
+        return 0 if good else 1
+
+    painting2skin = {}
+    spell = collections.defaultdict(set)
+    for v in skin.values():
+        p = v.get('painting')
+        if not p:
+            continue
+        old = painting2skin.get(p)
+        if old is None or _row_rank(v) < _row_rank(old):
+            painting2skin[p] = v
+        spell[str(p).lower()].add(p)
+    # 大小写不敏感索引：配置里写 `2B_2`/`aijiangDD`/`npclafeiII_4`/`suweiaitongmengNew`，
+    # 而磁盘 bundle 目录名一律小写 -> 精确比对会把这些整批判成"无源"（实测 27 个）。
+    # 只收"该小写键全表只有一种拼法"的，避免 U556/u556 这类同键多拼法被猜错。
+    painting_ci = {k: v for k, v in
+                   ((k, painting2skin[min(s, key=str)])
+                    for k, s in spell.items() if len(s) == 1)}
     # 组内基皮肤 = 该组 id 最小的皮肤行（默认立绘那一行）。选 stats 行时**先要求它的
     # skin_id 正是这个基皮肤**，再在候选里取最小 id。
     # 只按 min(stats.id) 选会被脏行打穿：`ship_data_statistics` 里有一行 id=900106，
@@ -122,10 +138,26 @@ def build_indexes(skin, stats):
         if g in by_group and (g not in base_skin_of_group or v['id'] < base_skin_of_group[g]):
             base_skin_of_group[g] = v['id']
     stats_by_group = {}
+    # 候选行里取「(nationality, type, rarity) 众数」那一族的**最小 id 行**作代表，而不是直接 min(id)。
+    # §56 那次只加了「先要求 skin_id == 基皮肤」，但脏行可以**同样是基皮肤行**：
+    # `ship_data_statistics` 里 id=900399 与 900398 各自把 加斯科涅 的 nationality 写成 2(皇家)、
+    # 把 弗兰德尔 的 type 写成 18(超巡)，而同组另外 5 行都是 9(维希教廷)/5(战列)——
+    # 只按 min(id) 选就会让这两条 outlier 压掉 5 条一致行。全库 969 组里只有 11 组有此分歧，
+    # 逐组看过：改判方向全部是「outlier → 多数行」（含 克莱蒙梭/基洛夫·META/格奈森瑙·META/比叡·META
+    # 与 6 艘飓风风帆船）。并列时仍取 min(id)，所以多数一致的行不受影响。
+    # 判据与影响面：diag/stats_majority_probe.py（列出 11 组的众数 vs min(id)）。
     for g, vs in by_group.items():
         b = base_skin_of_group.get(g)
         cand = [s for s in vs if s.get('skin_id') == b] or vs
-        stats_by_group[g] = min(cand, key=lambda x: x['id'])
+        modal = collections.Counter(
+            (s.get('nationality'), s.get('type'), s.get('rarity')) for s in cand).most_common(1)[0][0]
+        reps = [s for s in cand
+                if (s.get('nationality'), s.get('type'), s.get('rarity')) == modal] or cand
+        # 众数族内还要避开占位名：`english_name='simulation'` 全表 44 行（加斯科涅/弗兰德尔
+        # 两组的众数代表恰好落在它上面，会让卡片英文名直接显示 `simulation`）。
+        clean = [s for s in reps if str(s.get('english_name') or '').strip().lower()
+                 not in ('', 'simulation')] or reps
+        stats_by_group[g] = min(clean, key=lambda x: x['id'])
     return painting2skin, painting_ci, stats_by_group
 
 
