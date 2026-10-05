@@ -1851,7 +1851,20 @@ async function startSpine(s, sk){
          所以只能在**层**这个粒度上判。判据两条 **AND**，缺一不可（宁可漏剔，不可错剔）：
          ① 该层附件数 ≤ 8 —— 角色层不可能只有几个附件（全库角色层最少也有几十个）；
          ② 该层包围盒面积 ≥ 4 × 其余层并集面积 —— 必须真的「包住」别人，才算巨幕。
-       剔完至少还剩一层才执行；否则整段跳过，退回原行为。 */
+       剔完至少还剩一层才执行；否则整段跳过，退回原行为。
+       ⚠️ 2026-10-05 晚：用户拿官方立绘 `Paintings_v2/tianjinfeng_2.png` 对照（「完整的应该是
+         这样的」）。**那条立绘是另一条渲染管线**（compose_paintings_v2 走 Unity sprite 路径，
+         把房间贴图**拉伸铺满 root 画框**，根本没有菱形 mesh）；而 Spine 渲染（游戏内动态
+         立绘同款）里房间天生是 45° 菱形 mesh —— 4 顶点 mesh 的内接矩形 w+h ≤ 3884，
+         装不下 3065 高的角色 ⇒ 横向弹窗里「房间铺满 + 金边框出画 + 角色完整」三者
+         **数学上不可兼得**。当前 fit（内容并集 2205×3065）已是不裁角色的最紧取景：
+         菱形边框恰好贴着画面左右边。想更接近立绘观感只剩两条路：手动滚轮拉远（边框
+         完整入画、角色变小）或用户明确要「聚焦角色」开关（放大裁掉房间外围）。
+       ⚠️ 同晚试过并否证：被剔层换「实际内容框」（读区域纹素 alpha>8 的包围盒、按比例
+         内插回世界）参与取景 —— **无效**：spine atlas 导出时贴图已做留白裁切（strip
+         whitespace），每个 region 纹素基本都是内容 ⇒ alpha 框恒等于整个区域 ⇒ 实际内容框
+         恒等于顶点框，取景退回 7000×7007 巨框（实测 base1 0.42 → 0.184）。菱形那圈透明
+         **不在贴图里，在 mesh 顶点形状里**（4 顶点 45° 方形）——贴图是一整张矩形房间图。 */
     let frameBox=null, frameDropped=[];
     function dropBackdropLayers(per){
       const drop=[];
@@ -2057,7 +2070,7 @@ async function startSpine(s, sk){
                             L.skeleton.updateWorldTransform(); }catch(e){} });
     computeFrameBox(); fit();
     { const pill=document.getElementById('spParts');   // 剔了背景层要让用户看得见（否则像"没修"）
-      if(pill&&frameDropped.length) pill.textContent += ' · 取景不计背景层 '+frameDropped.join('/')+'（仍渲染）'; }
+      if(pill&&frameDropped.length) pill.textContent += ' · 已剔除背景层 '+frameDropped.join('/')+'（仍渲染，不计取景）'; }
     (function(){ const m=vmemGet(vkey);   // 回到上次看这个皮肤时的机位（世界坐标，换窗口尺寸不错位）
       if(m && isFinite(m.camX) && isFinite(m.camY))
         { camX=m.camX; camY=m.camY; zoom=Math.max(.05, Math.min(60, m.zoom||1)); } })();
