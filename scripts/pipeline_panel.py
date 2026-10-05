@@ -5,7 +5,7 @@
 然后把它写的日志实时读回来显示。这样"界面上看到的"和"命令行跑的"永远是同一套代码，
 不存在两份逻辑各自漂移的问题（本项目栽过这类坑）。
 
-界面按「四步主线」组织（接模拟器 / 重新导出 / 看图对比 / 签字换入），
+界面按「五步主线」组织（接模拟器 / 同步配置表 / 重新导出 / 看图对比 / 签字换入），
 步骤归属与「写到哪儿」两个事实定义在 `update_pipeline.STEPS` 与 `Stage.writes` 里，
 面板只读不抄 —— 抄一份就会在新加阶段时把它藏起来。
 
@@ -924,7 +924,7 @@ body:not(.calm) #fxbeam.go,body:not(.calm) #fxpool.on{display:block}
 @keyframes fadein{from{opacity:0}}
 body.calm #detail .body{transition:none}
 
-/* ══ 底部步骤条：一根会**长过去**的进度线 + 四个节点 ══════════════════
+/* ══ 底部步骤条：一根会**长过去**的进度线 + 五个节点 ══════════════════
    取代左轨那四张大块。节点上仍带该步全部阶段的状态方块 —— 13 个阶段
    一个都不许被藏起来，这是上一版就立的判据，换了版面也得保住。 */
 .steps{flex:0 0 auto;position:relative;z-index:3;display:flex;align-items:flex-start;
@@ -1251,8 +1251,8 @@ input,textarea{cursor:text}
   <div class="act">
     <button id="bDetail" class="ghost" title="D：展开证据（13 个阶段 / 日志 / 对照表 / 指纹）">细节</button>
     <button id="bSea" class="ghost" title="S：星野背景 开/关">星辰 · 开</button>
-    <span class="kbd" title="1-4 切步骤 · R 跑当前这一步 · D 细节 · P 只看计划 · H 帮助 · Esc 关闭 · S 背景 · M 动效从简 · V 新旧配色">
-      <b>1-4</b> 步骤 · <b>R</b> 跑 · <b>D</b> 细节</span>
+    <span class="kbd" title="1-5 切步骤 · R 跑当前这一步 · D 细节 · P 只看计划 · H 帮助 · Esc 关闭 · S 背景 · M 动效从简 · V 新旧配色">
+      <b>1-5</b> 步骤 · <b>R</b> 跑 · <b>D</b> 细节</span>
     <button id="bHelp" class="help">怎么用</button>
   </div>
 </header>
@@ -1272,8 +1272,8 @@ input,textarea{cursor:text}
 
 <!-- 运行中那一行：阶段 N/M + 现在在跑哪一档 + 已用/剩余（只在真在跑时出现） -->
 <p class="runline" id="runline"></p>
-<!-- 底部：一根会长过去的进度线 + 四个节点，节点上带该步全部阶段的状态方块 -->
-<nav class="steps" id="stepsbar" aria-label="四个步骤">
+<!-- 底部：一根会长过去的进度线 + 五个节点，节点上带该步全部阶段的状态方块 -->
+<nav class="steps" id="stepsbar" aria-label="五个步骤">
   <span class="track"><i class="fill" id="stepfill"></i></span>
 </nav>
 </div>
@@ -1354,7 +1354,7 @@ input,textarea{cursor:text}
     <span class="hmodenote" id="hnote"></span>
   </div>
   <h3 style="margin-top:0">这是什么</h3>
-  <p><b>资产更新控制台</b>把你游戏更新之后要做的那一串事，按四步排成一条主线。
+  <p><b>资产更新控制台</b>把你游戏更新之后要做的那一串事，按五步排成一条主线。
   它<b>不重新实现</b>任何导出逻辑：每个按钮都是去起
   <code>scripts/update_pipeline.py</code> 这个命令行编排器，编排器再去起你仓库里原有的那些脚本
   （<code>mumu_sync</code> / <code>compose_paintings_v2</code> / <code>extract_spine_v2</code> /
@@ -1385,15 +1385,19 @@ input,textarea{cursor:text}
     <li>画廊服务器要先活着或让它自己起；回归那件会去连它。</li>
   </ul>
 
-  <h3>四步分别动什么</h3>
+  <h3>五步分别动什么</h3>
   <table><thead><tr><th>步骤</th><th>会动</th><th>不会动</th></tr></thead><tbody>
     <tr><td>① 接模拟器</td><td>只读地列模拟器里的包，算出新增/变更清单</td>
         <td>不下载任何东西（下载是 <code>pull</code> 的签字项，要它才写 <code>files/</code>）</td></tr>
-    <tr><td>② 重新导出</td><td>重算依赖表、元数据、立绘、Spine、Live2D、语音、CG</td>
+    <tr><td>② 同步配置表</td><td>解 <code>scripts32/64</code> 与 <code>sharecfgdata</code>，重发布
+        <code>inputs/gamecfg</code>（皮肤表 / 声优 / 台词 / {namecode} / 秘书舰语音）</td>
+        <td>前三档只写 <code>.diag/sharecfg_re/</code>；<b>发布那一档要签字</b>才写 <code>inputs/</code>。
+        新角色没有这一档就不会出现在元数据里——<code>preflight</code> 的新鲜度判据就是盯这个的</td></tr>
+    <tr><td>③ 重新导出</td><td>重算依赖表、元数据、立绘、Spine、Live2D、语音、CG</td>
         <td>立绘/Spine/Live2D 只写 <code>.diag/pipeline/</code> 暂存区，正式区一个字节都不碰</td></tr>
-    <tr><td>③ 看图对比</td><td>产出「改前 | 改后」对照表和两张清单</td>
+    <tr><td>④ 看图对比</td><td>产出「改前 | 改后」对照表和两张清单</td>
         <td>纯读，随时可反复跑</td></tr>
-    <tr><td>④ 签字换入</td><td>把暂存区覆盖进 <code>Output/Paintings_v2</code>，
+    <tr><td>⑤ 签字换入</td><td>把暂存区覆盖进 <code>Output/Paintings_v2</code>，
         重建缩略图与索引、部署画廊、跑回归</td>
         <td>换入前先整批备份到 <code>Output/_OLD_bak/pipeline_&lt;日期&gt;/</code>；
         索引有零回退闸门，掉条目会直接判红停住</td></tr>
@@ -1981,7 +1985,7 @@ function gaugeTick(){
   if(u) u.textContent = has ? ('本阶段 '+G.unit_done+' / '+G.unit_total)
                             : (G.stage ? '本阶段无项级进度（该脚本不打 a/b）' : '');
   if(f) f.style.width = (G.total ? Math.min(100, (G.done+frac)/G.total*100) : 0).toFixed(1)+'%';
-  /* 四步主页那条**每一步自己的进度条**：跑起来才推进（含本阶段内比例），
+  /* 五步主页那条**每一步自己的进度条**：跑起来才推进（含本阶段内比例），
      没在跑时整行 display:none —— 静止帧逐像素相同的判据不受影响。 */
   const rl=$('#runline');
   if(rl){
@@ -2235,7 +2239,7 @@ function render(){
     $('#warn').classList.add('on'); }
   else $('#warn').classList.remove('on');
 
-  /* ── 底部步骤条：四个节点，节点上带该步全部阶段的状态方块 ─────────────
+  /* ── 底部步骤条：五个节点，节点上带该步全部阶段的状态方块 ─────────────
      判据「13 个阶段一个都不许被折叠掉」靠这里每个 dot 都在。 */
   const steps=S.steps||{}, bar=$('#stepsbar');
   bar.querySelectorAll('.snode').forEach(e=>e.remove());
@@ -2507,7 +2511,7 @@ document.addEventListener('keydown',e=>{
   if(k==='escape'){ $('#help').classList.remove('on'); $('#lightbox').classList.remove('on');
                     closeDetail(); return; }
   if(k==='d'){ toggleDetail(); e.preventDefault(); return; }
-  if(k>='1'&&k<='4'&&Number(k)<=Object.keys((S&&S.steps)||{}).length){
+  if(k>='1'&&k<='9'&&Object.keys((S&&S.steps)||{}).map(Number).includes(Number(k))){
     step=Number(k); render(); e.preventDefault(); return; }
   if(k==='h'){ $('#help').classList.toggle('on'); }
   else if(k==='s'){ $('#bSea').click(); }

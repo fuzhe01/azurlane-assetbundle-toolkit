@@ -13,7 +13,7 @@
       b) **方向性判据** `base_fix`：该组的 stats 选行从「skin_id ≠ 基皮肤」换成「skin_id == 基皮肤」。
          这条用来吃掉 `ship_data_statistics` 里的脏行（name 写甲、english_name/nationality/type 是乙、
          且 id 更小，会钻「组内取 min(id)」的空子）。反向改动一律仍是红。
- 2) 条目集合不得增减（新增/丢失都算红）；
+ 2) 条目集合：丢失必须为 0；新增不得超过 `--expect-added`（取自 cfg.disk 报的皮肤行新增数，默认 0）；
  3) 名字来源档位只允许出现在白名单里（painting_ci/suffix_ci/npc_*/family），
     且不落在这四档的新档一律视为回退；
  4) 仍无源的条目数必须等于给定期望值（默认 3：_ab / unknown / tansuozhe21_2）。
@@ -174,6 +174,9 @@ def majority_fix(t, g, support, prev_pick, maj_pick, TUPLE):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--expect-unresolved', type=int, default=3)
+    ap.add_argument('--expect-added', type=int, default=0,
+                    help='允许的新增条目数，取自 cfg.disk 报出的皮肤表新增行数'
+                         '（默认 0 = 不允许任何新增，与旧行为一致）')
     ap.add_argument('--out', default=os.path.join(ROOT, '.diag', 'ship_meta_authority_diff.tsv'))
     a = ap.parse_args()
 
@@ -291,9 +294,17 @@ def main():
 
     add = [k for k in new if k not in old]
     drop = [k for k in old if k not in new]
-    print('2) 条目集合：新增 %d 丢失 %d（须均为 0）' % (len(add), len(drop)))
-    if add or drop:
-        fails.append('条目集合变化')
+    # 「新增」的合法上限由 `cfg.disk` 报出的**皮肤表新增行数**给出（`--expect-added`）：
+    # 硬要求"增删为 0"等于把"游戏出新角色"这件事本身判成回退，闸门会在每次更新后必红。
+    # 丢失仍然零容忍——元数据条目不会因为更新而消失。
+    print('2) 条目集合：新增 %d（期望 ≤%d，取自 cfg_delta）丢失 %d（须为 0）'
+          % (len(add), a.expect_added, len(drop)))
+    if len(add) > a.expect_added:
+        print('   新增样例: %s' % ', '.join(add[:10]))
+        fails.append('新增条目数超过 cfg.disk 报出的差分')
+    if drop:
+        print('   丢失样例: %s' % ', '.join(drop[:10]))
+        fails.append('条目集合丢失')
 
     illegal = [(k, old[k].get('source'), new[k]['source'])
                for k in old if k in new

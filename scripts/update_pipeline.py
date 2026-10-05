@@ -204,9 +204,10 @@ class Stage:
 # step=0 的阶段会被界面显式标成「未归组」并判红，不静默丢弃。
 STEPS = {
     1: ('接模拟器', '只读比对设备包 · 拉包需签字'),
-    2: ('重新导出', '源包重算 · 默认进暂存区'),
-    3: ('看图对比', '出改前|改后总表 · 不写正式区'),
-    4: ('签字换入', '暂存区 → Output/ · 重建索引 + 回归'),
+    2: ('同步配置表', '解 sharecfg 与 scripts · 重发布权威元数据（写 inputs/ 需签字）'),
+    3: ('重新导出', '源包重算 · 默认进暂存区'),
+    4: ('看图对比', '出改前|改后总表 · 不写正式区'),
+    5: ('签字换入', '暂存区 → Output/ · 重建索引 + 回归'),
 }
 
 
@@ -219,6 +220,169 @@ def verdict(key, ok, detail):
     return ok
 
 
+# ---------------------------------------------------------- 0 配置表链（sharecfg → inputs/gamecfg）
+# 2026-10-05 并入。此前台子只管「源包 → 产物」，把 `inputs/` 当成静态前提——
+# 而它恰恰会随版本过期：`preflight` 的 sha256 只证明"文件跟上次发布它时一样"，
+# **不证明"它跟游戏一样"**（2026-10-04 实测：包是 10-01 拉的、表还是 09-24 那份，
+# 于是新自机的皮肤行/台词/CV 全查不到，label 回落 + 语音接不上，见 §82）。
+CFG_DIR = os.path.join(ROOT, '.diag', 'sharecfg_re')
+CFG_PUBLISH = [('tools/sharecfg_re/42_publish_gamecfg.py', '皮肤表 / 声优 / 台词 / 语音类别'),
+               ('tools/sharecfg_re/45_publish_npc_painting.py', '秘书舰 NPC 立绘名'),
+               ('tools/sharecfg_re/46_publish_name_code.py', '{namecode} 占位符展开表'),
+               ('tools/sharecfg_re/47_publish_npc_voice.py', '秘书舰语音包号与台词正文')]
+
+
+def cfg_src_newest():
+    """配置链三个输入源（sharecfgdata 目录、scripts32/64 两个包）在盘上的最新 mtime。"""
+    out = {}
+    d = os.path.join(AB, 'sharecfgdata')
+    if os.path.isdir(d):
+        out['sharecfgdata'] = max([os.path.getmtime(os.path.join(d, f)) for f in os.listdir(d)] or [0])
+    for nm in ('scripts32', 'scripts64'):
+        p = os.path.join(AB, nm)
+        if os.path.isfile(p):
+            out[nm] = os.path.getmtime(p)
+    return out
+
+
+def cfg_published_at():
+    """`inputs/gamecfg` 上次发布的日期（台账 `landed_at`），取不到返回 ''。"""
+    led = os.path.join(ROOT, 'inputs', 'gamecfg', 'MANIFEST.json')
+    try:
+        return str(json.load(open(led, encoding='utf-8'))['provenance'].get('landed_at') or '')
+    except Exception:
+        return ''
+
+
+def cfg_fresh():
+    """→ (源最新日期, 发布日, 源是否新于发布)。这是"这次到底有没有新配置可取"的唯一口径。"""
+    src = cfg_src_newest()
+    if not src:
+        return '', '', False
+    newest = max(src.values())
+    import datetime as _dt
+    sd = _dt.date.fromtimestamp(newest).isoformat()
+    pub = cfg_published_at()
+    return sd, pub, (not pub) or sd > pub
+
+
+def st_cfg_decrypt(full, approved):
+    """34 号：解 `scripts32/64`（www() 按块号 %4 的四种模式）。判据用它自带的已知明文比对。
+
+    ⚠️ 这一步是整条链上**唯一可能因游戏大版本跳变而判红**的地方（密钥/模式排布换了）。
+    红了要停下来给人看，不许把"猜出来的明文"写进下游。
+    """
+    sd, pub, stale = cfg_fresh()
+    rc, so, se = run([PY, 'tools/sharecfg_re/34_www_four_modes.py'], timeout=3600,
+                     echo=['UnityPy 打开成功', '排列', '失败', '❌'])
+    txt = (so or '') + (se or '')
+    # 判据必须**逐文件**看：34 是"一个文件一段"地验的，只看"输出里出现过成功"会被
+    # 另一个文件的成功骗过去（实测 scripts64 的 .full.ab 打不开、scripts32 成功 ⇒ 判绿）。
+    secs = {}
+    for chunk in txt.split('\n== ')[1:]:
+        secs[chunk.split()[0].strip()] = chunk
+    src = cfg_src_newest()
+    done, bad = [], []
+    for nm in ('scripts64', 'scripts32'):
+        ab = os.path.join(CFG_DIR, nm + '.full.ab')
+        if not os.path.isfile(ab):
+            continue                       # 这个包本来就不在盘上，不算失败
+        done.append(nm)
+        if 'UnityPy 打开成功' not in secs.get(nm, ''):
+            bad.append(f'{nm} 的 UnityPy 复验未过')
+        elif os.path.getmtime(ab) < (src.get(nm, 0) - 2):
+            bad.append(f'{nm} 的产物比输入包旧（本次没真解它）')
+    if not done:
+        return verdict('cfg.decrypt', False, f'盘上没有 scripts32/64 任一源包（rc={rc}）'
+                                             f' ⇒ 先跑 pull 把配置包拉下来')
+    ok = rc == 0 and not bad
+    sd, pub, stale = cfg_fresh()
+    return verdict('cfg.decrypt', ok,
+                   f'逐文件复验 {len(done)} 个（{"、".join(done)}）：'
+                   + ('全过' if ok else '红: ' + '; '.join(bad))
+                   + (f' | 源 {sd} 比发布日 {pub} 新 ⇒ 这次确实有新配置'
+                      if stale else f' | 源 {sd} 不比发布日 {pub} 新（这次更新没带新配置）'))
+
+
+def st_cfg_lua(full, approved):
+    """35 + 41：从解开的 scripts 里导 774 张 lua 表 → `.diag/sharecfg_re/lua_json/`。"""
+    rc, so, _ = run([PY, 'tools/sharecfg_re/35_export_sharecfg_lua.py', '--limit', '0'],
+                    timeout=3600, echo=['本次导出', '字节码', '容器'])
+    if rc:
+        return verdict('cfg.lua', False, f'35 号导出失败 rc={rc}')
+    rc2, so2, _ = run([PY, 'tools/sharecfg_re/41_export_lua_tables.py', '--all', '--yes'],
+                      timeout=3600, echo=['遍历', '桩', 'FAIL', '✗'])
+    d = os.path.join(CFG_DIR, 'lua_json')
+    n = len([f for f in os.listdir(d) if f.endswith('.json')]) if os.path.isdir(d) else 0
+    newest = max([os.path.getmtime(os.path.join(d, f)) for f in os.listdir(d)] or [0]) \
+        if os.path.isdir(d) else 0
+    ok = rc2 == 0 and n >= 700 and newest >= (max(cfg_src_newest().values() or [0]) - 2)
+    return verdict('cfg.lua', ok, f'lua_json {n} 张（基线 772）· 41 号 rc={rc2}'
+                                  f'· 落盘比源包新 {"是" if newest and ok else "否"}'
+                                  + ('' if n >= 700 else ' ⇒ 表数掉了，多半是容器结构变了，要人看'))
+
+
+def st_cfg_disk(full, approved):
+    """37 号：解析盘上 `sharecfgdata/`（32 张表）→ cfg_json / cfg_json_scalar，并报**行数差分**。
+
+    差分写进 `.diag/pipeline/cfg_delta.json`，供 `meta` 档的权威闸门当期望值——
+    否则那条闸门的"条目集合增删必须为 0"会**天生拒绝新角色**（新自机一加行就判红）。
+    """
+    rc, so, se = run([PY, 'tools/sharecfg_re/37_parse_sharecfgdata.py', '--all', '--yes'],
+                     timeout=3600, echo=['帧覆盖', '残差', '✗', '失败'])
+    sc = os.path.join(CFG_DIR, 'cfg_json_scalar')
+    dev = os.path.join(sc, 'ship_skin_template.json')
+    if rc or not os.path.isfile(dev):
+        return verdict('cfg.disk', False, f'37 号解析失败 rc={rc} 或没产出 {os.path.basename(dev)}')
+    try:
+        new_rows = json.load(open(dev, encoding='utf-8'))
+    except Exception as e:
+        return verdict('cfg.disk', False, f'新皮肤表读不出来：{type(e).__name__} {str(e)[:80]}')
+    pub_p = os.path.join(ROOT, 'inputs', 'gamecfg', 'ship_skin_template.json')
+    old_rows = json.load(open(pub_p, encoding='utf-8')) if os.path.isfile(pub_p) else {}
+    added = sorted(set(map(str, new_rows)) - set(map(str, old_rows)))
+    delta = {'at': time.strftime('%Y-%m-%d %H:%M:%S'), 'rows_new': len(new_rows),
+             'rows_pub': len(old_rows), 'added': len(added),
+             'added_sample': added[:12]}
+    os.makedirs(WORK, exist_ok=True)
+    json.dump(delta, open(os.path.join(WORK, 'cfg_delta.json'), 'w', encoding='utf-8'),
+              ensure_ascii=False, indent=1)
+    n_tab = len([f for f in os.listdir(sc) if f.endswith('.json')]) if os.path.isdir(sc) else 0
+    return verdict('cfg.disk', n_tab >= 30,
+                   f'磁盘侧 {n_tab} 张表（期望 32）· 皮肤行 {delta["rows_pub"]} → {delta["rows_new"]}'
+                   f'，**新增 {delta["added"]} 行**{("：" + ", ".join(delta["added_sample"][:6])) if added else ""}'
+                   + ('' if added else ' ⇒ 这次更新没带新配置，meta 档不会有任何变化（别白跑）'))
+
+
+def st_cfg_publish(approved):
+    """42/45/46/47：把解出来的表发布成 `inputs/gamecfg/*.json` + 台账。**live 档**（写权威输入）。
+
+    未签字时只跑各脚本的 `--check`（只读断言），签字后才真写盘——`inputs/` 是整条线的
+    唯一起点，写坏了下游全部跟着错，所以这一档的确认权必须留在人那里。
+    """
+    mode = 'publish' if 'cfg.publish' in approved else 'check'
+    bad = []
+    for script, what in CFG_PUBLISH:
+        cmd = [PY, script] + ([] if mode == 'publish' else ['--check'])
+        rc, so, se = run(cmd, timeout=1800, echo=['闸门', '绿', '红', '✗', 'WRITE'])
+        tail = ((so or '') + (se or '')).strip().splitlines()
+        print('  %s %-14s %s' % ('✅' if rc == 0 else '❌', os.path.basename(script)[:12],
+                                 (tail[-1][:78] if tail else f'rc={rc}')))
+        if rc:
+            bad.append(f'{os.path.basename(script)}(rc={rc})')
+    rc2, so2, _ = run([PY, 'scripts/diag/check_inputs.py', 'gamecfg'], timeout=300,
+                      echo=['PASS', 'FAIL', '漂移'])
+    if mode == 'check':
+        return verdict('cfg.publish', not bad,
+                       f'未签字 ⇒ 只跑 4 个发布脚本的 --check（只读断言）：'
+                       f'{"全过" if not bad else "红: " + "; ".join(bad)}'
+                       f' ⇒ 看过差分再 --approve cfg.publish')
+    return verdict('cfg.publish', (not bad) and rc2 == 0,
+                   f'已发布 4 张表；台账校验 check_inputs {"绿" if rc2 == 0 else "红"}'
+                   + (f'：{(so2 or "").strip().splitlines()[-1][:70]}' if rc2 else '')
+                   + (f'｜红项 {"; ".join(bad)}' if bad else ''))
+
+
 # ---------------------------------------------------------- 1 preflight
 def st_preflight():
     bad = []
@@ -227,6 +391,13 @@ def st_preflight():
         log(f'  权威输入台账 {led}: {"PASS" if rc == 0 else "FAIL"}')
         if rc:
             bad.append(f'{led}({(so or se).strip().splitlines()[-1][:70] if (so or se).strip() else "rc"}={rc})')
+    # **新鲜度**：台账 sha256 只证明"文件跟上次发布时一样"，不证明"它跟游戏一样"。
+    # 源包比发布日新 ⇒ 配置链必须重跑，否则 meta 档会拿旧表重刷一遍（§82 那个失效模式）。
+    sd, pub, stale = cfg_fresh()
+    log(f'  配置表新鲜度: 盘上配置源最新 {sd or "?"} / inputs/gamecfg 发布 {pub or "?"}'
+        f' ⇒ {"⚠️ 源比表新，先跑 cfg 四档" if stale else "表不比源旧"}')
+    if stale:
+        bad.append(f'配置表过期（源 {sd} > 发布 {pub}）⇒ 跑 cfg.decrypt/cfg.lua/cfg.disk/cfg.publish')
     rc, so, _ = run([PY, 'scripts/fetch_gallery_vendor.py', '--check'])
     log(f'  vendor 台账: {"PASS" if rc == 0 else "FAIL"}')
     if rc:
@@ -395,7 +566,17 @@ def st_meta(approved):
     if os.path.isfile(os.path.join(OUT, 'ship_meta.json')):
         shutil.copy2(os.path.join(OUT, 'ship_meta.json'), bak)
     shutil.copy2(os.path.join(tmpdir, 'ship_meta.json'), os.path.join(OUT, 'ship_meta.json'))
-    rc2, so2, _ = run([PY, 'scripts/diag/ship_meta_authority_diff.py'], echo=['闸门', '改动'])
+    # 期望新增数取自 `cfg.disk` 报的差分：那条闸门的"条目增删必须为 0"**天生拒绝新角色**——
+    # 游戏新出一艘自机就会加行，硬要求 0 等于把"更新"这件事本身判成回退（2026-10-05 修）。
+    delta = 0
+    dp = os.path.join(WORK, 'cfg_delta.json')
+    if os.path.isfile(dp):
+        try:
+            delta = int(json.load(open(dp, encoding='utf-8')).get('added') or 0)
+        except Exception:
+            delta = 0
+    rc2, so2, _ = run([PY, 'scripts/diag/ship_meta_authority_diff.py',
+                       '--expect-added', str(delta)], echo=['闸门', '改动'])
     return verdict('meta', rc2 == 0,
                    f'已换入并跑权威闸门 ship_meta_authority_diff → {"绿" if rc2 == 0 else "红"}'
                    + (f'：{(so2.strip().splitlines() or ["?"])[-1][:80]}' if rc2 else ''))
@@ -841,39 +1022,51 @@ STAGES = [
     Stage('pull', '模拟器拉新包', 'live', lambda a, f: st_pull(a),
           'diff 只读；sync --apply 写 files/',
           step=1, writes='未签字只写清单 · 签字 files/AssetBundles', est=45),
+    Stage('cfg.decrypt', '解 scripts32/64（www 四模式）', 'staged', lambda a, f: st_cfg_decrypt(f, a),
+          '自带四组 64 位已知明文比对 + UnityPy 复验 + 产物须比输入新',
+          step=2, writes='.diag/sharecfg_re/*.full.ab', est=120),
+    Stage('cfg.lua', '导出 774 张 lua 表 → JSON', 'staged', lambda a, f: st_cfg_lua(f, a),
+          'lua_json ≥700 张 · 41 号三条判据（遍历到文件末/记录数/高字节）',
+          step=2, writes='.diag/sharecfg_re/lua_json', est=180),
+    Stage('cfg.disk', '解析 sharecfgdata 32 张表 + 报行数差分', 'staged', lambda a, f: st_cfg_disk(f, a),
+          '32 张齐 · 皮肤行数新增数写进 cfg_delta.json 供 meta 档当期望值',
+          step=2, writes='.diag/sharecfg_re/cfg_json* + .diag/pipeline/cfg_delta.json', est=60),
+    Stage('cfg.publish', '发布 inputs/gamecfg（4 张表 + 台账）', 'live', lambda a, f: st_cfg_publish(a),
+          '4 个发布脚本闸门全绿 + check_inputs gamecfg 绿',
+          step=2, writes='未签字只跑 --check · 签字 inputs/gamecfg/*.json + MANIFEST.json', est=25),
     Stage('deps', '重生成官方依赖表', 'live', lambda a, f: st_deps(a),
           '新表须为旧表超集，丢包即拒',
-          step=2, writes='未签字暂存 · 签字 Output/dependency_manifest.json', est=3),
+          step=3, writes='未签字暂存 · 签字 Output/dependency_manifest.json', est=3),
     Stage('meta', '重建 ship_meta 元数据', 'live', lambda a, f: st_meta(a),
           'ship_meta_authority_diff 绿 · ⚠️ 预览须先换入',
-          step=2, writes='未签字暂存 · 签字 Output/ship_meta.json'),
+          step=3, writes='未签字暂存 · 签字 Output/ship_meta.json'),
     Stage('paintings', '静态立绘合成 → 临时区', 'staged', lambda a, f: st_paintings(f, a),
           '数 ✗ 行（失败仍 exit 0）',
-          step=2, writes='.diag/pipeline/Paintings_v2', rate=1.25, unit='张'),
+          step=3, writes='.diag/pipeline/Paintings_v2', rate=1.25, unit='张'),
     Stage('spine', 'Spine 提取 + parts.json → 临时区', 'staged', lambda a, f: st_spine(f, a),
           '每个目录都要有 parts.json',
-          step=2, writes='.diag/pipeline/Spine_v2', rate=1.7, unit='个皮肤'),
+          step=3, writes='.diag/pipeline/Spine_v2', rate=1.7, unit='个皮肤'),
     Stage('live2d', 'Live2D 还原 + motion → 临时区', 'staged', lambda a, f: st_live2d(f, a),
           '[SUMMARY] 收尾行 + texorder/tex_completeness 闸门',
-          step=2, writes='.diag/pipeline/Live2D'),
+          step=3, writes='.diag/pipeline/Live2D'),
     Stage('audio', 'CV 语音包解码 + 台词表', 'live', lambda a, f: st_audio(a),
           'l2d_voice_inventory 退出码',
-          step=2, writes='Output/Audio（无暂存通道）'),
+          step=3, writes='Output/Audio（无暂存通道）'),
     Stage('cg', 'Spine 全屏 CG 导出', 'live', lambda a, f: st_cg(f, a),
           '必须读到「完成N 跳过N 失败N」且失败=0',
-          step=2, writes='Output/CG_v2（无暂存通道）', rate=1.3, unit='张'),
+          step=3, writes='Output/CG_v2（无暂存通道）', rate=1.3, unit='张'),
     Stage('review', '出改前|改后总表 + 硬链扫描', 'read', lambda a, f: st_review(),
           '只出表；看图是人工',
-          step=3, writes='.diag/pipeline/*.png 对照表 + 两份清单'),
+          step=4, writes='.diag/pipeline/*.png 对照表 + 两份清单'),
     Stage('swap-in', '备份换入 Paintings_v2', 'live', lambda a, f: st_swapin(a),
           'painting_swap_in 四道硬检查退出码',
-          step=4, writes='Output/Paintings_v2（先备份到 Output/_OLD_bak/pipeline_<日期>/）'),
+          step=5, writes='Output/Paintings_v2（先备份到 Output/_OLD_bak/pipeline_<日期>/）'),
     Stage('derive', '缩略图 / 索引 / 部署', 'live', lambda a, f: st_derive(a),
           'gallery_index_diff_check 绿 + deploy --check 4/4 同 inode',
-          step=4, writes='Output/gallery_v2'),
+          step=5, writes='Output/gallery_v2'),
     Stage('regress', 'WF-16 回归（跳全库 hit_verify）', 'staged', lambda a, f: st_regress(a),
           '串行 runner 退出码',
-          step=4, writes='不改产物', check=True),
+          step=5, writes='不改产物', check=True),
 ]
 
 

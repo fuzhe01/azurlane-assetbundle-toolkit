@@ -133,8 +133,10 @@ def main():
         ms, use_off = best
         print('   ✓ 模式顺序 = %s，mode2 用块偏移=%s（块 0/1/2/3 四组已知明文全对）' % (ms, use_off))
         # 整文件解
-        out = bytearray(raw[:alen - alen % 8])
-        nblk = len(out) // 8
+        out = bytearray(raw[:alen])
+        nblk = alen // 8          # 尾部 alen%8 字节凑不成整块：**原样保留**，
+                                  # 既不参与解密也不许丢（丢了就是 UnityFS 的 LZMA 流断掉，
+                                  # 35 号会报 `Corrupt input data`；实测少 6 字节）
         fns = [MODES[m] for m in ms]
         for j in range(nblk):
             o = 8 * j

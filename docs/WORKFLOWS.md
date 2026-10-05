@@ -2322,3 +2322,27 @@ CHROME_FLAGS = ['--disable-gpu', '--disable-gpu-compositing',
 **涉及文件**：`scripts/build_ship_meta.py`、`scripts/build_gallery_index.py`、
 `scripts/diag/{painting_dup_probe,stats_majority_probe,ship_meta_authority_diff,gallery_index_diff_check,test_meta_gate_proofs}.py`。
 相关：§56、§82、§95、§101、WF-15、WF-23。
+
+#### WF-23 追加（2026-10-05）：配置表链进台子 —— 步骤重排为五步主线
+
+`preflight → pull →` **`cfg.decrypt → cfg.lua → cfg.disk → cfg.publish`** `→ deps → meta → …`
+（`STEPS` 重排：1 接模拟器 / 2 同步配置表 / 3 重新导出 / 4 看图对比 / 5 签字换入；
+面板的步骤节点与 `stagesOf()` 本来就是从 `STEPS` 动态生成的，所以只改了文案与键位 `1-4`→`1-5`）。
+
+| 档 | 干什么 | 档 | 判据 |
+|---|---|---|---|
+| `cfg.decrypt` | 34 号解 `scripts32/64` | staged | **逐文件**：该文件段内有 UnityPy 复验成功 + 产物 mtime 不早于输入包 |
+| `cfg.lua` | 35 `--limit 0` + 41 `--all --yes` | staged | `lua_json ≥700` 张 + 41 号 rc=0 + 落盘比源包新 |
+| `cfg.disk` | 37 `--all --yes` 解 32 张 sharecfgdata | staged | 32 张齐 + **报皮肤行新增数**写 `.diag/pipeline/cfg_delta.json` |
+| `cfg.publish` | 42/45/46/47 发布 `inputs/gamecfg` | **live** | 未签字只跑各脚本 `--check`；签字后 4 个全绿 + `check_inputs gamecfg` 绿 |
+
+**两条设计上的硬要求**
+1. `preflight` 现在带**新鲜度判据**：`max(mtime of sharecfgdata|scripts32|scripts64)` 的日期
+   晚于台账 `landed_at` ⇒ **判红**并点名要跑 cfg 四档。sha256 绿只等于"文件没被改过"，
+   不等于"文件跟游戏一样"——这条就是把那个假绿灯堵死的。
+2. `cfg.disk` 的新增行数会作为 `--expect-added` 传给 `ship_meta_authority_diff`：
+   闸门原来硬要求"条目集合增删为 0"，那等于**把"游戏出新角色"本身判成回退**，
+   每次真更新都必红。现在丢失仍零容忍，新增上限取自差分实测。
+
+**踩坑**：见 §104（34 号丢尾字节 ⇒ 下游 LZMA 报 corrupt；判据整块 grep 成功字样 ⇒ 假绿灯）。
+**唯一留给人的一步**：在游戏里把更新下载下来（`cfg.disk` 报"新增 0 行"时不要往下跑）。
