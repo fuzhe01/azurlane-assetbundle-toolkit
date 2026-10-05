@@ -41,6 +41,20 @@ DIAG = os.path.join(ROOT, '.diag')
 DEF_AUDIO = os.path.join(ROOT, 'Output', 'Audio', 'CV2')
 DEF_MAP = os.path.join(ROOT, 'Output', 'gallery_v2', 'skin_voice.json')
 
+# META 补桥表（tools/sharecfg_re/48 发布，§108）：游戏配置里「有船行、没有皮肤行」的 META 实体。
+# 取包路径的起点是皮肤行，缺行就永远看不见她的包 —— 实测 `cv-970113.b`(灵敏·META，2.3MB)
+# 早在 10-01 的 cue 转储里，却被剥后缀借了本体灵敏的 `cv-70109`。
+# 档位固定 0：**65/65** 条 `_alter` 基皮行的档位都是 0（`sid//10 == ship_group` 且 `sid%10 == 0`）。
+try:
+    META_BRIDGE = {k: {'cv': v['group'], 'idx': 0}
+                   for k, v in json.load(open(os.path.join(GAMECFG, 'meta_group_bridge.json'),
+                                              encoding='utf-8')).items()}
+except Exception:
+    META_BRIDGE = {}
+    print('!! 缺 inputs/gamecfg/meta_group_bridge.json（跑 py -3 tools/sharecfg_re/'
+          '48_publish_meta_group_bridge.py）——META 补桥实体的语音会继续借同船别人的包',
+          file=sys.stderr)
+
 VGMSTREAM = P.VGMSTREAM
 FFMPEG = P.FFMPEG
 OPUS_BITRATE = '48k'
@@ -294,8 +308,14 @@ def resolve(keys, rows, banks):
     def pick(name, orig):
         """按 `row_candidates` 的优先级找第一个"有行、包在盘上、**档位算得出来**"的。
         src 必须相对**最初那个名字** orig 判定 —— 否则从 `_alter` 回退进来的那一层会把自己
-        标成 `row`（本轮实测错过：把"回退"伪装成"命中自有行"，虚报 6 个）。"""
+        标成 `row`（本轮实测错过：把"回退"伪装成"命中自有行"，虚报 6 个）。
+        ⚠️ META 补桥表排在**皮肤表命中之前**（同一候选名上）：她的包是按她的组号存的，
+        不先认桥就会剥到本体、把本体的台词标成她的（`src='strip'`）。"""
         for cand in row_candidates(name):
+            b = META_BRIDGE.get(cand)
+            if b and b['cv'] in banks:
+                return {'cv': b['cv'], 'idx': b['idx'],
+                        'src': 'bridge' if cand == orig else 'bridge_strip'}
             hit = [t for t in rows_l.get(cand, []) if t[0] in banks and t[1] is not None]
             if hit:
                 return {'cv': hit[0][0], 'idx': hit[0][1],

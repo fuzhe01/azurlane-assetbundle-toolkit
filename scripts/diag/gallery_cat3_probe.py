@@ -136,6 +136,33 @@ def main():
         chk('6b 埃塞克斯·META 在「舰船」档里，标签带 META 阵营与航母/超稀有',
             '埃塞克斯·META' in ship_d and 'META' in tags
             and '航母' in tags and '超稀有' in tags, tags)
+        # 灵敏·META 走的是另一条通道（META 补桥表，§108）：表里没有她的皮肤行，
+        # 阵营/舰种来自 `ship_data_group`，**稀有度表里没有 ⇒ 故意留空**，所以这条不能照抄 6b。
+        tags2 = pg.ev(EV("const c=[...document.querySelectorAll('#main .card')]"
+                         ".find(c=>c.querySelector('.nm').textContent.trim()===%s);"
+                         "return c?c.querySelector('.tags').textContent.replace(/\\s+/g,' ').trim():'(这张卡不在舰船档)'"
+                         % json.dumps('灵敏·META', ensure_ascii=False)))
+        chk('6e 灵敏·META（补桥成卡）在「舰船」档里，标签带 META + 驱逐',
+            '灵敏·META' in ship_d and 'META' in tags2 and '驱逐' in tags2, tags2)
+        import urllib.request
+        from gallery_ui_shots import BASE
+        vp2 = json.loads(pg.ev(EV("return JSON.stringify((window.GALLERY.ships||[])"
+                                  ".filter(s=>s.id==='lingmin_alter').map(s=>[s.name,s.voiceCount]))")))
+        own = json.loads(urllib.request.urlopen(f'{BASE}/skin_voice.json', timeout=20).read().decode('utf-8'))
+        one = (own.get('lingmin_alter') or {}).get('lines') or []
+        got2 = []
+        for l in one[:3]:
+            try:
+                # 音频挂在服务器根的 `Audio/…` 下（画廊页在 `gallery_v2/`），与第 8 条同一拼法
+                r = urllib.request.urlopen(f"{BASE}/../{l['f']}".replace('\\', '/'), timeout=20)
+                got2.append((l['f'].rsplit('/', 1)[-1], r.status, len(r.read())))
+            except Exception as e:
+                got2.append((l['f'], 'ERR', str(e)[:40]))
+        chk('6f 她的语音包号是补桥给的 970113（不是借本体的），且 ogg 真取到字节',
+            (own.get('lingmin_alter') or {}).get('cv') == 970113
+            and (own.get('lingmin_alter') or {}).get('src') == 'bridge'
+            and bool(got2) and all(g[1] == 200 and g[2] > 1024 for g in got2),
+            '%s / %s' % (vp2, got2))
         chk('6c 她不再是宿主卡下的「· 改造」外迁条目（剧情角色档里搜不到她）',
             not any('埃塞克斯·META' in n for n in st),
             str([n for n in st if '埃塞克斯' in n]))

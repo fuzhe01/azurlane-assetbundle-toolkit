@@ -2363,6 +2363,41 @@ CHROME_FLAGS = ['--disable-gpu', '--disable-gpu-compositing',
 `scripts/diag/{ship_meta_authority_diff,test_meta_gate_proofs,stats_majority_probe,gallery_cat3_probe}.py`、
 `scripts/gallery_buckets.py`。相关：§101、§107、WF-23、WF-15。
 
+### WF-26 追加第二轮（2026-10-05）：桥的起点行缺失 —— 发一张「补桥表」，别改优先级顺序
+
+**什么时候用**：上一节那句"按差集发现原始产物比归属表新"查出实锤之后 ——
+某个实体**船行有、包也有，唯独管线起点那一行没有**（本项目：灵敏·META，`ship_data_group`
+有 `group_type=970113/nationality=97`、`cv-970113.b` 2.3MB 在盘上，皮肤表 2865 行里没有这一组）。
+
+**四步**
+1. **先找"表里已有的另一列"，不要发明命名规则**。她的自机立绘资源名不需要猜：
+   她的**剧情皮肤行**里 `prefab = 'lingmin_alter'` 就是答案，且 `Output/Paintings_v2/lingmin_alter.png` 在盘上。
+2. **连接键的强度全押在"唯一性"上**：`fleet_tech_ship_class.name` ↔ 皮肤行 `name`（清洗后精确相等）
+   ⇒ 候选 **必须恰好 1 条**；0 条=没有出处，≥2 条=同名不同实体，两种一律不接管，不许"挑一条看起来更对的"。
+   再加三条反向对照进发布脚本自检：已有皮肤行的组不得进补表、补表指向的 painting 不得已是别行的 painting、
+   包不在 cue 里就不进补表。
+3. **消费侧一次补齐三处，缺一个就是半截桥**：① 发布脚本 + 台账条目；② 元数据侧的查找优先级
+   —— **表命中之后、继续剥后缀之前**（先剥后缀就会把 META 实体并进本体船，那正是 bug 本身）；
+   ③ 取包侧 —— 同一候选名上**先认桥再认行**，并给来源打标（`src='bridge'`），
+   这样 `借同船别人的包` 那一类降级会自动消失而不是被掩盖。
+4. **闸门加一条允许"去错贴值"的方向判据**：这类改动里 `en`/`rarity`/`voice_actor` **会变空**，
+   因为那些值原本是从本体船错贴过来的（`灵敏·META` 去掉「·META」就是本体：北方联合/精锐/花井美春）。
+   ⇒ 判据必须显式写明"允许变空"，同时拦住反方向（META → 本体）与无出处接管（`bridge_fix`）。
+
+**踩坑**
+- ⚠️ **`open(台账,'w')` 一执行就把文件截成 0 字节**。把"读旧台账并合并"写成 `json.dump(merge_ledger(e), f)`
+  的参数 ⇒ 打开时旧内容已经没了。本轮真的清空过 `inputs/gamecfg/MANIFEST.json`，靠它入库才恢复。
+  ⇒ 规则：**先算完新对象，再开写句柄**；凡是"读同一个文件再写同一个文件"，顺序是硬性的。
+- ⚠️ **按中文名兜底在这类实体上反向有害**：维基/本体兜底命中的是**本体船**，会把阵营/稀有度/CV 全部贴错。
+  宁可留空，并把它写成"待游戏内核实"的显式声明。
+- ⚠️ 新加的 HTTP 判据报 404 而文件在盘上：画廊页在 `gallery_v2/`、音频在服务器根的 `Audio/`，
+  已有判据用的是 `{BASE}/../{f}`。**判据写错就改判据，不要改产品去迁就判据。**
+
+**涉及文件**：`tools/sharecfg_re/48_publish_meta_group_bridge.py`、`scripts/build_ship_meta.py`、
+`scripts/extract_cv_voice.py`、`scripts/build_gallery_index.py`、
+`scripts/diag/{ship_meta_authority_diff,test_meta_gate_proofs,gallery_cat3_probe}.py`。
+相关：§107、**§108**、WF-26、WF-23、WF-15。
+
 #### WF-23 追加（2026-10-05）：配置表链进台子 —— 步骤重排为五步主线
 
 `preflight → pull →` **`cfg.decrypt → cfg.lua → cfg.disk → cfg.publish`** `→ deps → meta → …`

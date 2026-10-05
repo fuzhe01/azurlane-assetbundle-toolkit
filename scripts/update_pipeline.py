@@ -229,7 +229,9 @@ CFG_DIR = os.path.join(ROOT, '.diag', 'sharecfg_re')
 CFG_PUBLISH = [('tools/sharecfg_re/42_publish_gamecfg.py', '皮肤表 / 声优 / 台词 / 语音类别'),
                ('tools/sharecfg_re/45_publish_npc_painting.py', '秘书舰 NPC 立绘名'),
                ('tools/sharecfg_re/46_publish_name_code.py', '{namecode} 占位符展开表'),
-               ('tools/sharecfg_re/47_publish_npc_voice.py', '秘书舰语音包号与台词正文')]
+               ('tools/sharecfg_re/47_publish_npc_voice.py', '秘书舰语音包号与台词正文'),
+               ('tools/sharecfg_re/48_publish_meta_group_bridge.py',
+                'META 补桥表（有船行、缺皮肤行的实体；立绘取剧情行的 prefab）')]
 
 
 def cfg_src_newest():

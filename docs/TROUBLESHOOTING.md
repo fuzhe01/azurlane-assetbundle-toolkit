@@ -5751,9 +5751,71 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
 `scripts/diag/test_meta_gate_proofs.py`（26→41 例反向对照）、`scripts/diag/gallery_cat3_probe.py`（9→13 条 DOM 判据）。
 相关：§101、§102、WF-26、`_dark`/`_alter` 后缀语义见记忆「立绘变体后缀真实语义」。
 
+## §108. 灵敏·META：包在盘上却永远取不到 —— META 补桥表（48 号发布，立绘取自行自己的 `prefab`）（2026-10-05）
+
+**现象**（用户一句话纠正了我上一条错判）：我说"这几张 META 卡的语音是借本体的，因为游戏没给她们配音"，
+用户回「不会，她们有自己的配音」。按 §107/WF-26 追加的差集法一查：`cv-970113.b`（**2.3MB，还带
+`-battle`/`-gift`**）在 10-01 的 cue 转储里一直躺着，从来没进过 `Output/Audio/CV2/`。
+
+**根因**：音频与元数据**两条桥的起点都是皮肤行**（`皮肤行 → ship_group → cv-<组号>`）。
+09-24 的设备配置里 **66 个 META 组只有她没有皮肤行**（同系列 `9701100` 杜威 / `970110`… 都在，
+`9701130` 那一格是空的），而船行是齐的：`ship_data_group` 有 `group_type=970113 / nationality=97 / type=1`，
+`fleet_tech_ship_class` 写着 `灵敏·META`。⇒ 缺的**只是那一行皮肤**，桥就整条断了。
+
+**立绘归属不靠命名规则猜**：她的剧情皮肤行 **id 900549（`painting=npclingmin_alter`、
+`name=灵敏·META`）里 `prefab = 'lingmin_alter'`** —— `prefab` 列就是该实体的自机立绘资源名，
+且 `Output/Paintings_v2/lingmin_alter.png` 确实在盘上。连接方式：
+`fleet_tech_ship_class.name` ↔ 皮肤行 `name`（清洗方位尾缀后**精确相等**），
+⚠️ **候选必须唯一**（0 条=没有出处，≥2 条=同名不同实体，两种一律不接管，不许挑一条）。
+
+**修法（三处，都是加一条通道而不是改优先级）**
+1. `tools/sharecfg_re/48_publish_meta_group_bridge.py` → `inputs/gamecfg/meta_group_bridge.json`
+   （键=自机立绘资源名；值含 `group/cn/faction/type/painting/bank/row_id/via`）+ 台账条目。
+   五条硬断言 + **反向对照**（`970110` 杜威·META 这类皮肤行齐备的组**不得**进补表）。
+   `rarity` **一律留空**：这几张表里没有她的稀有度字段。
+2. `build_ship_meta.resolve_base(..., bridge=)`：补桥检查排在**皮肤表命中之后、继续剥后缀之前**
+   —— 先剥到 `lingmin` 就把 META 实体并进了本体船（这正是改前的症状：显示「灵敏 / 北方联合 / 精锐」）。
+3. `extract_cv_voice.pick()`：同一个候选名上**先认桥再认行**，`src='bridge'/'bridge_strip'`；
+   顺带证实"META 基皮行档位恒为 0"（实测 **65/65**）。
+
+**影响面（全部实测）**：`ship_meta` 只有 `lingmin_alter` + `lingmin_alter_n` 两条变化（**变空 6 处是去错贴值**：
+`en`/`rarity`/`voice_actor` 原本全是**本体灵敏**的）；映射表 4181 键**丢失 0 / 新增 0**，只有这两条从
+`cv-70109 strip 36 条` 变成 `cv-970113 bridge 22 条`；音频目录 902→903（22 个 ogg）；
+`ships` 975→**976**、`variants` 27→**25**、`with_faction` 862→863。
+闸门：`ship_meta_authority_diff` 新增方向判据 **`bridge_fix`**（只放行"本体行→补桥"，反向与无出处一律红），
+`test_meta_gate_proofs` 41→**49/49**，`gallery_index_diff_check` 两头同源 PASS，
+`check_degradation` 新增 0，`gallery_cat3_probe` 13→**15/15**（新增 6e 她的卡在舰船档带 META+驱逐、
+6f 包号确为 970113 且 ogg 走 HTTP 真取到字节）。
+
+**踩坑（本轮自己撞的）**
+- ⚠️ **`open(MANIFEST,'w')` 一执行就把文件截成 0 字节**，而我把 `merge_ledger(entry)`（要读旧台账）
+  写在了 `json.dump(...)` 的参数里 ⇒ 旧台账读到空串、`JSONDecodeError`，台账已被清空。
+  靠台账**入库**用 `git checkout HEAD -- inputs/gamecfg/MANIFEST.json` 恢复，`check_inputs.py gamecfg` 复绿。
+  ⇒ 规则：**先算完新台账，再开写句柄**（47 号本来就是这么写的，是我抄错了形状）。
+- ⚠️ 新加的 HTTP 判据一开始报 404，而文件确实在盘上：画廊页在 `gallery_v2/`、**音频在服务器根的 `Audio/`**，
+  正本第 8 条用的是 `{BASE}/../{f}`。判据写错要改判据，**不许改产品去迁就判据**。
+- ⚠️ 维基/本体兜底在这类实体上是**反向有害**的：`灵敏·META` 去掉「·META」就是本体船，
+  按中文名兜底会把阵营/稀有度/CV 全部贴成本体的（§101 的「零回退不变式」防的正是这个方向）。
+
+**已排除的假设**
+- ❌「她没配音」——被用户否证，包在盘上且已解出 22 条；
+- ❌「自机行没进设备侧配置表」（§101 原话）——船行进了，缺的只是皮肤行；
+- ❌「按 `_alter` 命名规则推立绘」——不需要推，`prefab` 列写着她自己的资源名；
+- ❌「稀有度可以用本体/维基兜底」——见上面第三条反向有害。
+
+**待用户游戏内核实**：灵敏·META 的**稀有度**（配置侧无字段，现在卡片这一格是空的）与
+**CV 是否仍是花井美春**（她那一行 `voice_actor` 无值，我不拿本体的顶）。
+
+**涉及文件**：`tools/sharecfg_re/48_publish_meta_group_bridge.py`（新）、
+`scripts/build_ship_meta.py`（`META_BRIDGE` + `resolve_base(..., bridge=)`）、
+`scripts/extract_cv_voice.py`（`META_BRIDGE` + `pick()` 先认桥）、
+`scripts/build_gallery_index.py`（`AUTHORITATIVE_CN` 加 `bridge*`）、
+`scripts/diag/{ship_meta_authority_diff,test_meta_gate_proofs,gallery_cat3_probe}.py`。
+相关：§101、§107、WF-26 追加、WF-23。
+
 ---
 
-## §107. 弹窗"缺件"的第三种成因：`normal` 动画中后段是**角色消散的演出段**（用户拍板保持原样，2026-10-05）
+## §109. 弹窗"缺件"的第三种成因：`normal` 动画中后段是**角色消散的演出段**（用户拍板保持原样，2026-10-05）
 
 **症状**：用户两张实机截图对比 —— 动画选 `normal` 时**菱形房间在中央、角色只剩几条腿和狐尾、
 两者不重叠、大片空白**；切成 `touch_body` 后画面完整（房间铺满、角色居中）。

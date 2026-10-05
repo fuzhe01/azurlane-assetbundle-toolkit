@@ -221,6 +221,45 @@ CASES5 = [
 ]
 
 check('pair_rescue', CASES5, call_pair)
-_n = len(CASES) + len(CASES2) + len(CASES3) + len(CASES4) + len(CASES5)
+
+# ---------- bridge_fix：META 实体从「剥后缀折进本体」改成「补桥表自己那一行」 ----------
+_BR_NEW = {'source': 'bridge', 'base_painting': 'lingmin_alter', 'meta_group': 970113,
+           'meta_via': 'ship_data_group+fleet_tech_ship_class+prefab', 'faction': 'META',
+           'cn': '灵敏·META', 'rarity': '', 'voice_actor': -1}
+_OLD = {'source': 'suffix', 'base_painting': 'lingmin', 'faction': '北方联合',
+        'cn': '灵敏', 'rarity': '精锐', 'voice_actor': 304}
+
+
+def call_bridge(args):
+    t, new_e, old_e = args
+    return G.bridge_fix(t, new_e, old_e)
+
+
+CASES6 = [
+    ('正向：阵营从本体船换成 META（本轮真实改动 lingmin_alter）',
+     (('lingmin_alter', 'faction', '北方联合', 'META'), _BR_NEW, _OLD), True),
+    ('正向：稀有度从错贴的「精锐」变空（去错值不算回退）',
+     (('lingmin_alter', 'rarity', '精锐', ''), _BR_NEW, _OLD), True),
+    ('正向：CV 字段从本体的换成 -1（她那行表里没有 voice_actor，不许拿本体的顶）',
+     (('lingmin_alter', 'voice_actor', 304, -1), _BR_NEW, _OLD), True),
+    ('反向：从 META 换回本体船（新条目不走桥）必须拦',
+     (('lingmin_alter', 'faction', 'META', '北方联合'),
+      {**_BR_NEW, 'source': 'suffix', 'faction': '北方联合'},
+      {**_OLD, 'faction': 'META', 'base_painting': 'lingmin_alter'}), False),
+    ('反向：旧口径本来就有她自己那一行（base_painting == 本键）⇒ 不该被桥接管',
+     (('lingmin_alter', 'faction', '北方联合', 'META'),
+      _BR_NEW, {**_OLD, 'base_painting': 'lingmin_alter'}), False),
+    ('新条目没有 meta_via（没出处）必须拦',
+     (('lingmin_alter', 'faction', '北方联合', 'META'),
+      {**_BR_NEW, 'meta_via': ''}, _OLD), False),
+    ('旧条目来源不是配置桥（npc_table 那类）不走这条',
+     (('lingmin_alter', 'faction', '北方联合', 'META'),
+      _BR_NEW, {**_OLD, 'source': 'npc_table'}), False),
+    ('字段是别的列（voice_bank 之外的未知列仍要落别条判据）',
+     (('lingmin_alter', 'l2d_se', 'a', 'b'), _BR_NEW, _OLD), False),
+]
+
+check('bridge_fix', CASES6, call_bridge)
+_n = len(CASES) + len(CASES2) + len(CASES3) + len(CASES4) + len(CASES5) + len(CASES6)
 print('\n%s 判据反向对照 %d/%d' % ('[PASS]' if not fails else '[FAIL]', _n - fails, _n))
 sys.exit(1 if fails else 0)

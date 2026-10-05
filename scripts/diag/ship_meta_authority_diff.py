@@ -36,7 +36,35 @@ sys.stdout.reconfigure(encoding='utf-8')
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 FIELDS = ('cn', 'en', 'faction', 'type', 'rarity', 'category', 'base_painting')
 PROTECTED = ('painting', 'suffix')                 # 本来就走配置桥，必须零改动
-NEW_OK = ('painting_ci', 'suffix_ci', 'npc_table', 'npc_suffix', 'npc_family', 'family')
+NEW_OK = ('painting_ci', 'suffix_ci', 'npc_table', 'npc_suffix', 'npc_family', 'family',
+          'bridge', 'bridge_suffix')
+
+
+def bridge_fix(t, new_entry, old_entry):
+    """方向性判据：META 实体从「剥后缀折进本体船」改成「补桥表里她自己那一行」，只放行这一个方向。
+
+    改前 `lingmin_alter` 的 `source=suffix`、`base_painting=lingmin` —— 阵营/舰种/稀有度/英文名/CV
+    全部来自**本体灵敏**（北方联合/精锐/花井美春）。补桥表（§108）之后她挂自己的组号 970113。
+    于是这一类改动里**允许出现"字段变空"**（`en`/`rarity`/`voice_actor`），因为那些值本来就是错贴的；
+    拦的是反方向与无出处的接管：
+      · 新 source 必须是 `bridge`/`bridge_suffix`，且带 `meta_via`（三张表的连接串）与 `meta_group`；
+      · 旧值必须是"剥后缀剥出来的另一实体"：`base_painting != 本键`，即旧口径里她根本没有自己的行；
+      · 阵营只允许从本体船换成 META（反向 META → 本体一律红）。
+    """
+    k, f, a, b = t
+    ns = str(new_entry.get('source') or '')
+    if not ns.startswith('bridge') or not new_entry.get('meta_via') or not new_entry.get('meta_group'):
+        return False
+    if str(old_entry.get('source') or '') not in ('painting', 'suffix'):
+        return False
+    if str(old_entry.get('base_painting') or '') == k:
+        return False                       # 旧口径已经有她自己那一行 ⇒ 这条不该被桥接管
+    if f == 'faction':
+        return b == 'META'
+    return f in ('cn', 'en', 'type', 'rarity', 'category', 'base_painting',
+                 'voice_actor', 'voice_actor_name', 'skin_name',
+                 'nationality_code', 'type_code', 'rarity_code', 'meta_group',
+                 'voice_bank', 'meta_via', 'source')
 
 
 def row_backed(t, tab_paint):
@@ -309,11 +337,15 @@ def main():
         g = (sk or {}).get('ship_group')
         return pair_tiebreak(t, g, base_of.get(g), new_pick, maj_pick, TUPLE)
 
+    def _bridge(t):
+        return bridge_fix(t, new[t[0]], old[t[0]])
+
     # 每条改动都必须落到某一条**方向性判据**上；落不进就是回退。
     # 判据之间互斥地按顺序取第一条成立的，所以计数不会重复计同一处。
     PROOFS = (('皮肤标题→NPC 实体名', justified),
               ('脏 stats 行→基皮肤行', base_fix),
               ('快照缺行→权威表已有行', lambda t: row_backed(t, tab_paint)),
+              ('本体船行→META 补桥（允许去错贴值）', _bridge),
               ('剧情行→自机行', _dup),
               ('少数派脏行→多数派行', _maj),
               ('组无舰级行→同名 id 配对行', _pair),

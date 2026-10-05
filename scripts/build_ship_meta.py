@@ -78,6 +78,15 @@ except Exception:
           '（跑 py -3 tools/sharecfg_re/45_publish_npc_painting.py 重新生成）', file=sys.stderr)
 
 
+# META 补桥表：游戏配置里「有船行、没有皮肤行」的 META 实体（tools/sharecfg_re/48 发布，§108）。
+# 桥的起点是皮肤行，所以这类实体在 `painting2skin` 里根本不存在 —— 不补这一步，
+# 她的立绘会被 `DERIV` 剥掉 `_alter` 折进**本体船**（实测显示成「灵敏 / 北方联合 / 精锐」）。
+try:
+    META_BRIDGE = json.load(open(os.path.join(GAMECFG, 'meta_group_bridge.json'), encoding='utf-8'))
+except Exception:
+    META_BRIDGE = {}
+
+
 def load():
     # 皮肤表走唯一读取口：设备侧权威表能补出 azdata 快照缺的行（如 aierdeliqi_9 / mile_3）
     skin = skin_table.load()
@@ -220,8 +229,13 @@ def clean_ship_name(v):
     return v
 
 
-def resolve_base(stem, painting2skin, painting_ci, stats_by_group=None):
+def resolve_base(stem, painting2skin, painting_ci, stats_by_group=None, bridge=None):
     """磁盘 stem -> (基painting, source, 皮肤行)。
+
+    ⚠️ `bridge`（META 补桥表）的优先级排在**皮肤表命中之后、继续剥后缀之前**：
+    补桥表里的键（`lingmin_alter`）在游戏表里确实没有皮肤行，但它是**该实体自己的资源名**
+    （出处是剧情行 900549 的 `prefab` 列）。如果先剥到 `lingmin`，就把 META 实体并进了本体船。
+    命中时第三个返回值不是皮肤行，而是那条补桥记录 —— 调用方按 `source` 以 `bridge` 开头分流。
 
     逐层剥后缀，**每一层都先精确、后大小写不敏感**（不是"精确走完再回退"）。
     根因：`DERIV` 把 `ii|iii|iv` 当变体后缀，于是 `dahuangfengii` 剥一层就撞上基船
@@ -245,6 +259,10 @@ def resolve_base(stem, painting2skin, painting_ci, stats_by_group=None):
                 return ent
             if ci_fb is None:
                 ci_fb = ent
+        if bridge:
+            bk = s.lower()
+            if bk in bridge:
+                return bk, ('bridge' if depth == 0 else 'bridge_suffix'), bridge[bk]
         ns = DERIV.sub('', s)
         if ns == s:
             break
@@ -300,9 +318,22 @@ def build_meta(skin, stats, wiki, verbose=False):
     wiki_by_name = {x['name']: x for x in wiki if x.get('name')}
     meta = {}
     for stem in sorted(bundle_ids()):
-        base, source, sk_row = resolve_base(stem, painting2skin, painting_ci, stats_by_group)
+        base, source, sk_row = resolve_base(stem, painting2skin, painting_ci, stats_by_group,
+                                            META_BRIDGE)
         entry = {'cn': stem, 'en': '', 'faction': '', 'type': '', 'rarity': '',
                  'voice_actor': 0, 'category': 'story', 'base_painting': base, 'source': source or 'unresolved'}
+        if source and source.startswith('bridge'):
+            # META 补桥：舰级取自 `ship_data_group`（阵营/舰种），稀有度**表里没有 ⇒ 留空**。
+            # ⚠️ 不要按 `cn` 去维基兜底 —— 那个名字去掉「·META」就是本体船（灵敏=北方联合/精锐），
+            #      兜底会把 META 实体的阵营改成本体，正是 §101 那条「零回退不变式」要拦的方向。
+            b = sk_row
+            entry.update({'cn': b['cn'], 'faction': b['faction'], 'type': b['type'],
+                          'rarity': b['rarity'], 'category': 'ship', 'voice_actor': -1,
+                          'skin_name': b['cn'], 'nationality_code': b['nationality_code'],
+                          'type_code': b['type_code'], 'meta_group': b['group'],
+                          'voice_bank': b['bank'], 'meta_via': b['via']})
+            meta[stem] = entry
+            continue
         if base:
             sk = sk_row
             entry['voice_actor'] = sk.get('voice_actor', 0)

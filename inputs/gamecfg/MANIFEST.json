@@ -12,7 +12,8 @@
    "tools/sharecfg_re/42_publish_gamecfg.py",
    "tools/sharecfg_re/45_publish_npc_painting.py",
    "tools/sharecfg_re/46_publish_name_code.py",
-   "tools/sharecfg_re/47_publish_npc_voice.py"
+   "tools/sharecfg_re/47_publish_npc_voice.py",
+   "tools/sharecfg_re/48_publish_meta_group_bridge.py"
   ],
   "landed_at": "2026-10-05"
  },
@@ -27,6 +28,18 @@
     "scripts/extract_live2d_voice.py"
    ],
    "source": ".diag/sharecfg_re/lua_json/character_voice.json"
+  },
+  {
+   "path": "meta_group_bridge.json",
+   "bytes": 527,
+   "sha256": "fb549771f33d122b94fe45e6a43f774472216afda59d7fdf5dacc68ca1cd348f",
+   "rows": 1,
+   "role": "META 实体的「有船行、无皮肤行」补桥：自机立绘资源名（小写）→ 语音包组号/阵营/舰种/实体名/剧情行 id + prefab 出处（游戏本体 ship_data_group + fleet_tech_ship_class + ship_skin_template.prefab）",
+   "consumers": [
+    "scripts/build_ship_meta.py",
+    "scripts/extract_cv_voice.py"
+   ],
+   "source": ".diag/sharecfg_re/lua_json/{ship_data_group,fleet_tech_ship_class}.json + inputs/gamecfg/ship_skin_template.json"
   },
   {
    "path": "name_code.json",

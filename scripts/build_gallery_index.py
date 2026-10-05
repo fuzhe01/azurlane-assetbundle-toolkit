@@ -318,7 +318,8 @@ def ship_meta_entry(base):
 # 能当组名用的来源档：走通配置桥（含大小写不敏感回退）、或从 NPC 立绘表/同族前缀查到，
 # 以及人工核验过的 manual。不含 fallback（手抄表，另有更高优先级通道）与 unresolved。
 AUTHORITATIVE_CN = {'painting', 'suffix', 'painting_ci', 'suffix_ci',
-                    'npc_table', 'npc_suffix', 'npc_family', 'family', 'manual'}
+                    'npc_table', 'npc_suffix', 'npc_family', 'family', 'manual',
+                    'bridge', 'bridge_suffix'}
 
 # ---------- 收集 skins（key=完整stem）----------
 skins = {}   # stem -> {key,label,base,image,spine_dir,live2d}
