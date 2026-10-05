@@ -107,7 +107,9 @@ def main():
             seg = mapping[i]
             skip_to = seg['lines'][1] + 1
             if seg.get('stub'):
-                new_lines.append(seg['stub'])
+                # 桩可以是**多行**：整串塞进一个元素会让 `len(new_lines)`
+                # 少算（实测预计 385 / 实际 401，红线判据当场失真）。按行展开。
+                new_lines.extend(seg['stub'].rstrip(chr(10)).split(chr(10)))
             continue
         new_lines.append(line)
     new_text = '\n'.join(new_lines)
@@ -120,15 +122,18 @@ def main():
     for s in spec['segments']:
         print(f'  · {s["label"]}: 原第 {s["lines"][0]}-{s["lines"][1]} 行'
               f'（{s["lines"][1] - s["lines"][0] + 1} 行）→ '
-              f'{"留 1 行桩" if s.get("stub") else "不留桩"}')
+              f'{"留 " + str(len(s["stub"].rstrip(chr(10)).split(chr(10))) + " 行桩") if s.get("stub") else "不留桩"}')
 
     arc_abs = os.path.join(ROOT, arc)
-    arc_old = open(arc_abs, 'rb').read().decode('utf-8')
-    block = '\n\n<!-- ' + spec['title'] + ' -->\n\n'
+    # 归档文件**可能是本轮新建的**：历史上每次都往一个已存在的 A 段文件里追加，这条路径没跑到过，
+    # 结果 `open()` 直接 FileNotFoundError。新建时要自带那份「逐字保留，勿编辑」的文件头。
+    arc_old = open(arc_abs, 'rb').read().decode('utf-8') if os.path.exists(arc_abs) else ''
+    block = (f'# {os.path.basename(arc)}（逐字保留，勿编辑）\n' if not arc_old else '')
+    block += '\n\n<!-- ' + spec['title'] + ' -->\n\n'
     for s in spec['segments']:
         block += f'<!-- ↓ {s["label"]}｜原第 {s["lines"][0]}-{s["lines"][1]} 行 -->\n'
         block += s['text'] + '\n'
-    arc_new = arc_old.rstrip('\n') + '\n' + block
+    arc_new = (arc_old.rstrip('\n') + '\n' if arc_old else '') + block
 
     if verify:
         if disk.decode('utf-8') != new_text:
