@@ -204,7 +204,8 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
      五条结论：① **45° 菱形不是 bug**（用户确认「就是吊着的」），`2M` 是**同一角色的第二个姿态**；
      ② 层序**只能取自 prefab 的 RectTransform 层级**（DFS 先序＝渲染序），`parts.json` 落 `order`、
      索引按它排；名字后缀分桶在 `2B2`（结尾是数字）上翻车。全库 234 目录**只有 5 个**不一致，
-     **本轮按用户裁定只上 `tianjinfeng_2`**，`aimudeng_4`/`dashan_2`/`wuzang`/`wuzang_hx` 待下一轮；
+     **已全部补齐 `order` 并换入**（数据层闸门 ✓：变化面恰为 `tianjinfeng_2`/`aimudeng_4`/`dashan_2`/
+     `wuzang`/`wuzang_hx`，且"除 spine.parts 之外两份索引逐字相同"；4 张新变动皮肤已目视核对无回退）；
      ③ 零回退判据**放数据层**（`spine_index_parts_diff.py`）——像素比对的噪声底 0.13%~2.59%，当不了闸门；
      ④ 「自动跳过角色消散段」**已整块撤销**（用户：不能截取任何一段），改为**完整播放** +
      新增「完整场景 / 对准角色」一键切换（背景层两种模式都照常渲染）；
