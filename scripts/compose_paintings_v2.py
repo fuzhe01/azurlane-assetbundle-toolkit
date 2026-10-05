@@ -162,6 +162,36 @@ def skel_layers(prefab_bundle):
             r = o.read()
             rect_of_go[getattr(getattr(r, "m_GameObject", None), "m_PathID", 0)] = r
     ext_cabs = [x.name for x in serialized_file(env).externals]
+    # ---------- 渲染序（2026-10-05 补，只加字段、**不改本函数返回列表的顺序**） ----------
+    # Unity UI 按 transform 层级**深度先序、子节点按 m_Children 顺序**绘制，先绘制者压在下面。
+    # 为什么必须要这一份：`build_gallery_index.py` 此前按**层名后缀**猜先后（B<M<T、其余落进 M 桶），
+    # 而 `tianjinfeng_2` 的房间层叫 `2B2` —— 结尾是数字不是 `B`，于是和本体落进同一个桶，
+    # 桶内按本列表的任意顺序排 ⇒ 本体先画、被那张 7000×7007 的不透明房间整块盖住
+    # （用户报"空中那份天津风没显示"）。层的**集合**一直由本函数权威给出，缺的是**先后**。
+    # 读不到层级信息时该层给 -1，调用方**必须**据此放弃 order 字段回落到启发式 ——
+    # 不许拿一个"猜出来的序"冒充权威。
+    t_par, t_kids, rect_pid_of_go = {}, {}, {}
+    for o in env.objects:
+        if o.type.name not in ("RectTransform", "Transform"):
+            continue
+        try:
+            t = o.read()
+        except Exception:
+            continue
+        gid = getattr(getattr(t, "m_GameObject", None), "m_PathID", 0)
+        if gid:
+            rect_pid_of_go[gid] = o.path_id
+        t_par[o.path_id] = getattr(getattr(t, "m_Father", None), "m_PathID", 0)
+        t_kids[o.path_id] = [getattr(c, "m_PathID", 0) for c in (getattr(t, "m_Children", None) or [])]
+    render_idx = {}
+    _i = 0
+    for _rt in sorted(p for p, f in t_par.items() if not f):
+        _stack = [_rt]
+        while _stack:
+            _cur = _stack.pop()
+            render_idx[_cur] = _i
+            _i += 1
+            _stack.extend(reversed(t_kids.get(_cur, [])))
     out = []
     for o in env.objects:
         if o.type.name != "MonoBehaviour":
@@ -207,6 +237,7 @@ def skel_layers(prefab_bundle):
             "anim": str(getattr(d, "startingAnimation", "") or ""),
             "skin": str(getattr(d, "initialSkinName", "") or ""),
             "anchoredPosition": ap, "localScale": sc, "rotZ": rot,
+            "renderIndex": render_idx.get(rect_pid_of_go.get(gp), -1),
         })
     return out
 

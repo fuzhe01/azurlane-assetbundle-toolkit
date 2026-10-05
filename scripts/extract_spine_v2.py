@@ -117,6 +117,10 @@ def write_parts(name, out_dir):
         # 层文件不在盘上：写出来只会让前端 fetch 404，宁可报错
         # （实测 `fulangxisike_2` 就是这种空壳目录：只有一个散 PNG、没有任何 .skel）
         return None, f"prefab 挂了但目录里没有这些 skel: {missing}"
+    # 「order」= Unity UI 的真实绘制序（DFS 先序，先画的在下面）。**只在每一层都读到时才写**——
+    # 缺一个就不写，让下游 `build_gallery_index.py` 明确回落到名字启发式并点名告警，
+    # 绝不拿半截的序冒充权威（2026-10-05 天津风皮肤2：本体被不透明房间层盖住）。
+    order_ok = all(nd.get("renderIndex", -1) >= 0 for nd in layers)
     payload = {
         "bundle": f"spinepainting/{name}",
         "source": "prefab SkeletonGraphic 节点（权威），非目录 glob",
@@ -132,6 +136,11 @@ def write_parts(name, out_dir):
             "rotZ": nd["rotZ"],
         } for nd in layers],
     }
+    if order_ok:
+        for pl, nd in zip(payload["layers"], layers):
+            pl["order"] = nd["renderIndex"]
+    else:
+        payload["orderNote"] = "prefab 层级里没读全每一层的绘制序，下游按层名启发式排"
     with open(os.path.join(out_dir, "parts.json"), "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=1)
     return payload, ""

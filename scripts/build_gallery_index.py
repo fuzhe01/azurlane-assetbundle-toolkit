@@ -400,6 +400,7 @@ def layer_order(name):
     if name.endswith('T') or 'T_' in name: return 3
     return 2
 SPINE_NO_PARTS = []      # 有 .skel 却没有 parts.json 的目录 —— 攒起来末尾非零退出
+SPINE_ORDER_FALLBACK = []  # parts.json 里没有权威绘制序（老文件）→ 只能按层名启发式排的目录
 for d in glob.glob(os.path.join(OUT, 'Spine_v2', '*')):
     if not os.path.isdir(d): continue
     stem = os.path.basename(d)
@@ -415,10 +416,17 @@ for d in glob.glob(os.path.join(OUT, 'Spine_v2', '*')):
         SPINE_NO_PARTS.append(stem)
         continue
     layers = json.load(open(pj, encoding='utf-8'))['layers']
-    # 维持原有的绘制序（B<M<T、bg 最底）——本轮只改「有哪几层」，不动「层的先后」，
-    # 免得一次改动混进两个视觉变量。active 过滤当前是全 true 的 no-op，留着表达意图。
-    parts = sorted((l['layer'] for l in layers if l.get('active') is not False),
-                   key=layer_order)
+    act = [l for l in layers if l.get('active') is not False]
+    # 绘制序**优先照 prefab 的真实层级序**（parts.json 的 `order`，DFS 先序 = 先画的在下面）。
+    # 为什么不再只信 `layer_order`：它按层名后缀分桶，而 `tianjinfeng_2` 的房间层叫 `2B2`
+    # （结尾是数字不是 `B`）⇒ 与本体同桶、桶内按 parts.json 的任意顺序排 ⇒ 本体先画、
+    # 被不透明房间整块盖住（用户报"空中那份天津风没显示"，2026-10-05）。
+    # 老 parts.json 没有 order 字段时仍回落到启发式，但**必须点名**，不许静默。
+    if act and all(isinstance(l.get('order'), int) for l in act):
+        parts = [l['layer'] for l in sorted(act, key=lambda l: l['order'])]
+    else:
+        SPINE_ORDER_FALLBACK.append(stem)
+        parts = sorted((l['layer'] for l in act), key=layer_order)
     base = normalize(stem)
     sk = skins.get(stem)
     if sk is None:
@@ -431,6 +439,10 @@ if SPINE_NO_PARTS:
           f"分层的权威清单缺失，拒绝猜。先跑 `py -3 scripts/extract_spine_v2.py --parts-only`。"
           f"\n  清单: {SPINE_NO_PARTS[:20]}")
     sys.exit(1)
+if SPINE_ORDER_FALLBACK:
+    print(f"! {len(SPINE_ORDER_FALLBACK)} 个 Spine 目录的 parts.json 没有 order 字段（老文件）—— "
+          f"绘制序只能按层名后缀启发式排，重跑 `py -3 scripts/extract_spine_v2.py --parts-only` 补齐。"
+          f"\n  清单: {SPINE_ORDER_FALLBACK[:20]}")
 
 # Spine setup-pose 全屏 CG（cg_export.html 导出到 CG_v2/，目录名=皮肤 stem）
 # ⚠️ 只接受**已有同名立绘**的 stem。取证时写进 CG_v2 的中间图（`tianjinfeng_2_CHK.png`、

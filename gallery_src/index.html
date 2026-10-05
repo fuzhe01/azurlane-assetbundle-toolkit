@@ -1772,9 +1772,14 @@ async function startSpine(s, sk){
     window.__spLayers=layers;
 
     let camX=0,camY=0,zoom=1,base1=1,playing=true,last=performance.now();
-    /* 视角记忆：camX/camY 是世界坐标、zoom 无量纲 ⇒ 天然与画布尺寸无关，直接原样存 */
+    /* 视角记忆：camX/camY 是世界坐标、zoom 无量纲 ⇒ 天然与画布尺寸无关，直接原样存。
+       ⚠️ 但必须带 `SPINE_FRAME_V`（取景/绘制序的语义版本号）：机位是**上一版取景规则下**存下来的，
+       规则一变它就是脏数据。实测天津风皮肤2 连修四轮，用户每次打开都"还是那个样"，
+       一部分原因就是他前几轮为了找人把滚轮拉到 0.36 倍，这个机位一直被恢复。 */
+    const SPINE_FRAME_V=2;
     const vkey=sk.key+'|spine';
-    const vm=vmemCommitter(vkey, ()=>({camX:+camX.toFixed(2), camY:+camY.toFixed(2), zoom:+zoom.toFixed(4)}));
+    const vm=vmemCommitter(vkey, ()=>({camX:+camX.toFixed(2), camY:+camY.toFixed(2),
+                                       zoom:+zoom.toFixed(4), fv:SPINE_FRAME_V}));
     curVM=vm;
     function resize(){ cv.width=wrap.clientWidth; cv.height=wrap.clientHeight; scene.resize();
       scene.camera.setViewport(cv.width, cv.height); }  // 关键：scene.resize() 不更新相机视口（比例怪的根因）
@@ -1865,10 +1870,17 @@ async function startSpine(s, sk){
          whitespace），每个 region 纹素基本都是内容 ⇒ alpha 框恒等于整个区域 ⇒ 实际内容框
          恒等于顶点框，取景退回 7000×7007 巨框（实测 base1 0.42 → 0.184）。菱形那圈透明
          **不在贴图里，在 mesh 顶点形状里**（4 顶点 45° 方形）——贴图是一整张矩形房间图。 */
-    let frameBox=null, frameDropped=[];
+    let frameBox=null, frameDropped=[], frameBackdrop=[];
+    /* 「镜头对准角色」/「完整场景」二选一，由工具栏那颗按钮切换（2026-10-05 用户裁定）：
+       背景巨幕（如 `tianjinfeng_2` 的 `2B2`，7000×7007 的整张房间）**永远照常渲染**，
+       这里改的只是**它算不算进默认取景框**：
+         对准角色 = 剔掉它 ⇒ `base1` 0.64，画面跟官方立绘一样，角色大；
+         完整场景 = 算进去 ⇒ `base1` 0.184，整张菱形房间入画，角色缩成中间一小块。
+       ⚠️ 两种都不是"删内容"，也都不剪动画 —— 用户明确要求"要完整显示、不能截取任何一段"。 */
+    let frameAll=false;
     function dropBackdropLayers(per){
-      /* "本体"判据（与 scanStableRange 同源）：层名===目录名；否则排除 _B/_B2 后缀后取
-         附件最多的。⚠️ 不能按 cov 排—— cov 最大往往是前景特效层（2T 有 276 个覆盖附件，
+      /* "本体"判据：层名===目录名；否则排除 _B/_B2 后缀后取附件最多的。
+         ⚠️ 不能按 cov/附件数盲排—— cov 最大往往是前景特效层（2T 有 276 个覆盖附件，
          比本体 92 还多），用它会拿特效当角色。 */
       const mainName=(()=>{
         const n=per.find(g=>g.name===folder);
@@ -1900,7 +1912,10 @@ async function startSpine(s, sk){
     let framePer=[];
     function computeFrameBox(){
       const per=[]; layers.forEach(L=>{ try{ const l=extents(L); per.push({name:L.name||'', list:l, box:union(l)}); }catch(e){} });
-      const drop=dropBackdropLayers(per);
+      /* 两种取景模式共用同一份"哪些层算背景巨幕"的判断，按钮只切换它**生效与否** ——
+         否则切到「完整场景」再切回来时，按钮该不该显示都无从判断。 */
+      const all=dropBackdropLayers(per), drop=frameAll?[]:all;
+      frameBackdrop=all.map(g=>g.name);
       /* 给被剔层打标志：pixelFit 二次构图时要**临时藏起来**（否则它的 alpha 像素会把
          画面重新拉大，把"只渲染不计取景"的效果抵消掉——见 pixelFit 里的临时隐藏逻辑） */
       layers.forEach(L=>{ L.__frameDrop=drop.some(g=>g.name===L.name); });
@@ -1932,6 +1947,10 @@ async function startSpine(s, sk){
        用来回答"动画播到第 N 秒时各层到底什么样" —— 真实播放受帧率/dt 钳制影响，
        在 60fps 机器上 8 秒真实时间 = 8 秒动画，而 headless 下可能只推进了 2 秒。 */
     window.__seekAnim=(sec)=>{ playing=false;         // 暂停播放，否则帧循环会继续推进/回绕
+      /* ⚠️ 必须把按钮文案一起改回「播放」：它只在 onclick 里同步，程序化改 `playing`
+         会让"按钮显示暂停、实际已暂停"对不上 —— 探针靠文案判断要不要补一次点击，
+         文案说谎就等于探针在暂停态上白等（2026-10-05 实测被骗一轮）。 */
+      const b=document.getElementById('spPlay'); if(b) b.textContent='播放';
       const dt=1/30; let left=Math.max(0,+sec||0);
       while(left>1e-6){ const d=Math.min(dt,left);
         layers.forEach(L=>{ try{ if(L.anim){ L.anim.update(d); L.anim.apply(L.skeleton);
@@ -1966,7 +1985,11 @@ async function startSpine(s, sk){
          让"剔除 T 层让角色变大"的效果被这个二次构图整个抵消。
          重画一次（不含被剔层）→ 读像素 → 恢复；只在 invalidateFit 后跑一次，成本可忽略。 */
       const hid=[];
-      layers.forEach(L=>{ if(L.__frameDrop){ L.hidden=true; hid.push(L); } });
+      /* ⚠️ 只藏「当前没被藏」的层，并且**按原值恢复**（2026-10-05 修）：
+         `L.hidden` 同时是 `spine_layer_isolate.py` 逐层隔离的开关。原写法无条件写回 false，
+         pixelFit 一跑就把探针刚设的隐藏冲掉 —— 实测「全隐藏」底片里房间和红光还在，
+         那张图据此得出的"谁画了菱形"结论全是假的（本轮又被误导了一次）。 */
+      layers.forEach(L=>{ if(L.__frameDrop&&L.hidden!==true){ L.hidden=true; hid.push(L); } });
       if(hid.length){ try{
         gl.clear(gl.COLOR_BUFFER_BIT); scene.begin();
         layers.forEach(L=>{ if(L.hidden!==true) scene.drawSkeleton(L.skeleton,true); });
@@ -2042,74 +2065,22 @@ async function startSpine(s, sk){
     resize();
     // 动画：取各层「有时长」动画名并集（空占位 0 秒动画已过滤）
     const animUnion=[]; layers.forEach(L=>L.anims.forEach(a=>{if(animUnion.indexOf(a.name)<0)animUnion.push(a.name);}));
-    bar.innerHTML=`<label>动画</label><select id="spAnim"></select><label id="spSkinLbl" style="display:none">皮肤</label><select id="spSkin" style="display:none"></select><button id="spPlay">暂停</button><button id="spFit">复位</button><button id="spFull">全屏</button><span class="pill" id="spParts">${layers.length} 层部件${loadFail?' · '+loadFail+' 层失败':''}</span><span class="pill" id="spRange" style="display:none"></span><span class="pill">滚轮缩放 · 拖拽平移</span>`;
+    bar.innerHTML=`<label>动画</label><select id="spAnim"></select><label id="spSkinLbl" style="display:none">皮肤</label><select id="spSkin" style="display:none"></select><button id="spPlay">暂停</button><button id="spFit">复位</button><button id="spFrame" style="display:none">完整场景</button><button id="spFull">全屏</button><span class="pill" id="spParts">${layers.length} 层部件${loadFail?' · '+loadFail+' 层失败':''}</span><span class="pill">滚轮缩放 · 拖拽平移</span>`;
     document.getElementById('spFull').onclick=()=>{ if(document.fullscreenElement) document.exitFullscreen(); else viewEl.requestFullscreen().catch(()=>{}); };
     document.addEventListener('fullscreenchange', resize);
-    /* ---------- 自动跳过"角色散架段"（2026-10-05，§107） ----------
-       有些 skel 的同名动画中后段是"退场/消散"演出 —— 实测 `tianjinfeng_2` 的 `normal`
-       （33.3s，而 prefab 的 `startingAnimation` 恰恰就写它）：
-         t=0.5~6s   主层 92 个可见附件、世界框 1535×1571（角色完整）
-         t≈8s 起    主层掉到 24 个附件、框 30316×46333 或 510×397（散架，画面"少了个人"）
-       ⇒ 弹窗打开约 8 秒后角色就消散。用户拿立绘对照："少了人啊！！"
-       做法：对**主层**（覆盖附件最多的那层）沿该动画采样，取最长的一段"可见附件数 ≥ 峰值×0.9"
-       当播放区间；帧循环里播到区间末尾就回绕到起点。全程稳定的皮肤返回 null（行为完全不变）。
-       全库 234 个目录里只有 6 个会命中，所以这条几乎不影响其它皮肤。 */
-    let playRange=null;
-    function scanStableRange(animName){
-      try{
-        /* ⚠️ 主层必须选**本体**（层名与目录名相同），不能按 cov 排 —— cov 最大往往是
-           前景特效层（`tianjinfeng_2` 的 2T 有 276 个覆盖附件，比本体 92 还多），
-           用它算稳定段会把"特效"当"角色"，本体根本不在画面里（用户实机踩到）。
-           判据：优先层名===目录名；否则排除 _B/_B2 类背景层后取 cov 最大者。 */
-        const main=(()=>{
-          const byName=layers.find(L=>L.name===folder);
-          if(byName) return byName;
-          const nb=layers.filter(L=>!/[Bb](\d*)$/.test(L.name||''));
-          return nb.sort((a,b)=>(b.cov||0)-(a.cov||0))[0]||layers[0];
-        })();
-        if(!main||!animName) return null;
-        const an=(main.data.animations||[]).find(a=>(a.name||a)===animName);
-        if(!an||!(an.duration>1)) return null;
-        /* 用**独立**的 Skeleton 采样：不能拿正在播的那个，否则会把画面状态搅乱 */
-        const sk=new spine.Skeleton(main.data);
-        const bs=main.bestSkin, fsk=(bs!==null&&main.data.findSkin(bs))||main.data.defaultSkin;
-        if(fsk) sk.setSkin(fsk);
-        sk.setSlotsToSetupPose(); sk.setBonesToSetupPose();
-        const st=new spine.AnimationState(new spine.AnimationStateData(main.data));
-        st.setAnimation(0,animName,true);
-        const N=180, dt=an.duration/N, cnt=[];
-        for(let i=0;i<N;i++){
-          st.update(dt); st.apply(sk); sk.updateWorldTransform();
-          let n=0;
-          for(const sl of sk.slots){ const a=sl.getAttachment();
-            if(a&&sl.bone&&sl.bone.active&&(!sl.color||sl.color.a>0.001)) n++; }
-          cnt.push(n);
-        }
-        const mx=Math.max.apply(null,cnt); if(!mx) return null;
-        const thr=mx*0.9;
-        let b0=0,b1=-1,s0=-1;                       // 最长连续"够完整"的区间
-        for(let i=0;i<=N;i++){ const ok=(i<N)&&cnt[i]>=thr;
-          if(ok&&s0<0) s0=i;
-          if((!ok||i===N)&&s0>=0){ if((i-1-s0)>(b1-b0)){ b0=s0; b1=i-1; } s0=-1; } }
-        if(b1<0) return null;
-        const t0=b0*dt, t1=(b1+1)*dt;
-        if(t0<=1e-3&&t1>=an.duration-1e-3) return null;   // 全程稳定 → 不限制
-        return [t0,t1];
-      }catch(e){ return null; }
-    }
-    function rangePill(){
-      const el=document.getElementById('spRange'); if(!el) return;
-      if(!playRange){ el.textContent=''; el.style.display='none'; return; }
-      el.textContent='已跳过"角色消散"段：只在 '+playRange[0].toFixed(1)+'~'+playRange[1].toFixed(1)+'s 循环播';
-      el.style.display='';
-    }
+    /* ---------- 动画**一律完整播放**，不做任何"跳过某段"的裁剪（2026-10-05 用户裁定） ----------
+       历史上这里加过 `scanStableRange()` + `playRange`：检测到"角色消散/散架段"就把播放区间
+       截成 0.4~6.5s 循环，理由是"用户报少了人"。**那个诊断是错的** —— 天津风皮肤2 少了人
+       的真因是**层绘制序**（本体被不透明房间层盖住，见 §110），不是消散演出。
+       真因修好后这条裁剪只剩副作用：把官方退场演出整段剪掉。用户原话：
+       「要完整显示，消散那段也要保留，不能截取任何一段」⇒ 整块删除，不要再加回来。
+       若以后又出现"画面里少了人"，先按 §110 查绘制序与相位，**不要动播放区间**。 */
     const sel=document.getElementById('spAnim');
     (animUnion.length?animUnion:['']).forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n||'(setup pose)';sel.appendChild(o);});
     function setAnim(n){ layers.forEach(L=>{ try{
         if(n && L.anims.some(a=>a.name===n)) L.anim.setAnimation(0,n,true);
         else if(L.anims.some(a=>a.name==='normal')) L.anim.setAnimation(0,'normal',true);
-      }catch(e){} });
-      playRange=scanStableRange(n||'normal'); rangePill(); }   // 换动画要重扫播放区间
+      }catch(e){} }); }
     /* 默认起播按 prefab **逐层**写的 startingAnimation（§58：buleisite/buleisite_hx=idle、
        pulimaosi 两层各播各的 idle2/normal），不再一律优先 'normal'。
        下拉框仍是「选一个、全层跟」的简单语义 —— 用户手动改时覆盖 prefab 的写法。 */
@@ -2119,7 +2090,6 @@ async function startSpine(s, sk){
                         if(n){ try{ L.anim.setAnimation(0,n,true); }catch(e){} } });
     sel.value=def||'';
     sel.onchange=()=>setAnim(sel.value);
-    playRange=scanStableRange(def||'normal'); rangePill();
     /* skin 下拉：默认用上面算出的覆盖最多者，允许手动切着对比
        （'1'/'2' 是不同变体，覆盖数可能相同——阿罗芒什就是 201 vs 201 平手，需人工判） */
     /* 换 skin 后重算取景 —— ⚠️ **必须先 apply 一次动画**：`setLayerSkin` 里调了
@@ -2172,6 +2142,19 @@ async function startSpine(s, sk){
     window.__skinInfo=()=>layers.map(L=>({name:L.name, skin:L.skin, cov:L.cov,
       nAttach:(()=>{let n=0;for(const sl of L.skeleton.slots)if(sl.getAttachment())n++;return n;})()}));
     document.getElementById('spPlay').onclick=e=>{playing=!playing;e.target.textContent=playing?'暂停':'播放';};    document.getElementById('spFit').onclick=()=>{fit();zoom=1;vm.touch();};
+    /* 「完整场景 / 对准角色」：只改**默认镜头**（背景巨幕算不算进取景框），
+       两种模式都照常渲染所有层、都不剪动画。切换后必须 `zoom=1`，
+       否则用户停在旧机位上，点了等于没点（上一轮"改了半天还是那个样"就有这一份原因）。 */
+    document.getElementById('spFrame').onclick=()=>{ frameAll=!frameAll;
+      reframe(); zoom=1; vm.touch(); syncFrameUI(); };
+    function syncFrameUI(){
+      const btn=document.getElementById('spFrame'), pill=document.getElementById('spParts');
+      const has=frameBackdrop.length>0;
+      if(btn){ btn.style.display=has?'':'none'; btn.textContent=frameAll?'对准角色':'完整场景'; }
+      if(pill) pill.textContent=layers.length+' 层部件'+(loadFail?' · '+loadFail+' 层失败':'')
+        +(has?(' · '+(frameAll?('镜头含背景层 '+frameBackdrop.join('/')+'（整图入画，角色偏小）')
+                             :('背景层 '+frameBackdrop.join('/')+' 照常渲染，镜头先对准角色'))):'');
+    }
     mountSkinVoice(bar, cv, ()=>sk.key);   // Spine 动态立绘同样点画面=触摸台词
     let drag=false,pmx=0,pmy=0;
     cv.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.05,Math.min(60,zoom*(e.deltaY>0?.9:1.1)));vm.touch();},{passive:false});
@@ -2181,12 +2164,9 @@ async function startSpine(s, sk){
     window.addEventListener('mousemove',mm); window.addEventListener('mouseup',mu); window.addEventListener('resize',resize);
     function frame(now){ if(my.cancelled){window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);return;} my.raf=requestAnimationFrame(frame);
       const dt=Math.min((now-last)/1000,.1);last=now;
-      /* 播到"角色散架段"就回绕（见上面 scanStableRange 的注释）。
-         ⚠️ 用 `track.trackTime`：spine-ts 3.8 里 TrackEntry 的时间字段叫 trackTime，
-         没有 `time`（读 `tr.time` 恒 undefined，会让回绕永远不触发）。 */
+      /* 动画**从头到尾完整播**，循环由 spine 自己的 loop 处理，不做任何区间裁剪
+         （为什么这里曾经有过一段"跳过消散段"的回绕、以及为什么必须删掉，见上面 setAnim 处的说明）。 */
       if(playing)layers.forEach(L=>{
-        if(playRange){ try{ const tr=L.anim.tracks&&L.anim.tracks[0];
-          if(tr&&tr.trackTime>=playRange[1]) tr.trackTime=playRange[0]; }catch(e){} }
         L.anim.update(dt);L.anim.apply(L.skeleton);L.skeleton.updateWorldTransform();});
       gl.clear(gl.COLOR_BUFFER_BIT); scene.camera.position.set(camX,camY,0); scene.camera.zoom=1/(base1*zoom); scene.camera.update(); scene.begin();
       /* `L.hidden` 是**诊断钩子**：`scripts/diag/spine_layer_isolate.py` 用它逐层隔离截图，
@@ -2213,11 +2193,9 @@ async function startSpine(s, sk){
        ⇒ 判据：**凡「setup 落笔 0、动画落笔很多」的层，取景框必须在 apply 之后算**。 */
     layers.forEach(L=>{ try{ if(L.anim){ L.anim.update(0); L.anim.apply(L.skeleton); }
                             L.skeleton.updateWorldTransform(); }catch(e){} });
-    computeFrameBox(); fit();
-    { const pill=document.getElementById('spParts');   // 剔了背景层要让用户看得见（否则像"没修"）
-      if(pill&&frameDropped.length) pill.textContent += ' · 已剔除背景层 '+frameDropped.join('/')+'（仍渲染，不计取景）'; }
+    computeFrameBox(); fit(); syncFrameUI();
     (function(){ const m=vmemGet(vkey);   // 回到上次看这个皮肤时的机位（世界坐标，换窗口尺寸不错位）
-      if(m && isFinite(m.camX) && isFinite(m.camY))
+      if(m && m.fv===SPINE_FRAME_V && isFinite(m.camX) && isFinite(m.camY))
         { camX=m.camX; camY=m.camY; zoom=Math.max(.05, Math.min(60, m.zoom||1)); } })();
     my.raf=requestAnimationFrame(frame);
   }catch(err){ if(my.cancelled)return; viewEl.innerHTML='<div class="note">Spine 加载失败：'+(err.message||err)+'<br><span class="hint">'+(location.protocol==='file:'?'请用 启动资产浏览器.bat 以本地服务器方式打开。':'请确认该皮肤已导出 Spine 资源。')+'</span></div>'; }
