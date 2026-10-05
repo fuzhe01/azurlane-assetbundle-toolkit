@@ -5805,6 +5805,16 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
 
 **待用户游戏内核实**：灵敏·META 的**稀有度**（配置侧无字段，现在卡片这一格是空的）与
 **CV 是否仍是花井美春**（她那一行 `voice_actor` 无值，我不拿本体的顶）。
+→ **已于同日拿到裁定并填入**：稀有度 SR、CV 花井美春。⚠️ 项目码表里 **`SR` = 码 4 = 精锐**
+（`5` 才是 SSR/超稀有），所以填的是 `rarity_code=4`，`confirmed_via` 原样记着这句话的出处。
+落点：`tools/sharecfg_re/48_...py` 的 `CONFIRMED` 表（**声明必须写进发布脚本**，`inputs/*.json` 不入库，
+只改产物会在下次重发布时被静默抹掉）→ `ship_meta` 两条从 `rarity ''/voice_actor -1` 变成
+`精锐/304 花井美春`，字段变空 0。
+
+**顺带堵掉一个闸门洞**：`ship_meta_authority_diff` 的受保护档原先只列 `painting/suffix`，
+新增的 `bridge/bridge_suffix` 不在里面 ⇒ 这次"往补桥条目里填值"的改动**闸门根本没看**
+（打印出来是"字段改动 0 处"，一个假绿灯）。⇒ 受保护档已扩成四档，`bridge_fix` 加第二条子句：
+**同一张补桥条目内只放行「稀有度从空 → 带 `confirmed_via` 的声明值」**，反向与换值一律红（对照 54/54）。
 
 **涉及文件**：`tools/sharecfg_re/48_publish_meta_group_bridge.py`（新）、
 `scripts/build_ship_meta.py`（`META_BRIDGE` + `resolve_base(..., bridge=)`）、

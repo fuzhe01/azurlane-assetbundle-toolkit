@@ -31,8 +31,8 @@
   },
   {
    "path": "meta_group_bridge.json",
-   "bytes": 527,
-   "sha256": "fb549771f33d122b94fe45e6a43f774472216afda59d7fdf5dacc68ca1cd348f",
+   "bytes": 708,
+   "sha256": "92257ee3f084bf362f0ddcfbda1cff5f703034af192049cfb2f16bd04d3dfe03",
    "rows": 1,
    "role": "META 实体的「有船行、无皮肤行」补桥：自机立绘资源名（小写）→ 语音包组号/阵营/舰种/实体名/剧情行 id + prefab 出处（游戏本体 ship_data_group + fleet_tech_ship_class + ship_skin_template.prefab）",
    "consumers": [

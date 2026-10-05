@@ -257,6 +257,27 @@ CASES6 = [
       _BR_NEW, {**_OLD, 'source': 'npc_table'}), False),
     ('字段是别的列（voice_bank 之外的未知列仍要落别条判据）',
      (('lingmin_alter', 'l2d_se', 'a', 'b'), _BR_NEW, _OLD), False),
+    # 第二轮（§108）：同一张补桥条目内，把**显式声明过**的稀有度从空填上
+    ('正向：补桥条目内 rarity 从空 → 声明值（带 confirmed_via，本轮真实改动）',
+     (('lingmin_alter', 'rarity', '', '精锐'),
+      {**_BR_NEW, 'rarity': '精锐', 'confirmed_via': '用户 2026-10-05 裁定：SR=码 4'},
+      {**_OLD, 'source': 'bridge', 'base_painting': 'lingmin_alter', 'rarity': ''}), True),
+    ('反向：声明值被抹成空，必须拦',
+     (('lingmin_alter', 'rarity', '精锐', ''),
+      {**_BR_NEW, 'rarity': ''},
+      {**_OLD, 'source': 'bridge', 'base_painting': 'lingmin_alter', 'rarity': '精锐'}), False),
+    ('反向：同一格从一个声明值换成另一个（精锐→超稀有）不走这条',
+     (('lingmin_alter', 'rarity', '精锐', '超稀有'),
+      {**_BR_NEW, 'rarity': '超稀有', 'confirmed_via': '改了说法'},
+      {**_OLD, 'source': 'bridge', 'base_painting': 'lingmin_alter', 'rarity': '精锐'}), False),
+    ('填了稀有度却没有 confirmed_via（没出处）必须拦',
+     (('lingmin_alter', 'rarity', '', '精锐'),
+      {**_BR_NEW, 'rarity': '精锐'},
+      {**_OLD, 'source': 'bridge', 'base_painting': 'lingmin_alter', 'rarity': ''}), False),
+    ('声明值不许顺手改阵营（bridge→bridge 只放行稀有度那一格）',
+     (('lingmin_alter', 'faction', '北方联合', 'META'),
+      {**_BR_NEW, 'confirmed_via': '有'},
+      {**_OLD, 'source': 'bridge', 'base_painting': 'lingmin_alter'}), False),
 ]
 
 check('bridge_fix', CASES6, call_bridge)

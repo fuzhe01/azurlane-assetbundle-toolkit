@@ -327,11 +327,17 @@ def build_meta(skin, stats, wiki, verbose=False):
             # ⚠️ 不要按 `cn` 去维基兜底 —— 那个名字去掉「·META」就是本体船（灵敏=北方联合/精锐），
             #      兜底会把 META 实体的阵营改成本体，正是 §101 那条「零回退不变式」要拦的方向。
             b = sk_row
+            va = b.get('voice_actor', -1)
             entry.update({'cn': b['cn'], 'faction': b['faction'], 'type': b['type'],
-                          'rarity': b['rarity'], 'category': 'ship', 'voice_actor': -1,
+                          'rarity': b['rarity'], 'category': 'ship', 'voice_actor': va,
+                          'voice_actor_name': VOICE_ACTOR.get(str(va), ''),
                           'skin_name': b['cn'], 'nationality_code': b['nationality_code'],
                           'type_code': b['type_code'], 'meta_group': b['group'],
                           'voice_bank': b['bank'], 'meta_via': b['via']})
+            if 'rarity_code' in b:      # 只在补桥表**显式声明过**时才写（稀有度配置侧没有字段）
+                entry['rarity_code'] = b['rarity_code']
+            if b.get('confirmed_via'):
+                entry['confirmed_via'] = b['confirmed_via']
             meta[stem] = entry
             continue
         if base:

@@ -35,7 +35,10 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 FIELDS = ('cn', 'en', 'faction', 'type', 'rarity', 'category', 'base_painting')
-PROTECTED = ('painting', 'suffix')                 # 本来就走配置桥，必须零改动
+# 本来就走配置桥（含 META 补桥表）的档，必须零改动；要改只能落进方向性判据。
+# ⚠️ `bridge` 也在受保护档里：补桥条目一旦成档，后面的填值（稀有度/CV）就得逐条盖章，
+#    不然"权威源换了但没人核对"这条洞会原样留着（§108 第一轮就是这么漏过去的）。
+PROTECTED = ('painting', 'suffix', 'bridge', 'bridge_suffix')
 NEW_OK = ('painting_ci', 'suffix_ci', 'npc_table', 'npc_suffix', 'npc_family', 'family',
           'bridge', 'bridge_suffix')
 
@@ -55,7 +58,13 @@ def bridge_fix(t, new_entry, old_entry):
     ns = str(new_entry.get('source') or '')
     if not ns.startswith('bridge') or not new_entry.get('meta_via') or not new_entry.get('meta_group'):
         return False
-    if str(old_entry.get('source') or '') not in ('painting', 'suffix'):
+    osrc = str(old_entry.get('source') or '')
+    if osrc.startswith('bridge'):
+        # 第二种合法改动（§108 第二轮）：**同一张补桥条目内**，把补桥表里显式声明过的稀有度从空填上。
+        # 只放行「空 → 有」，且新条目必须带 `confirmed_via`（声明出处），反向（有 → 空 / 换个值）一律红。
+        return (f in ('rarity', 'rarity_code') and not str(a).strip()
+                and bool(str(b).strip()) and bool(new_entry.get('confirmed_via')))
+    if osrc not in ('painting', 'suffix'):
         return False
     if str(old_entry.get('base_painting') or '') == k:
         return False                       # 旧口径已经有她自己那一行 ⇒ 这条不该被桥接管

@@ -2392,6 +2392,15 @@ CHROME_FLAGS = ['--disable-gpu', '--disable-gpu-compositing',
   宁可留空，并把它写成"待游戏内核实"的显式声明。
 - ⚠️ 新加的 HTTP 判据报 404 而文件在盘上：画廊页在 `gallery_v2/`、音频在服务器根的 `Audio/`，
   已有判据用的是 `{BASE}/../{f}`。**判据写错就改判据，不要改产品去迁就判据。**
+- ⚠️ **新增来源档必须同时加进闸门的"受保护档"名单**。本轮第一版把补桥条目的 `source` 定成 `bridge`，
+  而闸门 `PROTECTED` 只列 `painting/suffix` ⇒ 第二次"往补桥条目里填值"的改动**闸门一个字都没看**，
+  打印出来是"字段改动 0 处"——**这是假绿灯最体面的一种**：闸门没错，是它的地盘画小了。
+  ⇒ 加档位时同批改 `PROTECTED` 与方向判据，并给新子句配反向对照。
+- ⚠️ **人工裁定的值要写进发布脚本，不要只写进产物**：`inputs/*/*.json` 不入库（体积/可再生），
+  只改产物会在下一次重发布时被静默抹掉。本项目落在 48 号的 `CONFIRMED` 表 + `confirmed_via` 出处串，
+  并让发布脚本的自检要求"填了值就必须带出处"。
+- ⚠️ 补桥条目里 `SR` 这类**玩家口径的档位词**要先翻译成码表值再填（本项目 `SR`=码 4=精锐，
+  `5` 才是 SSR/超稀有），并把这句翻译写进 `confirmed_via`，否则下一个会话会当成 5。
 
 **涉及文件**：`tools/sharecfg_re/48_publish_meta_group_bridge.py`、`scripts/build_ship_meta.py`、
 `scripts/extract_cv_voice.py`、`scripts/build_gallery_index.py`、

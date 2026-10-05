@@ -46,9 +46,16 @@ CUE_DIR = os.path.join(ROOT, 'files', 'AssetBundles', 'cue')
 
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import skin_table                                          # noqa: E402
-from build_ship_meta import NATIONALITY, TYPE, clean_ship_name   # noqa: E402
+from build_ship_meta import NATIONALITY, TYPE, RARITY, clean_ship_name   # noqa: E402
 
 PLACE = re.compile(r'\{namecode:\d+\}')
+# 配置侧查不到的字段，只能**显式声明**并带出处，不许从"同名本体船"偷偷兜底（那正是 §108 去掉的错贴值）。
+# 用户 2026-10-05 游戏内核实后拍板：稀有度 SR、CV 沿用花井美春。
+# ⚠️ `SR` 按项目码表是 **4 = 精锐**（`5` 才是 SSR/超稀有），所以这里写 `rarity_code=4`。
+CONFIRMED = {
+    970113: {'rarity_code': 4, 'voice_actor': 304,
+             'via': '用户 2026-10-05 游戏内裁定：稀有度 SR(码表 4=精锐)、CV 同本体(花井美春, 码 304)'},
+}
 ROLE = ('META 实体的「有船行、无皮肤行」补桥：自机立绘资源名（小写）→ 语音包组号/阵营/舰种/实体名/'
         '剧情行 id + prefab 出处（游戏本体 ship_data_group + fleet_tech_ship_class + ship_skin_template.prefab）')
 CONSUMERS = ['scripts/build_ship_meta.py', 'scripts/extract_cv_voice.py']
@@ -112,7 +119,7 @@ def build(verbose=False):
         if gid not in banks:
             notes.append('组 %s（%s）：cue 里没有 cv-%s.b（音频侧还没拉到），跳过' % (gid, nm, gid))
             continue
-        out[key] = {
+        rec = {
             'group': int(gid), 'cn': nm,
             'nationality_code': g.get('nationality'),
             'faction': NATIONALITY.get(g.get('nationality'), ''),
@@ -123,6 +130,15 @@ def build(verbose=False):
             'via': 'ship_data_group(nat=97,group_type=%s) + fleet_tech_ship_class(%s)'
                    ' + ship_skin_template[%s].prefab' % (gid, nm, row['id']),
         }
+        cf = CONFIRMED.get(int(gid))
+        if cf:
+            rec['rarity'] = RARITY.get(cf['rarity_code'], '')
+            rec['rarity_code'] = cf['rarity_code']
+            rec['voice_actor'] = cf['voice_actor']
+            rec['confirmed_via'] = cf['via']
+            # `rarity_via` 必须跟着改口：留着「留空」那句会和已填的值自相矛盾（产物里写反话比空着更坏）
+            rec['rarity_via'] = cf['via']
+        out[key] = rec
         if verbose:
             print('  补桥 %s ← group %s（%s），剧情行 %s / 立绘 %s，语音包 cv-%s'
                   % (key, gid, nm, row['id'], pf, gid))
@@ -139,7 +155,10 @@ def selfcheck(out, sk_groups, sk_paints):
          'duwei_alter' not in out and '970110' in sk_groups),
         ('每条都有阵营与舰种（META + 舰种码可查）',
          all(v['faction'] == 'META' and v['type'] for v in out.values())),
-        ('rarity 一律留空（不许猜）', all(not v['rarity'] for v in out.values())),
+        ('稀有度/CV 若被填上，必须带 `confirmed_via`（声明出处），且码值能在码表里查到',
+         all((not v.get('rarity') and 'voice_actor' not in v)
+             or (v.get('confirmed_via') and RARITY.get(v.get('rarity_code')) == v.get('rarity'))
+             for v in out.values())),
     ]
     return checks
 

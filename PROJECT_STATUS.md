@@ -267,7 +267,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
      - ⚠️ 两条**待用户游戏内核实**：加斯科涅/弗兰德尔 稀有度 由维基兜底「最高方案」换成配置「超稀有」
        （已按 `--expect` 显式声明、值必须逐字对上）；加里冒险号/朴茨茅斯冒险号 由「超稀有」换成众数「精锐」。
      - ✅ **10-05 追加（§107）**：配对信号 `stats.id == skin.id`（+清洗后同名）补回 `aisaikesi_alter` 的 META 阵营 ⇒ 她独立成卡（`ships` 974→975、META 卡 65→66）；同处写歪的另一头 `npcsalatuojia_alter`（其图与 `salatuojia_alter.png` **md5 逐字节相同**）由「埃塞克斯·META」改回「萨拉托加·META」。
-     - ✅ **10-05 第二轮（§108）：上一条里"灵敏·META 只是缺皮肤行、包一直在盘上"这个判断已落成修法**——新增 `tools/sharecfg_re/48_publish_meta_group_bridge.py` 发 `inputs/gamecfg/meta_group_bridge.json`（立绘资源名取自**剧情行自己的 `prefab` 列**，同名候选**必须唯一**否则不接管），`build_ship_meta`/`extract_cv_voice` 各加一条 bridge 通道 ⇒ `cv-970113`（22 条 ogg）首次导出，她独立成卡带**自己的**语音 22 条（原来借本体 36 条）。`ships` 975→976、`variants` 27→25。⚠️ **稀有度与 CV 仍留空**：表里没有她的这两个字段，而按中文名去维基/本体兜底会命中**本体灵敏（精锐 / 花井美春）**——那是错贴，宁可空着，待游戏内核实后按声明填入。
+     - ✅ **10-05 第二轮（§108）：上一条里"灵敏·META 只是缺皮肤行、包一直在盘上"这个判断已落成修法**——新增 `tools/sharecfg_re/48_publish_meta_group_bridge.py` 发 `inputs/gamecfg/meta_group_bridge.json`（立绘资源名取自**剧情行自己的 `prefab` 列**，同名候选**必须唯一**否则不接管），`build_ship_meta`/`extract_cv_voice` 各加一条 bridge 通道 ⇒ `cv-970113`（22 条 ogg）首次导出，她独立成卡带**自己的**语音 22 条（原来借本体 36 条）。`ships` 975→976、`variants` 27→25。稀有度与 CV 配置侧无字段 ⇒ 用户同日裁定后**按声明填入**（`SR` 走码表 = 码 4 **精锐**、CV 花井美春码 304，出处记在 `CONFIRMED.via`），声明必须写在发布脚本里（`inputs/*.json` 不入库，只改产物下次会被抹掉）。
 29. ✅ **画廊改三档制 + 秘书舰三族并回 3 张卡（2026-10-05 用户定档，§102）**：类别只留
      **舰船 / 剧情角色 / 其他**（撤销 §93「45 条 NPC 塞进剧情剪影」与 §90 的第 4 档）。
      「其他」判据抽成唯一正本 `scripts/gallery_buckets.py`（`npc` 前缀 / 含 `unknown` /

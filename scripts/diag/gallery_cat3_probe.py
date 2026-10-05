@@ -142,8 +142,8 @@ def main():
                          ".find(c=>c.querySelector('.nm').textContent.trim()===%s);"
                          "return c?c.querySelector('.tags').textContent.replace(/\\s+/g,' ').trim():'(这张卡不在舰船档)'"
                          % json.dumps('灵敏·META', ensure_ascii=False)))
-        chk('6e 灵敏·META（补桥成卡）在「舰船」档里，标签带 META + 驱逐',
-            '灵敏·META' in ship_d and 'META' in tags2 and '驱逐' in tags2, tags2)
+        chk('6e 灵敏·META（补桥成卡）在「舰船」档里，标签带 META + 驱逐 + 声明过的稀有度',
+            '灵敏·META' in ship_d and 'META' in tags2 and '驱逐' in tags2 and '精锐' in tags2, tags2)
         import urllib.request
         from gallery_ui_shots import BASE
         vp2 = json.loads(pg.ev(EV("return JSON.stringify((window.GALLERY.ships||[])"
