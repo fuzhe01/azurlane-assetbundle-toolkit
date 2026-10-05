@@ -5466,3 +5466,50 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
 （`story→other` 方向性放行）、`scripts/diag/gallery_cat3_probe.py`（★新增，前端 DOM 验收）、
 `gallery_src/index.html`（档位条 4 档 / `catOf` / 计数自洽断言）。相关：§88、§90、§93（本轮改判）、
 §101、WF-26。
+
+---
+
+## §103. 秘书舰三族"无声无词"：不是没音频，是那 13 个语音包从来没人去解（2026-10-05）
+
+**症状**：三档制后 `领航员-TB / 领洋者-娜比娅 / 探索者-艾普洛` 三张卡 `voiceCount=0`，
+语音标签空白——但游戏里秘书舰有登录/邮件/任务/报时全套语音。
+
+**根因**：`extract_cv_voice.py` 的取包路径是「皮肤行 → `ship_group` → 包号」，
+而这 41 张立绘**在皮肤表里一行都没有**（它们是 `secretary_special_ship` 的行）⇒ 那 13 个包
+（`cv-1000/1004/1100/1200/1300/2000/2004/2100/2200/3000/3004/3100/3200`）**从来没被解码过**，
+`Output/Audio/CV/` 里只有整包合成的一条 `cv-<n>.wav`，没有分条 ogg。
+
+**修法（三层，都是"数据源不同 ⇒ 走一条独立但同源的路"）**
+1. `tools/sharecfg_re/47_publish_npc_voice.py`（★新增）：从 `secretary_special_ship` 发布
+   `inputs/gamecfg/npc_voice.json`（41 行 / 13 包 / **1233 条台词**，`{namecode}` 就地展开），
+   带 5 条真值断言 + 台账。`main` 字段是一整串 `|` 分隔的 5 段，按段切成 `main_1..5`
+   以对齐包内 cue。
+2. `extract_cv_voice.py` 加 `npc_entry()`：**不复用 `build_entry`**——它会把 `main_1..5`
+   当成"皮肤 1..5 的档位"、把 `chime_0..23` 经 `split_cue` 判成"第 N 个皮肤的 chime"
+   ⇒ 24 条报时折叠成 1 条。秘书舰是**一个形态一个包**，cue 名 == 台词字段名，直接平铺。
+3. `build_skin_words.py` 加 `merge_npc_words()`：正文并进同一份 `skin_words.json`
+   （键空间一律 `npc<row_id>`，逐条断言与真皮肤行主键不相交——撞了就是把某艘真船的
+   正文悄悄换成领航员的话）。
+
+**结果**：`voice_skins` 4138→**4179**（+41）、`with_voice` 857→860、三张卡船级语音
+118 / 93 / 93 条；13 个包共 **304 条 ogg** 落盘。
+
+**踩坑（本轮自己撞的三条，都被闸门抓回来）**
+- ⚠️ **船级语音数算早了**：三张卡是文件末尾才 append 的，而 `sh['voiceCount']=ship_voice_count(sh)`
+  那个循环跑在前面 ⇒ 建卡时的 0 一路带到底，`with_voice` 一次都没动。⇒ 并完皮肤后必须重算。
+- ⚠️ **台账按内存字符串记 hash、却用文本模式写盘**：Windows 下 `\n→\r\n`，
+  `check_inputs.py gamecfg` 报 `[DRIFT] 期望 bytes=202178 实际=203904`（差值正好是行数）。
+  45 号脚本注释里点过同一条坑，本轮又撞一次 ⇒ 发布脚本一律 `open(p,'wb')`。
+- ⚠️ **抽查写死 `Output/`**：`--sample` 模式产物在 `.diag/_cv/CV2` 下，于是 44 条 ogg
+  被误报成"磁盘缺文件"。判据必须对着**本轮实际落盘的目录**量。
+
+**判据**：`diag/gallery_cat3_probe.py` 扩到 **9 条**（新增 7/8/9）：三张卡船级语音 >0、
+台词对应的 ogg 走 HTTP 真取得到（200 且 >1KB，不是"路径写上了"）、正文已并入且无未展开
+占位符。索引闸门绿（`船标量允许变化:voiceCount 3` + `皮肤标量允许变化:voiceCount/voiceTap 41`，
+其余零差异）。映射表逐字段比对：`4140→4181`，**丢失 0 / 既有条目被改 0**。
+
+**涉及文件**：`tools/sharecfg_re/47_publish_npc_voice.py`（★新增）、`scripts/extract_cv_voice.py`
+（`npc_entry`/`npc_label`/`load_npc_voice_table` + NPC 解码段）、`scripts/build_skin_words.py`
+（`merge_npc_words`）、`scripts/build_gallery_index.py`（船级语音重算）、
+`scripts/diag/gallery_cat3_probe.py`。相关：§82（语音/台词同源）、§85（一份语义两处写 = 错派成因）、
+§93（本轮改判）、§102、WF-21/WF-22。

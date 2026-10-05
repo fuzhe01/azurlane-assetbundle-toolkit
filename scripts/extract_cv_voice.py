@@ -469,6 +469,40 @@ def process_bank(cv, acb, out_audio, skip_done=False):
         return cv, sorted(keep)
 
 
+NPC_LABELS = {'chuxi': '除夕问候', 'genghuan': '更换外形', 'huodong': '活动问候',
+              'qingrenjie': '情人节', 'shengdan': '圣诞节', 'wansheng': '万圣节',
+              'xinnian': '新年', 'zhongqiu': '中秋', 'login': '登录', 'mail': '邮件提醒',
+              'touch': '普通触摸', 'mission': '任务提醒', 'mission_complete': '任务完成',
+              'expedition': '委托完成', 'home': '回港'}
+
+
+def npc_label(cue):
+    """秘书舰 cue 名 → 中文标签。cue 名与表里的台词字段名**逐字相同**，不做任何语义推断。"""
+    if cue.startswith('chime_'):
+        return '报时 %d 点' % int(cue.split('_', 1)[1])
+    if re.fullmatch(r'main_\d+', cue):
+        return '秘书舰台词 %s' % cue.split('_', 1)[1]
+    return NPC_LABELS.get(cue) or (CUE2CAT.get(cue) or {}).get('label') or cue
+
+
+def load_npc_voice_table():
+    """`inputs/gamecfg/npc_voice.json`（47 号脚本从 secretary_special_ship 发布）。缺表就返回空。"""
+    p = os.path.join(ROOT, 'inputs', 'gamecfg', 'npc_voice.json')
+    return json.load(open(p, encoding='utf-8')) if os.path.exists(p) else {}
+
+
+def npc_entry(cv, names, rel):
+    """一个秘书舰形态 → 一条皮肤语音映射。
+
+    ⚠️ **不复用 `build_entry`**：那条路径把 `main_1..5` 当成"皮肤 1..5 的档位"、
+    把 `chime_0..23` 经 `split_cue` 判成"第 N 个皮肤的 chime"⇒ 24 条报时会折叠成 1 条。
+    秘书舰包是**一个形态一个包**，包内每条 cue 就是一句独立台词，直接平铺。
+    `l2d`/`tap` 留空：这些立绘没有 Live2D 模型，"点画面出声"那条链对它们不存在（不假装）。
+    """
+    lines = [{'cat': n, 'label': npc_label(n), 'f': rel(cv, n)} for n in sorted(names)]
+    return {'cv': cv, 'idx': 0, 'src': 'npc', 'l2d': {}, 'tap': {}, 'lines': lines}
+
+
 def run(skin_keys, mode, out_audio, map_path, jobs, skip_done=False):
     rows = load_skin_rows()
     banks = banks_on_disk()
@@ -532,6 +566,47 @@ def run(skin_keys, mode, out_audio, map_path, jobs, skip_done=False):
             unknown_all[n] += 1
         if ent['lines']:
             map_out[k] = ent
+    # ---------- 秘书舰 NPC（领航员-TB / 领洋者-娜比娅 / 探索者-艾普洛）----------
+    # 包号来自 `secretary_special_ship` 的 `voice` 列（cv-1000..cv-3300 共 13 个）。
+    # 这 41 张立绘**不在皮肤表里** ⇒ 上面「皮肤行 → ship_group → 包号」那条取包路径完全看不到它们，
+    # 所以它们一直是"无声无词"——不是没有音频，是从来没人去解那 13 个包。
+    # 本段只往 map_out 里加自己那 41 个键；`skin_keys` 不含它们 ⇒ 本轮的撤回逻辑不会误伤。
+    npc_tab = load_npc_voice_table()
+    npc_added, npc_cue = 0, 0
+    if npc_tab and mode != 'probe':
+        need_npc = sorted({int(str(r['voice_pack']).split('-')[1])
+                           for r in npc_tab.values() if str(r.get('voice_pack') or '').startswith('cv-')})
+        for cv in need_npc:
+            if cv in cue_sets:
+                continue
+            if cv not in banks:
+                print('  !! 秘书舰语音包缺源: cv-%d.b（源包目录 %s）' % (cv, CUE_DIR))
+                continue
+            _, names = process_bank(cv, banks[cv], out_audio, skip_done)
+            cue_sets[cv] = names
+        for stem, r in sorted(npc_tab.items()):
+            vp = str(r.get('voice_pack') or '')
+            if not vp.startswith('cv-'):
+                continue
+            names = cue_sets.get(int(vp.split('-')[1])) or []
+            ent = npc_entry(int(vp.split('-')[1]), names, rel)
+            if ent['lines']:
+                map_out[stem] = ent
+                npc_added += 1
+                npc_cue += len(ent['lines'])
+        print('秘书舰 NPC：解码 %d 包 → %d 张立绘挂上语音，台词条目 %d 条'
+              % (len(need_npc), npc_added, npc_cue))
+        if npc_added:
+            chk = map_out.get('linghangyuan1_2') or {}
+            # ⚠️ 必须对着**本轮实际落盘的目录**量：`--sample` 模式产物在 .diag/_cv/CV2 下，
+            #    写死 Output/ 会把 44 条全部误报成"磁盘缺文件"（本轮真撞到过一次）。
+            have = [l['f'] for l in chk.get('lines') or []]
+            gone = [f for f in have
+                    if not os.path.exists(os.path.join(out_audio, f.split('CV2/', 1)[-1]))]
+            print('  抽查 linghangyuan1_2：台词 %d 条，磁盘缺文件 %d 条%s'
+                  % (len(have), len(gone), ('：' + ', '.join(gone[:4])) if gone else ''))
+            if gone:
+                return 2
     print('映射 %d 皮肤 | 可点击(有触摸) %d | 台词条目 %d | 未识别 cue 种类 %d'
           % (len(map_out), sum(1 for e in map_out.values() if e['tap']),
              sum(len(e['lines']) for e in map_out.values()), len(unknown_all)))

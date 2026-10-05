@@ -10,13 +10,16 @@ category 分好了**，并且秘书舰三族是**三张各自有名字的卡**�
   起服务：py -3 scripts/diag/run_detached.py --log .diag/_srv.log -- \
           py -3 Output/gallery_v2/_gallery_server.py
 
-六条判据（任一不满足退出码 1）：
+九条判据（任一不满足退出码 1）：
   1 档位条恰好 4 个按钮，文案是 全部 / 舰船 / 剧情角色 / 其他（旧的剪影、特殊形态必须消失）
   2 计数自洽：全部 == 舰船 + 剧情角色 + 其他（"报一个点不到的数"就是这条要拦的）
   3 「其他」档里能数到 npc 前缀卡与 `· 剧情剪影` 伪卡，且**没有**秘书舰角色卡
   4 「剧情角色」档里 领航员-TB / 领洋者-娜比娅 / 探索者-艾普洛 是三张独立卡、各有 ≥10 皮肤
   5 三张卡的皮肤数与索引一致（防止前端合并时把皮肤整批丢掉）
   6 页面上的卡总数 == 索引三档之和（数据与渲染同源核对）
+  7 三张秘书舰卡的船级语音数 > 0
+  8 台词对应的 ogg 走 HTTP 真取得到（200 且 >1KB），不是"路径写上了"
+  9 台词正文已并入 skin_words（≥10 条、无未展开 {namecode}）
 """
 import argparse
 import json
@@ -104,6 +107,37 @@ def main():
         chk('6 页面卡总数 == 索引三档条目之和',
             total == idx['ships'] + idx['silhouettes'] + idx['variants'],
             f'{total} vs {idx["ships"]}+{idx["silhouettes"]}+{idx["variants"]}')
+
+        # ---------- 秘书舰语音与台词（P4b）：必须真取到字节，不是"路径写上了" ----------
+        import urllib.request
+        from gallery_ui_shots import BASE
+        vp = json.loads(pg.ev(EV(
+            "return JSON.stringify(window.GALLERY.ships"
+            ".filter(s=>['tbniang','lingyangzhe32_3','tansuozhe32_3'].includes(s.id))"
+            ".map(s=>[s.name,s.voiceCount]))")))
+        chk('7 三张秘书舰卡船级语音数 > 0',
+            all(int(n or 0) > 0 for _, n in vp), str(vp))
+        sv = json.loads(urllib.request.urlopen(f'{BASE}/skin_voice.json', timeout=20).read()
+                        .decode('utf-8'))
+        ent = sv.get('linghangyuan1_2') or {}
+        files = [l['f'] for l in (ent.get('lines') or [])][:3]
+        got = []
+        for f in files:
+            u = f'{BASE}/../{f}'.replace('\\', '/')
+            try:
+                with urllib.request.urlopen(u, timeout=20) as r:
+                    got.append((f.rsplit('/', 1)[1], r.status, len(r.read())))
+            except Exception as e:
+                got.append((f, 'ERR', str(e)[:40]))
+        ok_audio = len(got) == 3 and all(s == 200 and n > 1024 for _, s, n in got)
+        chk('8 台词对应的 ogg 真的取得到（HTTP 200 且 >1KB）', ok_audio, str(got[:3]))
+        sw = json.loads(urllib.request.urlopen(f'{BASE}/skin_words.json', timeout=30).read()
+                        .decode('utf-8'))
+        key = sw.get('m', {}).get('linghangyuan1_2')
+        lines = (sw.get('w', {}).get(key) or {}) if key else {}
+        chk('9 台词正文已并入（linghangyuan1_2 ≥10 条且无未展开占位符）',
+            len(lines) >= 10 and not any('{namecode' in t for t in lines.values()),
+            f'{key} → {len(lines)} 条')
         print('\n索引 counts: ship %s / story %s / other %s'
               % (idx.get('ship'), idx.get('story'), idx.get('other')))
     finally:

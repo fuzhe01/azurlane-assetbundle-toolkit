@@ -700,6 +700,9 @@ for sh in ship_list:
 ship_list = [sh for sh in ship_list if sh['skins']]
 for card in sec_cards.values():
     card['skins'].sort(key=lambda s: (NPC_TAB.get(s['key'], {}).get('group', 0), s['key']))
+    # 船级语音数必须在**并完皮肤之后**重算：建卡那一刻 skins 还是空的，
+    # 沿用创建时的 0 会让这三张卡在页面上继续显示"无语音"（实测 with_voice 一次都没动）。
+    card['voiceCount'] = ship_voice_count(card)
     ships[card['id']] = card
     ship_list.append(card)
 print('[i] 秘书舰 NPC：%d 条皮肤已并回 %d 张角色卡（%s），%d 条认不出角色退回剪影档 %s'

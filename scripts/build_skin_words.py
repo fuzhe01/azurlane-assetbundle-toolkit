@@ -238,6 +238,41 @@ def build(voice, words, alias, group2cat, cv_tbl, rows_by_painting, gallery_keys
     return m, w, labels, st, audit
 
 
+def merge_npc_words(m, w, L):
+    """把秘书舰 NPC 的台词正文并进 `skin_words.json`（领航员-TB / 领洋者-娜比娅 / 探索者-艾普洛）。
+
+    它们不在 `ship_skin_words` 里（那张表按**皮肤行主键**索引，而这三族的立绘在皮肤表里
+    根本没有行）⇒ 正文只能从 `inputs/gamecfg/npc_voice.json`（47 号脚本从
+    `secretary_special_ship` 发布）这一路进来。
+
+    ⚠️ 键空间必须与真皮肤行主键**不相交**：`m` 的值是皮肤行 id（6~8 位数字），
+    这里一律加 `npc` 前缀（`npc1002`），并逐条断言不撞车——撞了就是把某艘真船的
+    正文悄悄换成了领航员的话。
+    """
+    p = os.path.join(ROOT, 'inputs', 'gamecfg', 'npc_voice.json')
+    if not os.path.exists(p):
+        print('!! 缺 inputs/gamecfg/npc_voice.json，秘书舰台词不并入（跑 47_publish_npc_voice.py）')
+        return 0, 0
+    tab = json.load(open(p, encoding='utf-8'))
+    import extract_cv_voice as EV          # cue→中文标签 的唯一实现（不许在这里再写一份）
+    used = set(w)
+    added = lines_total = 0
+    for stem, r in sorted(tab.items()):
+        key = 'npc%s' % r['row_id']
+        assert key not in used, '键空间撞车：%s 已被真皮肤行主键占用' % key
+        lines = {c: t for c, t in (r.get('lines') or {}).items() if t}
+        if not lines:
+            continue
+        m[stem] = key
+        w[key] = lines
+        used.add(key)
+        added += 1
+        lines_total += len(lines)
+        for c in lines:
+            L.setdefault(c, EV.npc_label(c))
+    return added, lines_total
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--voice', default=DEF_VOICE)
@@ -260,6 +295,9 @@ def main():
         raise SystemExit('台词里还有 %d 处 {namecode} 没展开（%d 行受影响）——'
                          'name_code 表与 ship_skin_words 不同版本？重跑 tools/sharecfg_re/46_publish_name_code.py'
                          % (st['占位符未展开'], left))
+    npc_added, npc_lines = merge_npc_words(m, w, labels)
+    print('秘书舰 NPC：并入 %d 张立绘的台词，正文 %d 条'
+          '（键空间一律加 npc 前缀，与真皮肤行主键断言不相交）' % (npc_added, npc_lines))
     blob = json.dumps({'gen': datetime.date.today().isoformat(), 'm': m, 'w': w, 'L': labels},
                       ensure_ascii=False, sort_keys=True, separators=(',', ':'))
     print('语音表皮肤 %d | 配上正文 %d | 无正文行 %d | 正文键 %d 个（皮肤行 id 去重后）'
