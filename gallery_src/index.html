@@ -1765,8 +1765,11 @@ async function startSpine(s, sk){
      if(!r.ok) throw new Error('缺 parts.json（先跑 py -3 scripts/extract_spine_v2.py --parts-only 补）');
      for(const l of ((await r.json()).layers||[])) pcfg[l.layer]=l;}
     const layers=[]; let loadFail=0;
-    for(const pn of parts){ try{ layers.push(await loadPart(pn,pcfg[pn])); if(my.cancelled)return; }catch(e){ loadFail++; console.warn('part fail',pn,e); } }
+    for(const pn of parts){ try{ const L=await loadPart(pn,pcfg[pn]); L.name=pn; layers.push(L); if(my.cancelled)return; }catch(e){ loadFail++; console.warn('part fail',pn,e); } }
     if(!layers.length)throw new Error('部件加载失败（'+parts.join(',')+'）');
+    /* 诊断出口：逐层隔离截图（`scripts/diag/spine_layer_isolate.py`）——
+       回答「画面里这块东西到底是哪一层画的」。判取景之前先看这个，别再看整图猜。 */
+    window.__spLayers=layers;
 
     let camX=0,camY=0,zoom=1,base1=1,playing=true,last=performance.now();
     /* 视角记忆：camX/camY 是世界坐标、zoom 无量纲 ⇒ 天然与画布尺寸无关，直接原样存 */
@@ -1827,11 +1830,55 @@ async function startSpine(s, sk){
         if(x1<x0||y1<y0)continue;
         arr.push({a,col,r:[x0,y0,x1,y1]});
       } return arr; }
-    let frameBox=null;
-    function computeFrameBox(){ let cur=[]; layers.forEach(L=>{ try{ cur=cur.concat(extents(L)); }catch(e){} });
-      const union=(list)=>{ if(!list.length)return null; const r=[1e9,1e9,-1e9,-1e9];
+    const union=(list)=>{ if(!list.length)return null; const r=[1e9,1e9,-1e9,-1e9];
         for(const e of list){ if(e.r[0]<r[0])r[0]=e.r[0]; if(e.r[1]<r[1])r[1]=e.r[1];
                               if(e.r[2]>r[2])r[2]=e.r[2]; if(e.r[3]>r[3])r[3]=e.r[3]; } return r; };
+    /* ---------- 层级剔除：包裹式背景巨幕（2026-10-05，§105 / tianjinfeng_2 缺件真因）----------
+       取景框历来是「所有层的附件顶点取并集」，所以只要有一层是美术铺的**背景板**，
+       框就被它撑爆 —— 角色缩成中央一小块，看上去像「躯干/下肢/狐尾整块没渲染」。
+       实测 `tianjinfeng_2`（五层 / normal 动画，`node scripts/diag/skel_layers_report.js` 量出）：
+         主层 162槽 92附件 4670顶点  [319,-205,1689,1454]      1371×1659   ← 角色
+         2B2   12槽  1附件    4顶点  [-3090,-2729,3910,4278]    7000×7007  ★ 背景巨幕
+         2B    44槽  4附件    0顶点  (空)
+         2M   209槽 79附件 2276顶点  [-516,-292,934,1722]       1450×2014   ← 另一个她（美术刻意，不剔）
+         2T   390槽114附件  436顶点  [-499,488,621,2773]        1120×2285
+       五层并集 = **7000×7007**；去掉 2B2 后 = **2205×3065** ⇒ 角色放大约 3 倍。
+       ⚠️ 为什么前面几轮的三条判据都救不了它（别再往那些方向改）：
+         · `inksOf`（§45/§46）只剥「不落笔的纯色板」—— 2B2 真的画了一整个菱形房间，**有内容**；
+         · 离群剔除（§97）只剔「又远又大」的件 —— 2B2 **包住一切、并不远离**，永远剔不掉；
+         · 像素级二次构图只读 alpha —— 菱形是不透明且铺满画面，frac≈1，直接跳过不动。
+       ⇒「这是背景」这件事写在**层名后缀**里（B/2B2 = background、M = 中景、T = 前景），
+         所以只能在**层**这个粒度上判。判据两条 **AND**，缺一不可（宁可漏剔，不可错剔）：
+         ① 该层附件数 ≤ 8 —— 角色层不可能只有几个附件（全库角色层最少也有几十个）；
+         ② 该层包围盒面积 ≥ 4 × 其余层并集面积 —— 必须真的「包住」别人，才算巨幕。
+       剔完至少还剩一层才执行；否则整段跳过，退回原行为。 */
+    let frameBox=null, frameDropped=[];
+    function dropBackdropLayers(per){
+      const drop=[];
+      for(const g of per){
+        if(!g.box||g.list.length>8) continue;                 // ① 只有"薄层"才可能是背景板
+        let ox0=1e9,oy0=1e9,ox1=-1e9,oy1=-1e9,any=false;
+        for(const u of per){ if(u===g||!u.box) continue; any=true;
+          ox0=Math.min(ox0,u.box[0]); oy0=Math.min(oy0,u.box[1]);
+          ox1=Math.max(ox1,u.box[2]); oy1=Math.max(oy1,u.box[3]); }
+        if(!any) continue;                                    // 全场只有它一层 → 不判
+        const ow=ox1-ox0, oh=oy1-oy0; if(!(ow>0&&oh>0)) continue;
+        const ga=(g.box[2]-g.box[0])*(g.box[3]-g.box[1]);
+        if(ga >= 4*ow*oh) drop.push(g);                       // ② 面积 4 倍于其余层并集
+      }
+      if(!drop.length || per.length-drop.length<1) return [];  // 会剔光 → 不动
+      return drop;
+    }
+    let framePer=[];
+    function computeFrameBox(){
+      const per=[]; layers.forEach(L=>{ try{ const l=extents(L); per.push({name:L.name||'', list:l, box:union(l)}); }catch(e){} });
+      const drop=dropBackdropLayers(per);
+      framePer=per.map(g=>({name:g.name, n:g.list.length, box:g.box&&g.box.map(x=>Math.round(x)),
+                            drop:drop.indexOf(g)>=0}));
+      frameDropped=drop.map(g=>g.name);
+      if(frameDropped.length) console.info('[取景] 剔除背景巨幕层:', frameDropped.join('、'));
+      let cur=[];
+      for(const g of per){ if(drop.indexOf(g)<0) cur=cur.concat(g.list); }
       let box=union(cur);
       for(let round=0;round<6&&box;round++){ const w=box[2]-box[0], h=box[3]-box[1], T=Math.max(w,h)*0.02;
         const kill=new Set(cur.filter(e=> (e.r[0]<=box[0]+T||e.r[1]<=box[1]+T||e.r[2]>=box[2]-T||e.r[3]>=box[3]-T)
@@ -1841,6 +1888,12 @@ async function startSpine(s, sk){
         if(!nb)break;                       // 全剥光就保留上一轮的框（实测 yunlong_3 会走到这里）
         cur=rest; box=nb; }
       frameBox=box; }
+    /* 取景诊断出口：挂在 window 上供 `scripts/diag/spine_frame_info.py` 免猜读取
+       （改取景判据时先看这几个数，别再看截图猜 —— 见 §105 的教训）。 */
+    window.__frameInfo=()=>({dropped:frameDropped.slice(), box:frameBox&&frameBox.map(x=>Math.round(x)),
+      camX:+camX.toFixed(1), camY:+camY.toFixed(1), base1:+base1.toFixed(5), zoom:+zoom.toFixed(4),
+      didPixelFit, pendingPixelFit, W:cv.width, H:cv.height,
+      cssW:cv.clientWidth, cssH:cv.clientHeight, cz:+scene.camera.zoom.toFixed(5), per:framePer});
     /* ⚠️ **像素级二次构图**（2026-10-04，§98 —— 天津风皮肤2「缺部件」的真正修法）。
        为什么顶点包围盒不够：各层的**坐标系互不重合**，并起来是个巨框。
        `tianjinfeng_2` 五层在 `normal` 动画下的 bbox 实测：
@@ -1859,33 +1912,32 @@ async function startSpine(s, sk){
       const W=cv.width,H=cv.height;
       if(!W||!H) return;
       const px=new Uint8Array(W*H*4);
-      try{ gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,px); }catch(e){ return; }
+      try{ gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,px); }
+      catch(e){ if(++pixelFitTries<PIXEL_FIT_MAX_TRIES) pendingPixelFit=true; return; }
       let x0=W,y0=H,x1=-1,y1=-1;
-      /* 判据：**不透明纯色填充 = 画布留白**（与导出页 `contentBBox()` 逐字同源）。
-         为什么必须加（2026-10-04 天津风皮肤2 实测）：菱形背景那层是**不透明**的
-         （菱形外四角实测 (12,18,28)/(7,21,30)/(27,21,36)/(8,21,31)，alpha 全 255），
-         只判 `alpha>8` 会把整块画布算成内容 ⇒ frac=1.00 ≥ 0.82 ⇒ 二次构图被跳过
-         ⇒ 菱形外四个角（约三成面积）留在画面里。
-         ⚠️ **不能用绝对亮度**：该皮肤整体是暗调 roomscape，实测 **79.6% 的像素
-         max(r,g,b) < 40** —— 用「亮度<40 算留白」会把角色暗部一起裁掉（真踩过：
-         换入后角色几乎消失、已回滚）。纯色填充的可靠特征是**局部零纹理**：
-         黑边区域相邻差 0.00、菱形内 11.83。 */
-      const RUN=24;                  // 连续多少像素完全相同才算纯色填充
-      for(let y=0;y<H;y++){ const row=(H-1-y)*W;
-        for(let x=0;x<W;x++){ const o=(row+x)*4;
-          if(px[o+3]<=8)continue;                              // 全透明：留白
-          let flat=true;
-          for(let k=1;k<RUN&&x+k<W;k++){ const o2=o+k*4;
-            if(px[o]!==px[o2]||px[o+1]!==px[o2+1]||px[o+2]!==px[o2+2]||px[o+3]!==px[o2+3]){flat=false;break;} }
-          if(flat && x+RUN<W) continue;                        // 纯色：也是留白
-          if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } }
-      if(x1<=x0||y1<=y0) return;
+      /* 判据：alpha > 8（**恢复 §98 原样**）。
+         ⚠️ 2026-10-05 两次踩坑记录，别再改这条：
+         ① 试过加「不透明近黑 = 留白」（max(r,g,b)<40）⇒ 该皮肤整体暗调、
+            **79.6% 像素都低于 40** ⇒ 角色暗部被一起裁掉，换入后角色几乎消失。已回滚。
+         ② 试过加「局部纯色 = 留白」（连续 24 像素完全同色）⇒ 菱形内部有大片
+            **平滑渐变**（地板/墙面过渡）被判成留白 ⇒ 框缩到只剩高光处、角色被裁。
+            实测画面只剩房间与笼子、角色几乎不可见。已回滚。
+         ⇒ 结论：**没有可靠的像素级判据能区分「留白」与「深色内容」**。
+         菱形外那圈黑边属于美术构图的组成部分（正式产物 CG 一直如此），
+             就让它留在取景框里 —— 宁可留黑边，不要裁内容。 */
+      if(x1<=x0||y1<=y0){                                  // 还没画完 → 下一帧再试（有次数上限）
+        if(++pixelFitTries<PIXEL_FIT_MAX_TRIES) pendingPixelFit=true; return; }
       /* 判据与阈值**照抄导出页** `cg_export.html` 的 `contentBBox()` 二次构图
          （`if(frac<0.82)` + `zoom=Math.max(两轴)*pad`）—— 那套已产出 234 张正常 CG，
          不要自己另立一套：先写 `frac>0.9 才不重构` 会让「内容分散」的皮肤被过度放大
          （实测 tianjinfeng_2 前景角色被撑到占满画面）。 */
       const frac=((x1-x0+1)*(y1-y0+1))/(W*H);
       if(frac>=0.82) return;                 // 内容本就占满画面，别再动（反向放大会抖）
+      /* 极小 frac = 这一帧还没画完（贴图在上传 / 动画刚起步），**不能**据此放大 ——
+         否则会把只有几笔的中间态当成全部内容，把画面撑爆。
+         同帧同步调用（2026-10-05 修）把这个前提变得可达，代价就是必须加这道保护。
+         阈值 0.02：万分之一是纯色遮罩那类巨幕（§45/§46 已在 inksOf 那边处理）。 */
+      if(frac<0.02){ pendingPixelFit=true; return; }   // 还没画完 → 下一帧再试
       const k=base1*zoom;                    // 与 frame() 里 camera.zoom=1/k 同一套
       const ccx=(x0+x1)/2, ccy=(y0+y1)/2;
       camX = camX + (ccx-W/2)/k;
@@ -1897,13 +1949,28 @@ async function startSpine(s, sk){
       const wy1=camY+(y1-H/2)/nk, wy0=camY+(y0-H/2)/nk;
       frameBox=[Math.min(wx0,wx1),Math.min(wy0,wy1),Math.max(wx0,wx1),Math.max(wy0,wy1)];
       didPixelFit=true;                       // 已定案，别让 invalidateFit 立刻又触发
+      pendingPixelFit=false;
     }
     /* 像素级构图要在**每次取景框变化后**都重跑，否则「复位」按钮会把画面缩回
        顶点巨框（实测：像素级构图后角色完整 → 点复位 → 只剩袖/狐尾/帽子）。
-       所以 fit() 之后统一把 didPixelFit 清掉，由下一帧重新校正。
-       帧循环里 `setTimeout(pixelFit,80)` 保证在 draw 之后读像素（同帧 backbuffer 才有效）。 */
+       所以 fit()/resize() 之后统一把 didPixelFit 清掉，由下一帧重新校正。
+       ⚠️ 2026-10-05：帧循环里改成**同帧同步** `pixelFit()`（原 `setTimeout(...,80)`
+       推到下一帧 ⇒ readPixels 读到空白 ⇒ 二次构图从不生效，用户实机仍见缺件）。
+       同帧调用的另一个前提是「那一帧已经把要画的东西画完了」：贴图未上传完时落笔很少，
+       frac 会小到触发过度放大。所以 pixelFit 里对 frac 极小的情况直接跳过，等下一帧。 */
     let didPixelFit=false;
-    function invalidateFit(){ didPixelFit=false; }
+    /* pixelFit 发现「这一帧还没画完」（贴图在上传 / 动画刚起步）时置位，
+       帧循环下一帧看到它就把 didPixelFit 清掉再试一次。
+       ⚠️ 缺了这个复位：didPixelFit 一旦被置 true 而 pixelFit 又提前返回，
+       构图就**永远不重跑** ⇒ 画面停在顶点巨框（2026-10-05 实测画面几乎全空）。
+       ⚠️ 2026-10-05 补上限：某些环境（实测 headless Chrome）`readPixels` **恒读到全空**，
+       而复位逻辑是个无上限的"下一帧再试" ⇒ 每帧都拷一整屏像素
+       （1634×1354×4 ≈ 8.8 MB/帧）却永远定不了案，白烧性能。
+       现在连续 PIXEL_FIT_MAX_TRIES 次读空就停手（取景退回顶点框，本来就是对的）。 */
+    let pendingPixelFit=false;
+    let pixelFitTries=0;
+    const PIXEL_FIT_MAX_TRIES=5;
+    function invalidateFit(){ didPixelFit=false; pixelFitTries=0; }
     /* SPINE_PAD：取景留白。原为 1.1（画面四周各空 5%，实测内容只占视口高 65%），
        收紧到 1.05 —— 再小就会在部件贴边时看着挤，且「复位 / 滚轮」都还在。 */
     const SPINE_PAD=1.05;
@@ -1914,7 +1981,7 @@ async function startSpine(s, sk){
     resize();
     // 动画：取各层「有时长」动画名并集（空占位 0 秒动画已过滤）
     const animUnion=[]; layers.forEach(L=>L.anims.forEach(a=>{if(animUnion.indexOf(a.name)<0)animUnion.push(a.name);}));
-    bar.innerHTML=`<label>动画</label><select id="spAnim"></select><label id="spSkinLbl" style="display:none">皮肤</label><select id="spSkin" style="display:none"></select><button id="spPlay">暂停</button><button id="spFit">复位</button><button id="spFull">全屏</button><span class="pill">${layers.length} 层部件${loadFail?' · '+loadFail+' 层失败':''}</span><span class="pill">滚轮缩放 · 拖拽平移</span>`;
+    bar.innerHTML=`<label>动画</label><select id="spAnim"></select><label id="spSkinLbl" style="display:none">皮肤</label><select id="spSkin" style="display:none"></select><button id="spPlay">暂停</button><button id="spFit">复位</button><button id="spFull">全屏</button><span class="pill" id="spParts">${layers.length} 层部件${loadFail?' · '+loadFail+' 层失败':''}</span><span class="pill">滚轮缩放 · 拖拽平移</span>`;
     document.getElementById('spFull').onclick=()=>{ if(document.fullscreenElement) document.exitFullscreen(); else viewEl.requestFullscreen().catch(()=>{}); };
     document.addEventListener('fullscreenchange', resize);
     const sel=document.getElementById('spAnim');
@@ -1964,10 +2031,18 @@ async function startSpine(s, sk){
       const dt=Math.min((now-last)/1000,.1);last=now;
       if(playing)layers.forEach(L=>{L.anim.update(dt);L.anim.apply(L.skeleton);L.skeleton.updateWorldTransform();});
       gl.clear(gl.COLOR_BUFFER_BIT); scene.camera.position.set(camX,camY,0); scene.camera.zoom=1/(base1*zoom); scene.camera.update(); scene.begin();
-      layers.forEach(L=>scene.drawSkeleton(L.skeleton,true)); scene.end();
-      /* 像素级二次构图（§98）：必须紧跟在这一帧的 draw 之后 —— 下一帧 gl 的
-         backbuffer 已被换掉，`readPixels` 只会读到空白。窗口尺寸稳定后再做。 */
-      if(!didPixelFit && cv.width>8){ didPixelFit=true; setTimeout(pixelFit,80); } }
+      /* `L.hidden` 是**诊断钩子**：`scripts/diag/spine_layer_isolate.py` 用它逐层隔离截图，
+         回答「画面里这块东西是谁画的」。正常路径永远是 undefined ⇒ 行为不变。 */
+      layers.forEach(L=>{ if(L.hidden!==true) scene.drawSkeleton(L.skeleton,true); }); scene.end();
+      /* 像素级二次构图（§98）：必须**同帧同步**读 —— 下一帧 gl 的 backbuffer 已被
+         换掉，`readPixels` 只会读到空白。窗口尺寸稳定后再做。
+         ⚠️ 2026-10-05 修：此处原是 `setTimeout(pixelFit,80)`，**恰好推到下一帧**，
+         等于永远读不到有效像素 ⇒ 二次构图从不生效，用户实机看到的仍是缺件
+         （只有一个被吊着的角色 + 大片空地板）。注释与代码自相矛盾了整整一轮。
+         那个 80ms 延迟原本想等贴图上传完，但那该由 `cv.width>8` 与动画 apply
+         顺序保证，**不能**用「推到下一帧」实现 —— 与 readPixels 的前提冲突。 */
+      if(pendingPixelFit){ pendingPixelFit=false; didPixelFit=false; }
+      if(!didPixelFit && cv.width>8){ didPixelFit=true; pixelFit(); } }
     /* ⚠️ 必须先把**起始动画 apply 一次**再算取景框（2026-10-04，§98 / tianjinfeng_2 缺件）。
        `computeFrameBox()` 量的是 `skeleton` 的**当前**顶点，而 `setAnimation()` 只是把时间轴
        挂上去、**不 apply** —— 真正让附件出现要 `anim.update(0)+apply()`，那发生在下一帧的
@@ -1981,6 +2056,8 @@ async function startSpine(s, sk){
     layers.forEach(L=>{ try{ if(L.anim){ L.anim.update(0); L.anim.apply(L.skeleton); }
                             L.skeleton.updateWorldTransform(); }catch(e){} });
     computeFrameBox(); fit();
+    { const pill=document.getElementById('spParts');   // 剔了背景层要让用户看得见（否则像"没修"）
+      if(pill&&frameDropped.length) pill.textContent += ' · 取景不计背景层 '+frameDropped.join('/')+'（仍渲染）'; }
     (function(){ const m=vmemGet(vkey);   // 回到上次看这个皮肤时的机位（世界坐标，换窗口尺寸不错位）
       if(m && isFinite(m.camX) && isFinite(m.camY))
         { camX=m.camX; camY=m.camY; zoom=Math.max(.05, Math.min(60, m.zoom||1)); } })();

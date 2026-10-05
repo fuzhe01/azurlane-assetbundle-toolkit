@@ -6,14 +6,18 @@ import sys, os, json, time, subprocess, urllib.request, threading
 sys.stdout.reconfigure(encoding='utf-8')
 import websocket
 import sys as _p_sys, os as _p_os
-_p_sys.path.insert(0, _p_os.path.join(_p_os.path.dirname(_p_os.path.dirname(_p_os.path.abspath(__file__))), "scripts"))
+# ⚠️ 本文件在 scripts/diag/ 下，仓库根要**上溯三层**（scripts/diag/run_cg_export.py）。
+# 原来只上溯两层再 join "scripts" ⇒ 得到 scripts/scripts ⇒ `import paths` 直接 ModuleNotFoundError
+# （2026-10-05 修；脚本从 scripts/ 挪到 scripts/diag/ 时这行没跟着改）。
+_AL_ROOT = _p_os.path.dirname(_p_os.path.dirname(_p_os.path.dirname(_p_os.path.abspath(__file__))))
+_p_sys.path.insert(0, _p_os.path.join(_AL_ROOT, "scripts"))
 import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 
 
 def _chrome_fallback():
     raise SystemExit("找不到 Chrome：设环境变量 AL_CHROME 指向 chrome.exe 再跑")
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = _AL_ROOT
 CHROME = P.CHROME.replace(os.sep, "/") or _chrome_fallback()
 PORT = 9333
 DEBUG_DIR = os.path.join(ROOT, '.diag', 'chrome_cg_export')
@@ -31,6 +35,11 @@ if only:
 extra = arg('--extra', '')   # 透传给导出页的额外 query，如 --extra 'animFrame=1'
 if extra:
     url += '&' + extra
+# ⚠️ 破 HTTP 缓存：本脚本复用固定的 DEBUG_DIR profile，浏览器会把
+# `/gallery_v2/cg_export.html` 缓存住（只差 query 的 URL 命中同一条缓存）⇒
+# **改了页面却导出旧结果**，且两次跑产物 md5 一模一样，极易误判成"改动无效果"
+# （2026-10-05 实测踩到）。加个每次都不同的参数即可。
+url += '&_t=' + str(int(time.time()))
 if '--redo' in sys.argv:
     url += '&redo=1'
 

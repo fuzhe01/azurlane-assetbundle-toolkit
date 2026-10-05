@@ -225,6 +225,20 @@ function inksOf(a,col){
   }catch(e){}
   inkCache.set(key,hit); return hit;}
 
+/* ⚠️ 2026-10-05：**这里不做"层级剔除背景巨幕"**（弹窗 index.html 有做，别为了
+   "两边一致"搬过来）。取证方式与结论：
+     · 加进去跑 `run_cg_export.py --only tianjinfeng_2 --redo --extra 'tag=withdrop'`，
+       再回滚跑一次 `tag=nodrop`，两次产物 **md5 完全相同**
+       （74e59a6fdc32d9522f14bd8cf5cca1e5，清掉 profile 缓存后第三次跑仍相同）
+       ⇒ 这条判据对导出产物**零影响**，拿它换不来任何东西，只多一份要同步维护的代码。
+     · 为什么零影响：本页顶点框只决定**画布初始比例**，最终构图由下面 `contentBBox()`
+       的像素二次构图定；而像素二次构图在本页是**可靠**的（渲静止姿态 + `await sleep(30)`
+       等 GPU），它自己就能把"顶点框 7000、实际不透明内容 3884"的背景裁到实际内容。
+       弹窗那边像素二次构图**读不到像素**（动画在跑、贴图首帧才上传，实测恒读空），
+       只能靠顶点框 ⇒ 才需要事先把背景巨幕层剔出去。
+   ⇒ 判据属于"取景机制"，与机制绑定：两页机制不同，判据就不该一致。
+     门槛是「有没有实测收益」，不是「两边看起来一致」。
+     详细数据与判据见 index.html 的 `dropBackdropLayers` 注释（§105）。 */
 function framingBox(skeletons){let cur=[];
   for(const sk of skeletons) for(const slot of sk.slots){
     const a=slot.getAttachment(); if(!a||!slot.bone||!slot.bone.active)continue;
@@ -302,27 +316,14 @@ async function exportOne(job,longSide){
   // 二次构图：像素 alpha 包围盒（顶点包围盒会被超大半透明部件撑爆，如冒险号/阿拉曼什）
   function contentBBox(){
     const px=new Uint8Array(W*H*4); gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,px);
-    /* 判据：**不透明纯色填充 = 画布留白，不算内容**。
-       为什么必须加（2026-10-04 天津风皮肤2 实测）：菱形背景那层是**不透明**的
-       （菱形外四角实测 (12,18,28)/(7,21,30)/(27,21,36)/(8,21,31)，alpha 全 255），
-       只判 `alpha>8` 会把整块画布算成内容 ⇒ frac=1.00 ⇒ 二次构图被跳过
-       ⇒ 菱形外的四个角（约三成面积）留在成品里。
-       ⚠️ **判据不能用绝对亮度**：该皮肤整体是暗调 roomscape，实测 **79.6% 的像素
-       max(r,g,b) < 40** —— 用「亮度<40 算留白」会把角色的暗部一起裁掉（真踩过，
-       换入后角色几乎消失，已回滚）。纯色填充的可靠特征是**局部零纹理**：
-       与右邻、下邻的通道差全为 0。实测黑边区域相邻差 0.00、菱形内 11.83。
-       这里用「行内连续 N 个像素完全相同」判定，成片纯色才命中，角色暗部（有渐变/纹理）不会。 */
-    const RUN=24;                       // 连续多少像素完全相同才算纯色填充
     let x0=W,y0=H,x1=-1,y1=-1;
+    /* 判据：alpha > 8（**原样**）。
+       ⚠️ 2026-10-05 两次踩坑，别再改这条（与 index.html 的 pixelFit 同源同判据）：
+       ① 「不透明近黑=留白」（max(r,g,b)<40）⇒ 暗调皮肤 79.6% 像素都被判留白，裁掉角色。
+       ② 「局部纯色=留白」（连续 24 像素同色）⇒ 大片平滑渐变被判留白，裁掉角色。
+       ⇒ 没有可靠像素判据能区分留白与深色内容；宁可留黑边，不要裁内容。 */
     for(let y=0;y<H;y++){const row=(H-1-y)*W;
-      for(let x=0;x<W;x++){ const o=(row+x)*4;
-        if(px[o+3]<=8)continue;                                // 全透明：留白
-        // 纯色检测：向右看 RUN 个像素是否与本像素完全一致（全一致 ⇒ 纯色填充）
-        let flat=true;
-        for(let k=1;k<RUN&&x+k<W;k++){ const o2=o+k*4;
-          if(px[o]!==px[o2]||px[o+1]!==px[o2+1]||px[o+2]!==px[o2+2]||px[o+3]!==px[o2+3]){flat=false;break;} }
-        if(flat && x+RUN<W) continue;                          // 纯色：也是留白
-        if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } }
+      for(let x=0;x<W;x++){ if(px[(row+x)*4+3]>8){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } } }
     return x1<0?null:[x0,y0,x1,y1];
   }
   const bb=contentBBox();
