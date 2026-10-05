@@ -1867,7 +1867,22 @@ async function startSpine(s, sk){
          **不在贴图里，在 mesh 顶点形状里**（4 顶点 45° 方形）——贴图是一整张矩形房间图。 */
     let frameBox=null, frameDropped=[];
     function dropBackdropLayers(per){
+      /* "本体"判据（与 scanStableRange 同源）：层名===目录名；否则排除 _B/_B2 后缀后取
+         附件最多的。⚠️ 不能按 cov 排—— cov 最大往往是前景特效层（2T 有 276 个覆盖附件，
+         比本体 92 还多），用它会拿特效当角色。 */
+      const mainName=(()=>{
+        const n=per.find(g=>g.name===folder);
+        if(n) return n.name;
+        const nb=per.filter(g=>!/[Bb](\d*)$/.test(g.name||''));
+        return (nb.sort((a,b)=>(b.list.length-a.list.length))[0]||per[0]||{}).name; })();
       const drop=[];
+      for(const g of per){
+        if(g.name===mainName) continue;
+        /* 前景特效层（T 后缀）：只渲染，不计取景。实测 `tianjinfeng_2` 的 `2T`（红光/光点）
+           的 y 一直伸到 2773，把取景框从"本体∪2M"的 2205×**2014** 拉高到 2205×**3065**
+           —— 高了 52%，角色被压成只有一半大（用户拿官方立绘对照"少了人啊"就是这个观感）。 */
+        if(/[Tt](\d*)$/.test(g.name||'')) drop.push(g);
+      }
       for(const g of per){
         if(!g.box||g.list.length>8) continue;                 // ① 只有"薄层"才可能是背景板
         let ox0=1e9,oy0=1e9,ox1=-1e9,oy1=-1e9,any=false;
@@ -1886,6 +1901,9 @@ async function startSpine(s, sk){
     function computeFrameBox(){
       const per=[]; layers.forEach(L=>{ try{ const l=extents(L); per.push({name:L.name||'', list:l, box:union(l)}); }catch(e){} });
       const drop=dropBackdropLayers(per);
+      /* 给被剔层打标志：pixelFit 二次构图时要**临时藏起来**（否则它的 alpha 像素会把
+         画面重新拉大，把"只渲染不计取景"的效果抵消掉——见 pixelFit 里的临时隐藏逻辑） */
+      layers.forEach(L=>{ L.__frameDrop=drop.some(g=>g.name===L.name); });
       framePer=per.map(g=>({name:g.name, n:g.list.length, box:g.box&&g.box.map(x=>Math.round(x)),
                             drop:drop.indexOf(g)>=0}));
       frameDropped=drop.map(g=>g.name);
@@ -1943,6 +1961,17 @@ async function startSpine(s, sk){
     function pixelFit(){
       const W=cv.width,H=cv.height;
       if(!W||!H) return;
+      /* ⚠️ 先临时藏掉"只渲染不计取景"的层（`__frameDrop`），再读像素——
+         否则前景特效（如 `tianjinfeng_2` 的 `2T` 红光）的 alpha 像素会把画面重新拉大，
+         让"剔除 T 层让角色变大"的效果被这个二次构图整个抵消。
+         重画一次（不含被剔层）→ 读像素 → 恢复；只在 invalidateFit 后跑一次，成本可忽略。 */
+      const hid=[];
+      layers.forEach(L=>{ if(L.__frameDrop){ L.hidden=true; hid.push(L); } });
+      if(hid.length){ try{
+        gl.clear(gl.COLOR_BUFFER_BIT); scene.begin();
+        layers.forEach(L=>{ if(L.hidden!==true) scene.drawSkeleton(L.skeleton,true); });
+        scene.end(); }catch(e){} }
+      hid.forEach(L=>{ L.hidden=false; });
       const px=new Uint8Array(W*H*4);
       try{ gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,px); }
       catch(e){ if(++pixelFitTries<PIXEL_FIT_MAX_TRIES) pendingPixelFit=true; return; }
@@ -2028,7 +2057,16 @@ async function startSpine(s, sk){
     let playRange=null;
     function scanStableRange(animName){
       try{
-        const main=layers.slice().sort((a,b)=>(b.cov||0)-(a.cov||0))[0];
+        /* ⚠️ 主层必须选**本体**（层名与目录名相同），不能按 cov 排 —— cov 最大往往是
+           前景特效层（`tianjinfeng_2` 的 2T 有 276 个覆盖附件，比本体 92 还多），
+           用它算稳定段会把"特效"当"角色"，本体根本不在画面里（用户实机踩到）。
+           判据：优先层名===目录名；否则排除 _B/_B2 类背景层后取 cov 最大者。 */
+        const main=(()=>{
+          const byName=layers.find(L=>L.name===folder);
+          if(byName) return byName;
+          const nb=layers.filter(L=>!/[Bb](\d*)$/.test(L.name||''));
+          return nb.sort((a,b)=>(b.cov||0)-(a.cov||0))[0]||layers[0];
+        })();
         if(!main||!animName) return null;
         const an=(main.data.animations||[]).find(a=>(a.name||a)===animName);
         if(!an||!(an.duration>1)) return null;

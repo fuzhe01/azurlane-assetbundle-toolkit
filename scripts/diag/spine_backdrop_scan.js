@@ -22,9 +22,22 @@ const LIMIT = parseInt(arg('--limit', '0'), 10) || 0;
 const ONLY = (arg('--only', '') || '').split(',').map(s => s.trim()).filter(Boolean);
 const AS_JSON = argv.includes('--json');
 
-/** 与页面逐字一致的判据；返回被剔的层名数组 */
-function dropBackdropLayers(per) {
+/** 与页面逐字一致的判据（index.html `dropBackdropLayers`）；
+ *  返回被剔的层名数组。per 元素形如 {name, list, box}，folder 为目录名。 */
+function dropBackdropLayers(per, folder) {
+  /* "本体"判据：层名===目录名；否则排除 _B/_B2 后缀后取附件最多的。
+     ⚠️ 不能按 cov/附件数盲排——前景特效层（2T）的附件数往往比本体还多。 */
+  const mainName = (() => {
+    const n = per.find(g => g.name === folder);
+    if (n) return n.name;
+    const nb = per.filter(g => !/[Bb](\d*)$/.test(g.name || ''));
+    return (nb.sort((a, b) => (b.list.length - a.list.length))[0] || per[0] || {}).name; })();
   const drop = [];
+  for (const g of per) {
+    if (g.name === mainName) continue;
+    /* 前景特效层（T 后缀）：只渲染，不计取景（tianjinfeng_2 的 2T 把取景框高拉长 52%） */
+    if (/[Tt](\d*)$/.test(g.name || '')) drop.push(g);
+  }
   for (const g of per) {
     if (!g.box || g.list.length > 8) continue;               // ① 只有"薄层"才可能是背景板
     const others = per.filter(u => u !== g && u.box);
@@ -34,7 +47,7 @@ function dropBackdropLayers(per) {
     if (!(ow > 0 && oh > 0)) continue;
     if (L.areaOf(g.box) >= 4 * ow * oh) drop.push(g);         // ② 面积 4 倍于其余层并集
   }
-  if (!drop.length || per.length - drop.length < 1) return [];
+  if (!drop.length || per.length - drop.length < 1) return [];  // 会剔光 → 不动
   return drop;
 }
 
@@ -55,7 +68,7 @@ function main() {
     const rows = L.layerBoxes(path.join(SPINE, d), '', probe);
     if (!rows) continue;
     const per = rows.map(r => ({ name: r.name, list: new Array(r.n || 0), box: r.box, err: r.err }));
-    const drop = dropBackdropLayers(per);
+    const drop = dropBackdropLayers(per, d);
     if (!drop.length) continue;
     const names = drop.map(g => g.name);
     const all = L.unionBox(rows.filter(r => r.box).map(r => r.box));

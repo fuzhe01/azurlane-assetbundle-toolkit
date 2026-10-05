@@ -1,7 +1,7 @@
 ---
 name: spine-web-runtime-integration
 description: 在网页里集成 Spine 3.8 (spine-webgl) 运行时做动态立绘渲染与批量出图，覆盖 .skel/.json 骨架分流、atlas 多页加载、必须 setSkin（否则命名 skin 独有部件整块不显示）、setup pose 与动画第 0 帧是两种语义、相机视口与 fit 包围盒陷阱（含"恒不渲染的巨幕遮罩撑爆取景"与"不透明纯色黑底撑爆取景"两类，以及判据必须落在取景那一刻）、readPixels 在实时 viewer 里不可用、0 秒占位动画过滤、TDZ 变量遮蔽、无头 CDP 验收判据。当需要让 .skel/.atlas 模型在浏览器里动起来、反馈"模型缺胳膊少腿/比例怪/层加载失败/导出出来是中间一小块四周全黑"、或要批量渲染 Spine 立绘成 PNG 时使用。触发词：Spine 网页播放、spine-webgl、spine-all.js、SkeletonBinary、SkeletonJson、atlas 图集页、setSkin、皮肤、SceneRenderer、比例怪、缺下半身、部件不显示、setup pose、CG 导出、层失败、动态立绘渲染、骨骼动画截图、取景、包围盒、画面太小、只占中间一小块、四周全黑、fit。不适用于 AssetBundle 侧的 Spine 资源还原与页纹理补齐（那是 unity-assetbundle-painting-restore），也不适用于 Live2D 网页集成（live2d-web-runtime-integration）。
-version: 1.1.5
+version: 1.1.6
 ---
 
 # Spine 网页运行时集成与批量出图
@@ -381,6 +381,16 @@ Unity sprite 路径（背景贴图**拉伸铺满 root 画框**，没有菱形 me
 帧循环里 `if(range && track.trackTime >= range[1]) track.trackTime = range[0]`。
 ⚠️ 字段是 **`trackTime`**（spine-ts 3.8 没有 `time`，写 `tr.time` 恒 undefined、回绕永不触发）。
 全程稳定返回 `null` ⇒ 其它皮肤行为一字不变；换动画要重扫区间。
+
+⚠️ **"主层"判据不能用 cov/附件数盲排**：前景特效层（如 `tianjinfeng_2` 的 `2T`）的覆盖附件
+常常**比本体还多**（276 vs 92），按 cov 排会拿特效当角色。用"层名===目录名"优先，
+否则排除 `_B/_B2` 后缀后取附件最多者。
+
+⚠️ **前景特效层（T 后缀）只渲染不计取景**：它的特效（红光/光点）会把取景框拉高 52%、
+角色被压小。判据按"T 后缀且非本体"剔除即可，但**配套必须做两件事**：
+① 取景框计算时跳过它（与背景巨幕同一套 `dropBackdropLayers`）；
+② **pixelFit 二次构图时临时把它藏起来再读像素**——否则它的 alpha 像素会把画面重新拉大、
+   把"剔除"的效果整个抵消。
 
 ⚠️ **动画相位必须能精确控制才谈得上定案**：真实播放受帧率与 `dt` 钳制影响极大 ——
 headless 里"等 16 秒"实际只推进约 2 秒动画。给页面加 `__seekAnim(sec)`（1/30s 小步推进）、
