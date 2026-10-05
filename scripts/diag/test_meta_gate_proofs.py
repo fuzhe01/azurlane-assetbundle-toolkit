@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""闸门判据的反向对照测试：`row_backed()` 与 `dup_row_fix()`（正本在 ship_meta_authority_diff）。
+"""闸门判据的反向对照测试：`row_backed()` / `dup_row_fix()` / `majority_fix()` /
+`pair_tiebreak()` / `pair_rescue()`（正本都在 `ship_meta_authority_diff`）。
 
-为什么单独一个文件：这两条判据是受保护档(painting/suffix)允许被改动的**仅有的出口**。
+为什么单独一个文件：这些判据是受保护档(painting/suffix)允许被改动的**仅有的出口**。
 它们写错的方向是**放行回退**（换成更远/不存在的行、或把有 CV 的行换回剧情行也认），而正向跑一遍永远看不出来——
 只有把反向样本喂进去才知道它拦不拦。⇒ 每条都配一个"必须为 False"的对照。
 
@@ -147,6 +148,79 @@ CASES3 = [
 ]
 
 check('majority_fix', CASES3, call_maj)
-_n = len(CASES) + len(CASES2) + len(CASES3)
+
+# ---------- pair_tiebreak：众数并列时「min(id) 行 → id==基皮肤 配对行」的放行 ----------
+_ESSEX = {'id': 900406, 'name': '埃塞克斯·META', 'nationality': 97, 'type': 7, 'rarity': 5}
+_SARA = {'id': 900550, 'name': '萨拉托加·META', 'nationality': 97, 'type': 7, 'rarity': 5}
+_OTHER_T = {'id': 900551, 'name': '别船', 'nationality': 1, 'type': 7, 'rarity': 5}
+
+
+def call_tie(args):
+    t, g, base_id, prev, cur = args
+    return G.pair_tiebreak(t, g, base_id, prev, cur, _K)
+
+
+CASES4 = [
+    ('正向：组 900550 并列族内 min(id)=900406 → 配对行 id=900550（本轮真实改动）',
+     (('npcsalatuojia_alter', 'cn', '埃塞克斯·META', '萨拉托加·META'), 900550, 900550,
+      {900550: _ESSEX}, {900550: _SARA}), True),
+    ('反向：从配对行换回 min(id) 行，必须拦',
+     (('npcsalatuojia_alter', 'cn', '萨拉托加·META', '埃塞克斯·META'), 900550, 900550,
+      {900550: _SARA}, {900550: _ESSEX}), False),
+    ('新行不是配对行（id != 基皮肤 id）→ 这条不盖章',
+     (('x', 'cn', 'A', 'B'), 900550, 900550, {900550: _ESSEX}, {900550: _OTHER_T}), False),
+    ('两行三列不同 → 属于 majority_fix 的范围，这里不许重复盖章',
+     (('x', 'faction', '白鹰', 'META'), 900550, 900550,
+      {900550: _OTHER_T}, {900550: _SARA}), False),
+    ('根本没换行', (('x', 'cn', 'A', 'B'), 900550, 900550,
+                   {900550: _SARA}, {900550: _SARA}), False),
+    ('字段是 category（不走换行判据）',
+     (('x', 'category', 'story', 'ship'), 900550, 900550,
+      {900550: _ESSEX}, {900550: _SARA}), False),
+    ('这艘卡所属组查不到候选行（g=None）', (('x', 'cn', 'A', 'B'), None, None, {}, {}), False),
+]
+
+check('pair_tiebreak', CASES4, call_tie)
+
+# ---------- pair_rescue：组内查不到 stats 时「无舰级 → 同名 id 配对行」的放行 ----------
+_SKIN = {'id': 900406, 'painting': 'aisaikesi_alter', 'name': '埃塞克斯·META', 'ship_group': 900406}
+_STAT = {'id': 900406, 'name': '埃塞克斯·META', 'nationality': 97, 'type': 7, 'rarity': 5}
+_SKINID = {900406: _SKIN}
+_STATID = {900406: _STAT}
+_NEW = {'cn': '埃塞克斯·META', 'base_painting': 'aisaikesi_alter',
+         'stats_via': 'id_pair:900406', 'faction': 'META'}
+
+
+def call_pair(args):
+    t, new_e, old_e = args
+    return G.pair_rescue(t, new_e, old_e, _STATID, _SKINID, str)
+
+
+CASES5 = [
+    ('正向：阵营从无到有（本轮真实改动 aisaikesi_alter）',
+     (('aisaikesi_alter', 'faction', '', 'META'), _NEW, {'faction': ''}), True),
+    ('正向：category 随舰级行从 story 变 ship',
+     (('aisaikesi_alter', 'category', 'story', 'ship'), _NEW, {'faction': ''}), True),
+    ('反向：旧条目本来就有阵营却被换掉，必须拦',
+     (('aisaikesi_alter', 'faction', '白鹰', 'META'), _NEW, {'faction': '白鹰'}), False),
+    ('新条目没写 stats_via（不是走救援来的）',
+     (('aisaikesi_alter', 'faction', '', 'META'),
+      {**_NEW, 'stats_via': ''}, {'faction': ''}), False),
+    ('stats_via 指向盘上不存在的行',
+     (('aisaikesi_alter', 'faction', '', 'META'),
+      {**_NEW, 'stats_via': 'id_pair:999999'}, {'faction': ''}), False),
+    ('配对皮肤行的 painting 与本条 base_painting 不同（张冠李戴）',
+     (('aisaikesi_alter', 'faction', '', 'META'),
+      {**_NEW, 'base_painting': 'salatuojia_alter'}, {'faction': ''}), False),
+    ('两侧 name 不相同（只剩 id 同号这一条，等于用号段大小当判据）',
+     (('aisaikesi_alter', 'faction', '', 'META'),
+      {**_NEW, 'cn': '别的东西'}, {'faction': ''}), False),
+    ('字段是 base_painting（换 base 走 row_backed）',
+     (('aisaikesi_alter', 'base_painting', 'aisaikesi', 'aisaikesi_alter'),
+      _NEW, {'faction': ''}), False),
+]
+
+check('pair_rescue', CASES5, call_pair)
+_n = len(CASES) + len(CASES2) + len(CASES3) + len(CASES4) + len(CASES5)
 print('\n%s 判据反向对照 %d/%d' % ('[PASS]' if not fails else '[FAIL]', _n - fails, _n))
 sys.exit(1 if fails else 0)

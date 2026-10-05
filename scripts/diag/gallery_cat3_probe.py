@@ -10,13 +10,17 @@ category 分好了**，并且秘书舰三族是**三张各自有名字的卡**�
   起服务：py -3 scripts/diag/run_detached.py --log .diag/_srv.log -- \
           py -3 Output/gallery_v2/_gallery_server.py
 
-九条判据（任一不满足退出码 1）：
+判据（任一不满足退出码 1）：
   1 档位条恰好 4 个按钮，文案是 全部 / 舰船 / 剧情角色 / 其他（旧的剪影、特殊形态必须消失）
   2 计数自洽：全部 == 舰船 + 剧情角色 + 其他（"报一个点不到的数"就是这条要拦的）
   3 「其他」档里能数到 npc 前缀卡与 `· 剧情剪影` 伪卡，且**没有**秘书舰角色卡
-  4 「剧情角色」档里 领航员-TB / 领洋者-娜比娅 / 探索者-艾普洛 是三张独立卡、各有 ≥10 皮肤
+  3d/3e/4b 索引里 root 带 `_dark` 的外迁条目恰好 10 条，且**只**出现在「其他」档（2026-10-05 归档）
+  4 三族是剧情角色档里的三张独立卡、各有 ≥10 皮肤
   5 三张卡的皮肤数与索引一致（防止前端合并时把皮肤整批丢掉）
   6 页面上的卡总数 == 索引三档之和（数据与渲染同源核对）
+  6b/6c/6d 「埃塞克斯·META」在「舰船」档里、`.tags` 里带 META 阵营与航母/超稀有（副标题只是
+     `<id> · N皮肤`，阵营看标签）、不再是宿主卡下的「· 改造」条目、
+     且舰船档 DOM 卡片数 == 按钮上的数（网格只渲染一部分时这条会红）
   7 三张秘书舰卡的船级语音数 > 0
   8 台词对应的 ogg 走 HTTP 真取得到（200 且 >1KB），不是"路径写上了"
   9 台词正文已并入 skin_words（≥10 条、无未展开 {namecode}）
@@ -90,11 +94,23 @@ def main():
         chk('3b 「其他」里有「· 剧情剪影」伪卡', '剧情剪影' in oth_txt)
         chk('3c 「其他」里**没有**秘书舰角色卡',
             not any(s in [n for n, _ in oth] for s in SEC))
+        # ---------- 2026-10-05：`_dark` 形态族归档，判据落在渲染出来的卡片标题上 ----------
+        dark = json.loads(pg.ev(EV(
+            "return JSON.stringify((window.GALLERY.variants||[])"
+            ".filter(v=>/_dark(_memory)?$/.test(v.root)).map(v=>v.root))")))
+        chk('3d 索引里 root 带 `_dark` 的外迁条目 == 10', len(dark) == 10, str(sorted(dark)))
+        in_oth = [k for k in dark if any(n.startswith(k) for n, _ in oth)]
+        chk('3e 这 10 条全部渲染在「其他」档网格里',
+            len(in_oth) == len(dark),
+            '%d/%d，未渲染: %s' % (len(in_oth), len(dark), sorted(set(dark) - set(in_oth))))
 
         click_tab(pg, 'story')
         st = {n: p for n, p in cards(pg)}
         got = {s: st.get(s) for s in SEC}
         chk('4 三族是剧情角色档里的三张独立卡', all(got.values()), str(list(got)))
+        chk('4b 「剧情角色」档里**一条 `_dark` 都没有**（改了归档判据就不能再留在这儿）',
+            not any(n.startswith(k) for n in st for k in dark),
+            str([n for n in st for k in dark if n.startswith(k)]))
         skin_n = json.loads(pg.ev(EV(
             "return JSON.stringify(Object.fromEntries(window.GALLERY.ships"
             ".filter(s=>['tbniang','lingyangzhe32_3','tansuozhe32_3'].includes(s.id))"
@@ -107,6 +123,24 @@ def main():
         chk('6 页面卡总数 == 索引三档条目之和',
             total == idx['ships'] + idx['silhouettes'] + idx['variants'],
             f'{total} vs {idx["ships"]}+{idx["silhouettes"]}+{idx["variants"]}')
+
+        # ---------- 2026-10-05：拿到 META 阵营才能独立成卡（`normalize()` 的 `_alter` 判据） ----------
+        click_tab(pg, 'ship')
+        shp = cards(pg)
+        ship_d = dict(shp)
+        # 卡片副标题是 `<id> · N皮肤`，阵营/舰种/稀有度在 `.tags` 里 —— 判 META 阵营只能看标签。
+        tags = pg.ev(EV("const c=[...document.querySelectorAll('#main .card')]"
+                        ".find(c=>c.querySelector('.nm').textContent.trim()===%s);"
+                        "return c?c.querySelector('.tags').textContent.replace(/\\s+/g,' ').trim():'(这张卡不在舰船档)'"
+                        % json.dumps('埃塞克斯·META', ensure_ascii=False)))
+        chk('6b 埃塞克斯·META 在「舰船」档里，标签带 META 阵营与航母/超稀有',
+            '埃塞克斯·META' in ship_d and 'META' in tags
+            and '航母' in tags and '超稀有' in tags, tags)
+        chk('6c 她不再是宿主卡下的「· 改造」外迁条目（剧情角色档里搜不到她）',
+            not any('埃塞克斯·META' in n for n in st),
+            str([n for n in st if '埃塞克斯' in n]))
+        chk('6d 舰船档 DOM 卡片数与档位按钮的数一致（防止网格只渲染一部分）',
+            len(shp) == nums.get('舰船', -1), '%d 张 vs 按钮 %s' % (len(shp), nums.get('舰船')))
 
         # ---------- 秘书舰语音与台词（P4b）：必须真取到字节，不是"路径写上了" ----------
         import urllib.request

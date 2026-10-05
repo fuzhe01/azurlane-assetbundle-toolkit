@@ -30,7 +30,11 @@ KEY = lambda r: (r.get('nationality'), r.get('type'), r.get('rarity'))
 
 
 def picks(skin, stats):
-    """复算 build_indexes 里的候选集，返回 group -> (min(id) 行, 众数代表行, 候选数, 众数支持度, 是否并列)。"""
+    """复算 build_indexes 里的候选集，返回 group -> (min(id) 行, 正本代表行, 候选数, 众数支持度, 是否并列)。
+
+    正本代表行 = `build_ship_meta.pick_stats_row()`（众数族 → 避开占位英文名 →
+    优先「id == 基皮肤 id」的配对行 → min(id)）。
+    """
     id2skin = {v['id']: v for v in skin.values() if 'id' in v}
     grp = collections.defaultdict(list)
     for x in stats.values():
@@ -49,11 +53,12 @@ def picks(skin, stats):
         cnt = collections.Counter(KEY(r) for r in cand)
         modal, n = cnt.most_common(1)[0]
         tie = sum(1 for v in cnt.values() if v == n) > 1
-        reps = [r for r in cand if KEY(r) == modal] or cand
-        # 与正本同步：众数族内避开占位 english_name（`simulation` / 空）
-        reps = [r for r in reps if str(r.get('english_name') or '').strip().lower()
-                not in ('', 'simulation')] or reps
-        out[g] = (cur, min(reps, key=lambda r: r['id']), len(cand), n, tie)
+        # 选行 import 正本 `pick_stats_row`（众数族 → 避开占位英文名 → 优先 id==基皮肤 的
+        # 配对行 → min(id)）；在这里手抄一份，下面那条「与正本选行一致」的自检就是橡皮章。
+        # `prev` 用 base_skin_id=None 关掉最后那一级，就是「配对行优先」加进来之前的规则，
+        # 用它把这一级单独改判的组数隔离出来。
+        out[g] = (cur, B.pick_stats_row(cand, None),
+                  B.pick_stats_row(cand, base_of.get(g)), len(cand), n, tie)
     return out
 
 
@@ -71,23 +76,28 @@ def main():
     p = picks(skin, stats)
     # 探针自己算的"众数代表行"必须与正本 `build_indexes` 实际选中的行**逐组相同**，
     # 否则这份影响面报告说的就不是真要跑的那条路径（判据不能只对着复刻逻辑成立）。
-    _p2s, _pci, sbg = B.build_indexes(skin, stats)
-    drift = [g for g, v in p.items() if sbg.get(g) is not None and sbg[g]['id'] != v[1]['id']]
-    diff = {g: v for g, v in p.items() if v[0]['id'] != v[1]['id']}
-    ties = {g for g, v in diff.items() if v[4]}
+    _p2s, _pci, sbg, _sbid = B.build_indexes(skin, stats)
+    drift = [g for g, v in p.items() if sbg.get(g) is not None and sbg[g]['id'] != v[2]['id']]
+    diff = {g: v for g, v in p.items() if v[0]['id'] != v[2]['id']}
+    ties = {g for g, v in diff.items() if v[5]}
+    # 「配对行优先」这一级单独带来的改判：上一级规则（众数族内 min(id)）与正本选行不同。
+    paired = {g: v for g, v in p.items() if v[1]['id'] != v[2]['id']}
 
-    print('全库组数 %d | min(id) 与众数代表行分歧 %d 组 | 其中众数并列(不改判) %d 组 | '
+    print('全库组数 %d | min(id) 与正本代表行分歧 %d 组 | 其中众数并列(不改判) %d 组 | '
           '与正本 build_indexes 选行不一致 %d 组（须为 0）'
           % (len(p), len(diff), len(ties), len(drift)))
+    print('  其中「id==基皮肤 配对行优先」改判 %d 组（须逐组看过）：' % len(paired))
+    for g, (cur, prev, new, nc, n, tie) in sorted(paired.items()):
+        print('     group %-8s %s  ->  %s' % (g, brief(prev), brief(new)))
     for g in drift[:10]:
-        print('   ! 正本选了 %s，探针算的是 %s' % (brief(sbg[g]), brief(p[g][1])))
-    for g, (cur, new, nc, n, tie) in sorted(diff.items()):
+        print('   ! 正本选了 %s，探针算的是 %s' % (brief(sbg[g]), brief(p[g][2])))
+    for g, (cur, prev, new, nc, n, tie) in sorted(diff.items()):
         print('  group %-8s 候选%d 众数支持%d%s\n     min(id): %s\n     众数代表: %s'
               % (g, nc, n, ' [并列]' if tie else '', brief(cur), brief(new)))
     for g in a.show:
         gg = int(g)
         if gg in p:
-            cur, new, nc, n, tie = p[gg]
+            cur, prev, new, nc, n, tie = p[gg]
             print('  -- 明细 group %s: 候选 %d 行' % (gg, nc))
             id2skin = {v['id']: v for v in skin.values() if 'id' in v}
             for x in stats.values():

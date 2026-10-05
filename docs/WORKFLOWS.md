@@ -2323,6 +2323,46 @@ CHROME_FLAGS = ['--disable-gpu', '--disable-gpu-compositing',
 `scripts/diag/{painting_dup_probe,stats_majority_probe,ship_meta_authority_diff,gallery_index_diff_check,test_meta_gate_proofs}.py`。
 相关：§56、§82、§95、§101、WF-15、WF-23。
 
+### WF-26 追加（2026-10-05）：跨表「同号配对」信号 —— 说"游戏里没有"之前先做未归属产物清点
+
+**什么时候用**：某个实体在管线里"查不到舰级字段 / 无阵营 / 无语音"，而你打算把它写成"游戏没给"。
+本轮就是先写了"这几张 META 卡没有自己的配音"，被用户否证后重查，发现 **2.3MB 的包一直躺在盘上**。
+
+**四步（顺序是硬性的）**
+1. **量原始产物集与已归属集的差**：`files/AssetBundles/cue/` 有 950 个 `cv-<号>`，`Output/Audio/CV2/`
+   只有 902 ⇒ 48 个包从来没导出。**差集非空就说明"没有"这个结论下早了。**
+2. **差集里每个号按四种身份回查全部权威表**：作为皮肤行 id / 作为 `ship_group` / 作为 `stats.id` /
+   作为 `ship_data_group.group_type`。⚠️ 已发布的 `inputs/gamecfg/` 只有 8 个文件，**全量证据在
+   `.diag/sharecfg_re/lua_json/`（773 张，那是可清理区）** —— 查完必须把结论落进 docs 或补发布脚本，
+   不许只留在临时区。
+3. **看号段邻居**：META 组是 `970` + 三位系列号，9701 系列在我们表里排到 `970112`，
+   于是 `970113` 就是"下一位新 META"——`fleet_tech_ship_class.json` 里直接写着 **`灵敏·META`**。
+   号段邻居能告诉你"缺的是哪一格"，而不只是"缺"。
+4. **把结论分成三类，别混**：① 数据在、我们的桥走不到（本轮：缺 `ship_skin_template` 一行）；
+   ② 数据在我们手上根本没有（要重新拉）；③ 游戏里真没有（要给出反向证据，比如整号段无邻居空位）。
+
+**配对信号本身怎么用**（本轮的修法）：900xxx 段游戏约定 **`ship_data_statistics.id == ship_skin_template.id`**
+（`qiye_dark` 两侧都是 900072/900135）。它当两个用途：组查不到 stats 时的**救援**、众数并列时的 **tie-break**。
+两条都是单向判据（`pair_rescue` / `pair_tiebreak`），且必须放模块级供反向对照测试跑（`test_meta_gate_proofs.py`）。
+
+**判据**
+- **救援集 ≠ 落到元数据**：本轮救援集 53 条，其中 51 条**惰性**（同一 painting 另有被 `painting2skin`
+  选中的行）。分档判据是「该 painting 被选中的正是这一行」；探针要给 `--max-gain`（生效条数上限），
+  只报总数等于没报。
+- 探针必须带**逐条放宽的阴性对照**：`nationality` 那条放宽后 53→53（冗余，只是保险），
+  真在裁的是「同名」198→53 与「组内无 stats」111→53 —— 写出来才知道哪条判据在干活。
+
+**踩坑**
+- ⚠️ 别把"我们的表里没有"讲成"游戏里没有"。说这句话之前先跑第 1 步的差集，成本 5 秒。
+- ⚠️ 判据函数在探针/闸门里**手抄一份**，那条"复算 == 正本"的自检就变橡皮章 ⇒ 抽成
+  `pick_stats_row()` 让两边 import（本轮把 `stats_majority_probe` 与 `ship_meta_authority_diff` 都改了）。
+- ⚠️ 新增独立成卡会把**借来的语音**一起带过去（新卡显示 33 条其实是本体台词）。
+  卡片结构一变，就要顺手查 `src='strip'`（剥后缀借包）的归属是否还合理。
+
+**涉及文件**：`scripts/build_ship_meta.py`、`scripts/diag/meta_idpair_probe.py`、
+`scripts/diag/{ship_meta_authority_diff,test_meta_gate_proofs,stats_majority_probe,gallery_cat3_probe}.py`、
+`scripts/gallery_buckets.py`。相关：§101、§107、WF-23、WF-15。
+
 #### WF-23 追加（2026-10-05）：配置表链进台子 —— 步骤重排为五步主线
 
 `preflight → pull →` **`cfg.decrypt → cfg.lua → cfg.disk → cfg.publish`** `→ deps → meta → …`

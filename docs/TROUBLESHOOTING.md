@@ -5691,3 +5691,62 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
 **涉及文件**：`gallery_src/index.html`（下拉首项语义 + `autoSkinOf()` + `reframe()` +
 `window.__setAllSkin/__skinInfo` 诊断出口 + `setLayerSkin` 支持传 skin 对象）、
 `scripts/diag/spine_dialog_shot.py`（`--skin none|auto|<名字>`）。相关：§105、技能 §4。
+
+## §107. 埃塞克斯·META 无阵营的真根因：游戏自己的配对信号 `stats.id == skin.id`（2026-10-05 用户指认）
+
+**现象**（用户一句话点出两处）：① `aisaikesi_alter` 应该带 META 阵营；② `_dark` 形态族也该归「其他」档。
+
+**根因**：`build_ship_meta` 的桥是 `皮肤行 → ship_group → stats_by_group → 舰级字段`。
+
+- `aisaikesi_alter` 那行（id 900406，`name=埃塞克斯·META`）的 **ship_group 在 stats 表里一条都查不到** ——
+  而描述她的 stats 行（`id=900406 / 埃塞克斯·META / nationality=97 / 航母 / 超稀有`）**确实存在**，
+  只是它的 `skin_id` 写成了 900550。⇒ 桥走不到她，卡片无阵营、`normalize()` 的 `_alter`+META 判据
+  不成立，她就被折进本体卡当「改造」外迁条目。
+- 同一次写歪的另一头：组 900550 里 `id=900406`(埃塞克斯·META) 与 `id=900550`(萨拉托加·META)
+  两条 stats 的 `(nationality,type,rarity)` **完全相同**，`min(id)` 让前者胜出 ⇒ 「埃塞克斯·META」
+  这个名字被顶在 `npcsalatuojia_alter.png` 上，而**那张图与 `salatuojia_alter.png` md5 逐字节相同**
+  （实测 `866460420f88`）。不修这头，补完阵营就会多出一张同名卡。
+
+**修法**：认游戏自己的配对信号 —— **900xxx 段 `ship_data_statistics.id` 与 `ship_skin_template.id` 同号**
+（`qiye_dark` 两侧都是 900072/900135）。两处都用它，不开例外名单：
+
+1. **救援**：`ship_group` 查不到 stats 时，取「`stats.id == 皮肤行 id` 且清洗后 `name` 相同」那一行
+   （新表 `stats_by_skinid`，条目里记 `stats_via=id_pair:<id>` 便于回查）；
+2. **并列 tie-break**：众数族内先取「`id == 基皮肤 id`」的配对行，没有才 `min(id)`。
+
+选行规则抽成模块级 `pick_stats_row(cand, base_skin_id)`，`stats_majority_probe` 与
+`ship_meta_authority_diff` **import 同一份** —— 探针手抄一份判据，那条"复算行 == 正本选行"的自检就是橡皮章。
+
+**影响面（全部实测）**：救援集 53 条里 **51 条是惰性的**（同一 painting 另有被 `painting2skin` 选中的行），
+真正落到元数据只有 2 条（`aisaikesi_alter` → META/航母/超稀有、`nina_wjz` → 联动/战列）；
+并列改判 **1 组**（900550 → 萨拉托加·META）。索引：`ships` 974→975、`variants` 29→27、
+`skins` 4454→4456、`other` 97→107、META 阵营卡 65→66，字段变空 0。
+
+**`_dark` 归档**：判据加在唯一正本 `scripts/gallery_buckets.py`：`_dark(?:_memory)?$`。
+必须带 `(?:_memory)?` —— `qiye_dark_memory` 的 `FORM_SUF` 命中在 `_memory` 上，只写 `_dark$` 会漏掉它。
+盘上 10 个 `_dark` 目录全覆盖，且这 10 张**音频与台词两侧都是空**（逐条查 `skin_voice.json`/`skin_words.json`）。
+
+**顺带查出一条真缺口（下一轮的活，别当成"已解决"）**：我一度判断"这几张 META 卡借本体语音是因为游戏没给她们配音"，
+**用户否证：她们有自己的配音**。按"包比表新"重查，结论是：
+
+- `files/AssetBundles/cue/` 里有 **48 个包从来没导出到 `Output/Audio/CV2/`**（950 raw vs 902 已导出）；
+- 逐个拿三张权威表回查，只有 `970113` 与 `20508` 两号「三表皆无」；
+- `970113` 在 09-24 的**设备侧全量表**里就有：`ship_data_group` 有 `group_type=970113 / nationality=97`、
+  `fleet_tech_ship_class` 直接写着 **`灵敏·META`**、`ship_transform`/`ship_strengthen_meta` 都有它、
+  `painting_filte_map` 与 `ship_skin_expression` 里有 painting 键 `lingmin_alter`，
+  盘上 `Output/Paintings_v2/lingmin_alter.png`(+`_n`) 也在，包体 `cv-970113.b` 2.3MB 还带 `-battle`/`-gift`；
+- **唯独 `ship_skin_template` 缺她那一行** ⇒ 包号推不出来 ⇒ 音频从来没解过。全库 66 个 META 组只有她缺。
+- ⚠️ §101 当年写的"她的自机行还没进设备侧配置表"**是判断错了**：配置里有她，缺的只是皮肤行。
+
+**已排除的假设**：
+- ❌「`id` 取大当 tie-break」—— §101 已否证（`qiye_dark`/`unknown5` 是不同实体复用同一 painting），本轮沿用不用；
+- ❌「`aisaikesi_alter` 无阵营 = 皮肤表缺行」—— 她的皮肤行在，缺的是 stats 的**交叉引用**；
+- ❌「META 船没配音所以显示借来的没问题」—— 被用户否证，见上面的包清点；
+- ❌「`_dark` 留在剧情角色档就行」—— 用户点名归「其他」，且这 10 张两侧皆空、不是可点开的实体。
+
+**涉及文件**：`scripts/build_ship_meta.py`（`pick_stats_row()` + `stats_by_skinid` + `stats_via` 溯源）、
+`scripts/gallery_buckets.py`（`_dark` 判据）、`scripts/build_gallery_index.py`（新增 `SHIP_META_PATH` env，
+让"新元数据 + 新索引"成对在临时区跑）、`scripts/diag/meta_idpair_probe.py`（影响面 + 阴性对照 + `--max-gain/--max-flip`）、
+`scripts/diag/ship_meta_authority_diff.py`（新判据 `pair_rescue` / `pair_tiebreak`）、
+`scripts/diag/test_meta_gate_proofs.py`（26→41 例反向对照）、`scripts/diag/gallery_cat3_probe.py`（9→13 条 DOM 判据）。
+相关：§101、§102、WF-26、`_dark`/`_alter` 后缀语义见记忆「立绘变体后缀真实语义」。

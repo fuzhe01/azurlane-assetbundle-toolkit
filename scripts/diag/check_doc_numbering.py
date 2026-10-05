@@ -29,6 +29,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+# Windows 默认控制台是 GBK，打印条目里的 ✅/⚠️ 会直接 UnicodeEncodeError 崩掉体检本身。
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 DOC = Path(__file__).resolve().parents[2] / "PROJECT_STATUS.md"
 
 SEC_HEAD = "## 6. 接下来的任务"

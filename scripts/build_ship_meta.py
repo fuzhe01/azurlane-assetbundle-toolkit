@@ -87,6 +87,25 @@ def load():
     return skin, stats, wiki
 
 
+PLACEHOLDER_EN = ('', 'simulation')
+
+
+def pick_stats_row(cand, base_skin_id=None):
+    """组内候选 stats 行 -> 代表行（选行规则的唯一正本，探针必须 import 这一份）。
+
+    两级：① `(nationality, type, rarity)` 众数族；② 族内先避开占位英文名
+    （`english_name` 为空或 `simulation`，全表 44 行），再优先「`id == 基皮肤 id`」的
+    **配对行**，没有配对行才退回 `min(id)`。
+    """
+    tup = lambda r: (r.get('nationality'), r.get('type'), r.get('rarity'))
+    modal = collections.Counter(tup(r) for r in cand).most_common(1)[0][0]
+    reps = [r for r in cand if tup(r) == modal] or list(cand)
+    clean = [r for r in reps if str(r.get('english_name') or '').strip().lower()
+             not in PLACEHOLDER_EN] or reps
+    paired = [r for r in clean if r.get('id') == base_skin_id]
+    return min(paired or clean, key=lambda x: x['id'])
+
+
 def build_indexes(skin, stats):
     skinid2skin = {v['id']: v for v in skin.values() if 'id' in v}
     # 舰级字段按 ship_group 归并：stats.skin_id -> 该皮肤所属组 -> 组级舰信息
@@ -138,27 +157,40 @@ def build_indexes(skin, stats):
         if g in by_group and (g not in base_skin_of_group or v['id'] < base_skin_of_group[g]):
             base_skin_of_group[g] = v['id']
     stats_by_group = {}
-    # 候选行里取「(nationality, type, rarity) 众数」那一族的**最小 id 行**作代表，而不是直接 min(id)。
-    # §56 那次只加了「先要求 skin_id == 基皮肤」，但脏行可以**同样是基皮肤行**：
-    # `ship_data_statistics` 里 id=900399 与 900398 各自把 加斯科涅 的 nationality 写成 2(皇家)、
-    # 把 弗兰德尔 的 type 写成 18(超巡)，而同组另外 5 行都是 9(维希教廷)/5(战列)——
-    # 只按 min(id) 选就会让这两条 outlier 压掉 5 条一致行。全库 969 组里只有 11 组有此分歧，
-    # 逐组看过：改判方向全部是「outlier → 多数行」（含 克莱蒙梭/基洛夫·META/格奈森瑙·META/比叡·META
-    # 与 6 艘飓风风帆船）。并列时仍取 min(id)，所以多数一致的行不受影响。
-    # 判据与影响面：diag/stats_majority_probe.py（列出 11 组的众数 vs min(id)）。
+    # 代表行的选法抽成模块级 `pick_stats_row()`（探针必须 import 同一份，判据不许各写一份）。
+    # 三轮判据演进（每轮都是上一轮被某种脏行打穿）：
+    #  · 只按 min(stats.id)：id=900106 的脏行（name 写「敦刻尔克」而 english_name 是
+    #    HMS Vampire、nationality=2 皇家、type=1 驱逐，skin_id=904011 指向敦刻尔克的**皮肤2**）
+    #    压掉正确的 4 行 ⇒ 画廊把 敦刻尔克 显示成「皇家·驱逐」，游戏自己的表是「维希·战巡」。
+    #  · 加「先要求 skin_id == 基皮肤」：脏行**可以本身就是基皮肤行**——id=900399 把 加斯科涅
+    #    的 nationality 写成 2(皇家)、900398 把 弗兰德尔 的 type 写成 18(超巡)，同组其余 5 行
+    #    都是 9(维希)/5(战列) ⇒ 再加「(阵营,舰种,稀有度) 众数族」。全库 969 组只有 11 组分歧。
+    #  · 众数**并列**时 min(id) 会把别的实体的行端上来：组 900550 里 id=900406 写「埃塞克斯·META」、
+    #    id=900550 写「萨拉托加·META」，三列全同而前者 id 更小 ⇒ 埃塞克斯·META 的名字被顶在
+    #    `npcsalatuojia_alter.png` 上（那张与 `salatuojia_alter.png` **md5 逐字节相同**）。
+    #    `stats.id == 基皮肤 id` 是游戏自己的配对信号，并列时优先它。实测全库只有这 1 组改判。
+    # 影响面与反向对照：diag/stats_majority_probe.py。
     for g, vs in by_group.items():
         b = base_skin_of_group.get(g)
         cand = [s for s in vs if s.get('skin_id') == b] or vs
-        modal = collections.Counter(
-            (s.get('nationality'), s.get('type'), s.get('rarity')) for s in cand).most_common(1)[0][0]
-        reps = [s for s in cand
-                if (s.get('nationality'), s.get('type'), s.get('rarity')) == modal] or cand
-        # 众数族内还要避开占位名：`english_name='simulation'` 全表 44 行（加斯科涅/弗兰德尔
-        # 两组的众数代表恰好落在它上面，会让卡片英文名直接显示 `simulation`）。
-        clean = [s for s in reps if str(s.get('english_name') or '').strip().lower()
-                 not in ('', 'simulation')] or reps
-        stats_by_group[g] = min(clean, key=lambda x: x['id'])
-    return painting2skin, painting_ci, stats_by_group
+        stats_by_group[g] = pick_stats_row(cand, b)
+
+    # 配对救援：皮肤行所在 ship_group 一条 stats 都查不到时，认「stats.id == 该皮肤行 id
+    # 且清洗后同名」那一行。900xxx 段的游戏约定本来就是 stats.id 与 skin.id 同号
+    # （`qiye_dark` 两侧都是 900072/900135），这里只是把写歪的交叉引用认回来，不是推断。
+    # 实测全表只补回 2 条：`aisaikesi_alter`（埃塞克斯·META，nationality=97 ⇒ 独立成 META 卡）、
+    # `nina_wjz`（妮娜·弗里德，联动战列，仍折在 nina 卡下）。影响面探针：diag/meta_idpair_probe.py。
+    stats_by_skinid = {}
+    for sv in stats.values():
+        sk = skinid2skin.get(sv.get('id'))
+        if not sk or sk.get('ship_group') in stats_by_group or not sv.get('nationality'):
+            continue
+        n1 = clean_ship_name(sv.get('name') or '')
+        if not n1 or n1 != clean_ship_name(sk.get('name') or ''):
+            continue
+        stats_by_skinid[sk['id']] = sv
+
+    return painting2skin, painting_ci, stats_by_group, stats_by_skinid
 
 
 # 舰名尾缀清洗（2026-10-04，§93）
@@ -264,7 +296,7 @@ def bundle_ids():
 
 
 def build_meta(skin, stats, wiki, verbose=False):
-    painting2skin, painting_ci, stats_by_group = build_indexes(skin, stats)
+    painting2skin, painting_ci, stats_by_group, stats_by_skinid = build_indexes(skin, stats)
     wiki_by_name = {x['name']: x for x in wiki if x.get('name')}
     meta = {}
     for stem in sorted(bundle_ids()):
@@ -278,7 +310,10 @@ def build_meta(skin, stats, wiki, verbose=False):
             # skin_template.name 是「皮肤名」(常含 {namecode} 占位符，或是皮肤主题标题如"午夜的瑰色电梯")，
             # 不能当舰名；另存 skin_name 备用。舰名取自 statistics.name(0 占位符，实测 4119/4119 皆真名)。
             entry['skin_name'] = sk.get('name') or stem
-            sv = stats_by_group.get(sk.get('ship_group'))
+            sv = stats_by_group.get(sk.get('ship_group')) or stats_by_skinid.get(sk.get('id'))
+            if sv is not None and sk.get('ship_group') not in stats_by_group:
+                # 走的是「stats.id == 皮肤行 id 且同名」配对救援，记下来源便于逐条回查
+                entry['stats_via'] = 'id_pair:%s' % sv.get('id')
             if sv:
                 entry['cn'] = clean_ship_name(sv.get('name')) or sk.get('name') or stem
                 entry['en'] = sv.get('english_name', '')

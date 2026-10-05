@@ -40,7 +40,9 @@ for s in json.load(open(os.path.join(OUT, 'WikiData', 'ship_data.json'), encodin
 # ⚠️ cn 可能含 {namecode:XX} 本地化占位符(§6#8)，故「舰名」优先用干净的 SHIP_NAME_MAP，
 #    仅当 SHIP_NAME_MAP 缺失且 cn 为真实名时才用 cn；「阵营/舰种/稀有度」则以 ship_meta 为主(Wiki 覆盖仅 445 太低)。
 SHIP_META = {}
-_sm_path = os.path.join(OUT, 'ship_meta.json')
+# `SHIP_META_PATH` 让「新元数据 + 新索引」能在临时目录里成对跑一遍再比对
+# （改取行规则类改动的零回退核对，见 docs/WORKFLOWS.md WF-26）；默认仍是正式区的 ship_meta.json。
+_sm_path = os.environ.get('SHIP_META_PATH') or os.path.join(OUT, 'ship_meta.json')
 if os.path.exists(_sm_path):
     try:
         SHIP_META = json.load(open(_sm_path, encoding='utf-8'))

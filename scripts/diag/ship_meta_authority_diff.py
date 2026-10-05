@@ -125,17 +125,68 @@ def stats_picks(mod, skin, stats):
         cand_by_group[g] = [s for s in vs if s.get('skin_id') == base.get(g)] or vs
     new = {g: min(vs, key=lambda x: x['id']) for g, vs in cand_by_group.items()}
     # 第三条规则（今天的正本）：候选集内取「(nationality,type,rarity) 众数」那一族的
-    # 非占位英文名行中的最小 id。`maj` 与 `support` 供 `majority_fix` 判方向。
+    # 非占位英文名行，族内优先「id == 基皮肤 id」的配对行，再 min(id)。
+    # `maj` 与 `support` 供 `majority_fix` / `pair_tiebreak` 判方向。
+    # ⚠️ 选行必须 import 正本 `pick_stats_row`，不许在这里手抄一份——抄一份就会和
+    #    `build_indexes` 漂移，下面那条「复算行 == 正本实际选行」的自检就变成橡皮章。
     TUPLE = lambda r: (r.get('nationality'), r.get('type'), r.get('rarity'))
     support, maj = {}, {}
     for g, vs in cand_by_group.items():
-        cnt = collections.Counter(TUPLE(r) for r in vs)
-        modal, _n = cnt.most_common(1)[0]
-        reps = [r for r in vs if TUPLE(r) == modal] or vs
-        reps = [r for r in reps if str(r.get('english_name') or '').strip().lower()
-                not in ('', 'simulation')] or reps
-        support[g], maj[g] = cnt, min(reps, key=lambda x: x['id'])
+        support[g] = collections.Counter(TUPLE(r) for r in vs)
+        maj[g] = mod.pick_stats_row(vs, base.get(g))
     return old, new, base, maj, support, TUPLE
+
+
+def pair_rescue(t, new_entry, old_entry, stats_by_id, skinid2skin, clean_ship_name):
+    """方向性判据：皮肤行所在组查不到任何 stats 行时，只放行「无舰级 → 同名配对行有舰级」。
+
+    `ship_data_statistics` 与 `ship_skin_template` 在 900xxx 段的约定是 **stats.id 与 skin.id 同号**
+    （`qiye_dark` 两侧都是 900072/900135），但游戏有少数行的 `skin_id` 写歪了：
+    `aisaikesi_alter` 那行（id 900406，name 埃塞克斯·META）对应的 stats 行 id 也是 900406，
+    `skin_id` 却指向 900550 ⇒ 按 ship_group 永远查不到它，卡片显示「无阵营」。
+    判据全部可回查，且反向（有舰级 → 无）一律 False：
+      · 新条目带 `stats_via=id_pair:<id>`，且盘上确有该 id 的 stats 行与皮肤行；
+      · 那一行的 id == 皮肤行的 id，且清洗后的 `name` 两侧相同；
+      · `base_painting` 就是那个皮肤行的 painting，`cn` 就是配对行的 name；
+      · 旧条目阵营必须为空（只是补回来，不是换掉）。
+    """
+    k, f, a, b = t
+    if f not in ('cn', 'en', 'faction', 'type', 'rarity', 'category'):
+        return False
+    if str(old_entry.get('faction') or ''):
+        return False
+    via = str(new_entry.get('stats_via') or '')
+    if not via.startswith('id_pair:'):
+        return False
+    try:
+        sid = int(via.split(':', 1)[1])
+    except ValueError:
+        return False
+    sv, sk = stats_by_id.get(sid), skinid2skin.get(sid)
+    if not sv or not sk:
+        return False
+    if str(sk.get('painting') or '').strip().lower() != str(new_entry.get('base_painting') or '').strip().lower():
+        return False
+    n1, n2 = clean_ship_name(sv.get('name') or ''), clean_ship_name(sk.get('name') or '')
+    return bool(n1) and n1 == n2 and new_entry.get('cn') == n1
+
+
+def pair_tiebreak(t, g, base_id, prev_pick, maj_pick, TUPLE):
+    """方向性判据：众数**并列**时只放行「min(id) 行 → id == 基皮肤 id 的配对行」，反向 False。
+
+    `majority_fix` 要求新行支持度严格大于旧行，并列时它必然 False —— 那正是这条的入口：
+    组 900550（萨拉托加·META 的剧情行，`npcsalatuojia_alter.png` 与 `salatuojia_alter.png`
+    md5 逐字节相同）里 id=900406 写「埃塞克斯·META」、id=900550 写「萨拉托加·META」，
+    三列全同而 900406 更小 ⇒ min(id) 把埃塞克斯·META 顶在了萨拉托加的图上。
+    """
+    k, f, a, b = t
+    if f not in ('cn', 'en', 'faction', 'type', 'rarity') or g is None:
+        return False
+    o, n = prev_pick.get(g), maj_pick.get(g)
+    if o is None or n is None or o['id'] == n['id']:
+        return False
+    return (TUPLE(o) == TUPLE(n) and n.get('id') == base_id
+            and o.get('id') != base_id)
 
 
 def majority_fix(t, g, support, prev_pick, maj_pick, TUPLE):
@@ -183,7 +234,7 @@ def main():
     old = json.load(open(os.path.join(ROOT, 'Output', 'ship_meta.json'), encoding='utf-8'))
     new, wiki, mod, skin, stats = load_new()
     fails = []
-    painting2skin, _pci, _sbg = mod.build_indexes(skin, stats)
+    painting2skin, _pci, _sbg, _sbid = mod.build_indexes(skin, stats)
     # 「同一 painting 多行」的原始候选集 + 「哪些 ship_group 查得到 stats 行」，供 dup_row_fix 回查
     rows_by_paint = {}
     for v in skin.values():
@@ -191,6 +242,7 @@ def main():
         if p:
             rows_by_paint.setdefault(p, []).append(v)
     _sid2skin = {v['id']: v for v in skin.values() if 'id' in v}
+    _stats_by_id = {v['id']: v for v in stats.values() if 'id' in v}
     groups_with_stats = {_sid2skin[s['skin_id']]['ship_group'] for s in stats.values()
                          if s.get('skin_id') in _sid2skin}
     old_pick, new_pick, base_of, maj_pick, support, TUPLE = stats_picks(mod, skin, stats)
@@ -248,13 +300,24 @@ def main():
         return majority_fix(t, (sk or {}).get('ship_group'), support,
                             new_pick, maj_pick, TUPLE)
 
+    def _pair(t):
+        return pair_rescue(t, new[t[0]], old[t[0]], _stats_by_id, _sid2skin,
+                           mod.clean_ship_name)
+
+    def _pairtie(t):
+        sk = painting2skin.get(new[t[0]].get('base_painting'))
+        g = (sk or {}).get('ship_group')
+        return pair_tiebreak(t, g, base_of.get(g), new_pick, maj_pick, TUPLE)
+
     # 每条改动都必须落到某一条**方向性判据**上；落不进就是回退。
     # 判据之间互斥地按顺序取第一条成立的，所以计数不会重复计同一处。
     PROOFS = (('皮肤标题→NPC 实体名', justified),
               ('脏 stats 行→基皮肤行', base_fix),
               ('快照缺行→权威表已有行', lambda t: row_backed(t, tab_paint)),
               ('剧情行→自机行', _dup),
-              ('少数派脏行→多数派行', _maj))
+              ('少数派脏行→多数派行', _maj),
+              ('组无舰级行→同名 id 配对行', _pair),
+              ('众数并列→id 配对行', _pairtie))
 
     def proof(t):
         for nm, fn in PROOFS:
