@@ -29,6 +29,12 @@ KEY = sys.argv[2] if len(sys.argv) > 2 else 'tianjinfeng_2'
 PORT = 8777
 if '--port' in sys.argv:
     PORT = int(sys.argv[sys.argv.index('--port') + 1])
+# --skin none → 裸 setup（__setAllSkin('')）；auto → 下拉选「（自动）」；其它值 → 设该 skin 名
+SKIN = None
+if '--skin' in sys.argv:
+    SKIN = sys.argv[sys.argv.index('--skin') + 1] if sys.argv.index('--skin') + 1 < len(sys.argv) else ''
+    if SKIN == 'none':
+        SKIN = ''
 
 
 def free_port():
@@ -113,6 +119,29 @@ def main() -> int:
         fi = p.ev("(window.__frameInfo?JSON.stringify(window.__frameInfo())"
                   ":'(页面没有 __frameInfo —— 运行目录是旧版，先跑 scripts/deploy_gallery.py)')")
         print('取景自报: %s' % fi)
+        # skin 下拉当前值：默认**不该**落在"不设 skin"（那会让命名 skin 的附件全灭）
+        print('skin 下拉当前值: %r' % p.ev(
+            "(()=>{const s=document.getElementById('spSkin');return s&&s.style.display!=='none'?s.value:null;})()"))
+        print('skin 自报(默认路径): %s' % p.ev(
+            "(window.__skinInfo?JSON.stringify(window.__skinInfo()):'-')"))
+
+        # --skin：复现"用户手动切 skin"。
+        #   --skin none  → 走 __setAllSkin('')，即**裸 setup**（诊断用，附件会大面积消失）
+        #   --skin auto  → 走**皮肤下拉选「（自动）」**，这条才是用户真实路径
+        #                  （2026-10-05：用户实机看到的"缺件"就是踩了这条路径，必须能重放）
+        #   --skin 1     → 设为 skin '1'
+        if SKIN is not None:
+            if SKIN == 'auto':
+                r4 = p.ev("(()=>{const s=document.getElementById('spSkin');if(!s)return 'no select';"
+                          "s.value='\\u2205';s.dispatchEvent(new Event('change'));return 'auto(\\u2205)';})()")
+            else:
+                r4 = p.ev("(window.__setAllSkin?window.__setAllSkin(%r)||'ok':'没有 __setAllSkin')" % SKIN)
+            print('切换 skin -> %r（%r）' % (SKIN, r4))
+            time.sleep(4.0)
+            print('skin 自报: %s' % p.ev(
+                "(window.__skinInfo?JSON.stringify(window.__skinInfo()):'-')"))
+            print('取景自报(skin后): %s' % p.ev(
+                "(window.__frameInfo?JSON.stringify(window.__frameInfo()):'-')"))
 
         # 时间序列截图：若只在某几帧缺 ⇒ 是动画时序；若全程缺 ⇒ 取景没生效
         import base64 as _b64

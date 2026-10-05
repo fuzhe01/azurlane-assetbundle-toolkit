@@ -1,7 +1,7 @@
 ---
 name: spine-web-runtime-integration
 description: 在网页里集成 Spine 3.8 (spine-webgl) 运行时做动态立绘渲染与批量出图，覆盖 .skel/.json 骨架分流、atlas 多页加载、必须 setSkin（否则命名 skin 独有部件整块不显示）、setup pose 与动画第 0 帧是两种语义、相机视口与 fit 包围盒陷阱（含"恒不渲染的巨幕遮罩撑爆取景"与"不透明纯色黑底撑爆取景"两类，以及判据必须落在取景那一刻）、readPixels 在实时 viewer 里不可用、0 秒占位动画过滤、TDZ 变量遮蔽、无头 CDP 验收判据。当需要让 .skel/.atlas 模型在浏览器里动起来、反馈"模型缺胳膊少腿/比例怪/层加载失败/导出出来是中间一小块四周全黑"、或要批量渲染 Spine 立绘成 PNG 时使用。触发词：Spine 网页播放、spine-webgl、spine-all.js、SkeletonBinary、SkeletonJson、atlas 图集页、setSkin、皮肤、SceneRenderer、比例怪、缺下半身、部件不显示、setup pose、CG 导出、层失败、动态立绘渲染、骨骼动画截图、取景、包围盒、画面太小、只占中间一小块、四周全黑、fit。不适用于 AssetBundle 侧的 Spine 资源还原与页纹理补齐（那是 unity-assetbundle-painting-restore），也不适用于 Live2D 网页集成（live2d-web-runtime-integration）。
-version: 1.1.3
+version: 1.1.4
 ---
 
 # Spine 网页运行时集成与批量出图
@@ -113,8 +113,21 @@ for (const k of (data.skins || []).map(k => k.name)) {
   会**抹平所有差异**——setup 附件取自 `slotData.attachmentName`、与 skin 无关
   （实测该皮肤四种 skin 下恒为同一数）。判据只能量"动画跑起来之后实际挂上的附件"。
 - ⚠️ 覆盖数**平手是常态**（该皮肤 skin `'1'` 与 `'2'` 都是 201，但补的不是同一批部件）。
-  ⇒ 自动选只能给默认值，**必须同时提供手动切换的 UI**（下拉含"不设 skin"项），
-  让人能同视口对比。同视口对比也是零回退证据：设 skin 前后画面大小应一致，只是部件回来了。
+  ⇒ 自动选只能给默认值，**必须同时提供手动切换的 UI**，让人能同视口对比。
+  同视口对比也是零回退证据：设 skin 前后画面大小应一致，只是部件回来了。
+- ⚠️ **但这个下拉绝不能把"不设 skin"做成可选项**（2026-10-05 用户实机踩坑）：
+  `skin=null` 会让命名 skin 的附件**全灭**（实测 `tianjinfeng_2` 主层 **92 → 0**，
+  角色主体整块消失、只剩其它层残件 —— 用户报"这肯定有问题呀"），而它还常常正是
+  `layers.find(L=>L.skin)?.skin ?? '∅'` 算出来的**默认值**。
+  下拉首项要做成「（自动）」并回退到 **`data.defaultSkin` 对象**（⚠️ 不是 `null`，
+  也不是 `findSkin('default')` —— `defaultSkin` 只挂在 SkeletonData 上，未必能被名字找到）；
+  裸 setup 只留给诊断入口（`?skin=none` / 探针 `--skin none`）。
+- ⚠️ **换 skin 之后重算任何派生量（取景框 / 包围盒 / 画布尺寸）都必须先 `anim.update(0) + apply()`**：
+  `setLayerSkin` 里通常紧跟 `setSlotsToSetupPose()/setBonesToSetupPose()`，状态被打回 setup，
+  此刻量到的顶点与"动画跑起来之后"差很多（实测同一层 extents 计数 **0 vs 85**、框宽差近一倍）。
+  初始化路径本来就是"先 apply 再算框" —— 两条路径必须一致，否则切一下皮肤画面尺寸就跳一档。
+- ⚠️ **验证"用户报的画面不对"时，必须能重放用户的操作序列**（`--skin auto` 复现下拉路径、
+  `--skin none` 复现裸态）。用自己默认路径的截反复"确认已修好"是自欺 —— 用户很可能在另一条路径上。
 
 ## 5. setup pose ≠ 动画第 0 帧（出图语义）
 
@@ -226,6 +239,8 @@ const anims = (data.animations || []).filter(a => a.duration > 0.01)
 - [ ] 按首字节 `0x7B` 分流 JSON / 二进制骨架
 - [ ] atlas 每个页名都真的下载并建了纹理；`findRegion` 有 trim 兜底
 - [ ] `setSkin(data.findSkin(name))` 传对象不传字符串，且在 `setSlotsToSetupPose()` **之前**
+- [ ] skin 下拉的"自动/不设"项回退到 `data.defaultSkin` **对象**（绝不传 `null`），见 §4
+- [ ] 换 skin 后重算取景/包围盒前先 `anim.update(0)+apply()`（否则量的是 setup pose）
 - [ ] skin 选择用 `coverOf`（只量动画帧），平手有手动下拉可切
 - [ ] 导出层若要补部件，用"动画第 0 帧"开关且默认关闭；开则全量重导，不只重导子集
 - [ ] `scene.camera.setViewport(w, h)` 跟着 `scene.resize()` 一起调

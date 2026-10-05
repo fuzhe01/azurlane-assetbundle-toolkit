@@ -1753,7 +1753,7 @@ async function startSpine(s, sk){
       skeleton.updateWorldTransform();
       const anim=new spine.AnimationState(new spine.AnimationStateData(data));
       const anims=(data.animations||[]).filter(a=>a.duration>0.01).map(a=>({name:a.name||a,dur:+a.duration.toFixed(1)}));
-      return {skeleton,anim,data,anims,skinNames,skin:bestSkin,cov:bestCov,
+      return {skeleton,anim,data,anims,skinNames,bestSkin,skin:bestSkin,cov:bestCov,
               startAnim:(cfg&&cfg.startingAnimation)||''};
     }
 
@@ -2014,25 +2014,56 @@ async function startSpine(s, sk){
     sel.onchange=()=>setAnim(sel.value);
     /* skin 下拉：默认用上面算出的覆盖最多者，允许手动切着对比
        （'1'/'2' 是不同变体，覆盖数可能相同——阿罗芒什就是 201 vs 201 平手，需人工判） */
+    /* 换 skin 后重算取景 —— ⚠️ **必须先 apply 一次动画**：`setLayerSkin` 里调了
+       `setSlotsToSetupPose()/setBonesToSetupPose()`，状态被打回 setup pose，此刻量到的
+       顶点跟"动画跑起来之后"完全不是一回事（实测 `tianjinfeng_2` 主层在 setup 态下
+       extents 计数 0、动画态 85，取景框宽度差近一倍）。
+       初始化那段末尾也是同一个道理（那里有一段同样的 apply）。 */
+    function reframe(){ layers.forEach(L=>{ try{ if(L.anim){ L.anim.update(0); L.anim.apply(L.skeleton); }
+                            L.skeleton.updateWorldTransform(); }catch(e){} });
+      computeFrameBox(); fit(); }
     const skinUnion=[]; layers.forEach(L=>(L.skinNames||[]).forEach(k=>{if(skinUnion.indexOf(k)<0)skinUnion.push(k);}));
     const ssk=document.getElementById('spSkin'), sskLbl=document.getElementById('spSkinLbl');
     const setLayerSkin=(L,name)=>{ try{
-        L.skeleton.setSkin(name===null?null:L.data.findSkin(name));
-        L.skeleton.setSlotsToSetupPose(); L.skeleton.setBonesToSetupPose(); L.skin=name; }catch(e){} };
+        /* name 可以是：skin 名字符串 / skin 对象 / null（=裸 setup，会清空命名 skin 的附件）。
+           ⚠️ 一定要能传**对象**：`data.defaultSkin` 只存在于 SkeletonData 上，未必能在
+           `data.findSkin(名字)` 里找到，而"自动"分支恰恰需要它（见下）。 */
+        const sk=(name&&typeof name==='object')?name:(name?L.data.findSkin(name):null);
+        L.skeleton.setSkin(sk);
+        L.skeleton.setSlotsToSetupPose(); L.skeleton.setBonesToSetupPose(); L.skin=(sk&&sk.name)||null; }catch(e){} };
+    /* 「自动」= 回到打开这张皮肤时的状态。⚠️ 兜底用 `data.defaultSkin` **对象**、
+       绝不能用 null —— `setSkin(null)` 会把命名 skin 的附件全清成 null（实测主层 85→0，
+       用户实机看到的"缺件"就是这个），而 `data.defaultSkin` 就是 `new Skeleton(data)` 时
+       赋给 `skeleton.skin` 的那一个（实测该状态下主层 92 个附件齐全）。 */
+    const autoSkinOf=(L)=> (L.bestSkin!==null && L.data.findSkin(L.bestSkin)) || L.data.defaultSkin;
     if(skinUnion.length){
       const mk=(v,txt)=>{const o=document.createElement('option');o.value=v;o.textContent=txt;ssk.appendChild(o);};
-      mk('\u2205','(不设 skin)');
+      /* ⚠️ 第一项**不能**是"不设 skin"（2026-10-05 修）：spine-ts 3.8 里动画的附件时间线经
+         `Skeleton.setAttachment` → `当前 skin.getAttachment()` 解析，skin=null 时**命名 skin 的
+         附件全部解析成 null** ⇒ 实测 `tianjinfeng_2` 主层附件 85 → **0**，角色主体整块消失
+         （只剩 2M/2T 的残件 + 房间），用户实机截图报"这肯定有问题呀"就是这个状态。
+         ⇒ 这一项改成"（自动）"= 各层回到各自的 bestSkin（就是刚打开时的样子），永不残缺；
+         需要"裸 setup pose"做诊断时走 `?skin=none` / 探针 `--skin ''`（绕开下拉）。 */
+      mk('\u2205','(自动 · 最优 skin)');
       skinUnion.forEach(k=>mk(k, k+(layers.every(L=>L.skin!==k)?'':(layers.some(L=>L.skin===k)?' ✓':''))));
       ssk.value=layers.find(L=>L.skin)?.skin ?? '\u2205';
       sskLbl.style.display=''; ssk.style.display='';
       ssk.onchange=()=>{ const v=ssk.value;
-        layers.forEach(L=>{ if(v==='\u2205') setLayerSkin(L,null);
+        layers.forEach(L=>{ if(v==='\u2205') setLayerSkin(L, autoSkinOf(L));
                             else if((L.skinNames||[]).indexOf(v)>=0) setLayerSkin(L,v); });
-        computeFrameBox();   // 换 skin 会换附件集合，取景框要重算
-        fit(); };
+        reframe();   // 换 skin 会换附件集合，取景框要重算（且必须在 apply 动画之后，见 reframe）
+      };
     }
-    document.getElementById('spPlay').onclick=e=>{playing=!playing;e.target.textContent=playing?'暂停':'播放';};
-    document.getElementById('spFit').onclick=()=>{fit();zoom=1;vm.touch();};
+    /* 诊断出口：探针用（`spine_dialog_shot.py --skin ''`/`--skin 1`），
+       用来复现"用户手动切过 skin 之后画面变成什么样"。
+       ⚠️ 2026-10-05：用户实机截图里房间层与角色**分离**，而探针默认路径（bestSkin）下
+       两者重叠 —— 必须能原样重放用户的操作序列才有定案，不许再靠猜。 */
+    window.__setAllSkin=(v)=>{ layers.forEach(L=>{ if(!v) setLayerSkin(L,null);
+      else if((L.skinNames||[]).indexOf(v)>=0) setLayerSkin(L,v); });
+      reframe(); };
+    window.__skinInfo=()=>layers.map(L=>({name:L.name, skin:L.skin, cov:L.cov,
+      nAttach:(()=>{let n=0;for(const sl of L.skeleton.slots)if(sl.getAttachment())n++;return n;})()}));
+    document.getElementById('spPlay').onclick=e=>{playing=!playing;e.target.textContent=playing?'暂停':'播放';};    document.getElementById('spFit').onclick=()=>{fit();zoom=1;vm.touch();};
     mountSkinVoice(bar, cv, ()=>sk.key);   // Spine 动态立绘同样点画面=触摸台词
     let drag=false,pmx=0,pmy=0;
     cv.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.05,Math.min(60,zoom*(e.deltaY>0?.9:1.1)));vm.touch();},{passive:false});

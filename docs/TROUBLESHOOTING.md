@@ -5645,3 +5645,49 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
 `scripts/diag/spine_layer_isolate.py`；`scripts/diag/skel_layers_report.js` 改为复用公共库；
 `scripts/diag/spine_dialog_shot.py`（等 openShip 就绪 + 画布有尺寸 + 打印取景自报）；
 `scripts/diag/run_cg_export.py`（路径与缓存两个 bug）。相关：§45/§46、§97、§98、§100（本轮否证）。
+
+---
+
+## §106. 用户实机"又缺件"：皮肤下拉的「（不设 skin）」把命名 skin 的附件全清成 null（2026-10-05）
+
+**症状**：§105 修完后用户再发实机截图 —— 弹窗里**菱形房间在右上、角色只剩几条腿/狐尾残件，
+两者根本不重叠**，看起来像"层间错位"。而同一皮肤在我探针的默认路径下**是正常的**。
+
+**定案方式（本轮唯一做对的事）**：不再猜，**原样重放用户的操作序列**。
+先给页面加诊断出口 `window.__setAllSkin(v)` / `window.__skinInfo()`，给探针加 `--skin`：
+- `--skin none`（裸 setup，等价于下拉原第一项）
+- `--skin auto`（**下拉选「（自动）」= 用户真实路径**）
+- 实测复现：裸状态下 `tianjinfeng_2` 主层附件 **85/92 → 0**、取景框从 2205 宽变 1120 宽，
+  画面与用户截图一致 ⇒ 用户当时处在「（不设 skin）」状态。
+
+**两个真 bug**：
+1. **下拉第一项是「（不设 skin）」**。spine-ts 3.8 里动画的附件时间线经
+   `Skeleton.setAttachment → 当前 skin.getAttachment()` 解析，**skin=null 时命名 skin 的附件
+   全部解析成 null** ⇒ 主层（角色本体）附件清零，只剩 2M/2T 的残件 + 背景层。
+   而这一项**还是默认值**（`layers.find(L=>L.skin)?.skin ?? '∅'`，本皮肤五层 bestSkin 都是
+   null ⇒ 默认就落在它上面），用户随手一碰就中招。
+   ⇒ 修法：该项改「（自动 · 最优 skin）」，选中时**回退到 `data.defaultSkin` 对象**
+   （`autoSkinOf(L)`），**绝不用 null**。需要裸 setup 做诊断时走 `?skin=none` / 探针 `--skin none`。
+2. **换 skin 后取景框算在 setup pose 上**：`setLayerSkin()` 里调了
+   `setSlotsToSetupPose()/setBonesToSetupPose()`，状态被打回 setup；而原代码紧接着
+   `computeFrameBox(); fit();` —— 量到的是 setup 态的顶点（实测主层 extents 计数 0、
+   动画态 85，框宽差近一倍）。初始化那段末尾本来是**先 `anim.update(0)+apply()` 再算框**的，
+   两条路径不一致。⇒ 抽出 `reframe()`（先 apply 动画再算框 + fit），`onchange` 与
+   `__setAllSkin` 都走它。
+
+**验收（两条路径都必须过）**：
+| 路径 | 主层附件 | 取景框 |
+|---|---|---|
+| 默认加载 | 92 | 2205×3065（`base1` 0.4207）|
+| 下拉选「（自动）」 | 92 | ≈2205×3064（`base1` 0.4209）|
+| 裸 setup（诊断） | **0** | 1120×3345 ← 就是用户看到的坏状态 |
+
+**教训**：① 技能 §4「必须 `setSkin`」的反面同样成立 —— **不能把"不设 skin"当选项给用户**；
+② **能复现用户现场，才算定案**（这一轮前半段我拿默认路径的截图反复"确认已修好"，
+而用户看的是另一条路径 —— 与 §105 同一类错误：用自己造的证据替代用户的现场）。
+③ 「换状态之后重算派生量」必须复刻"初始化时的那套前置步骤"（这里 = apply 动画），
+否则同一份数据在两处算出不同结果。
+
+**涉及文件**：`gallery_src/index.html`（下拉首项语义 + `autoSkinOf()` + `reframe()` +
+`window.__setAllSkin/__skinInfo` 诊断出口 + `setLayerSkin` 支持传 skin 对象）、
+`scripts/diag/spine_dialog_shot.py`（`--skin none|auto|<名字>`）。相关：§105、技能 §4。
