@@ -2,7 +2,7 @@
 """构建资产浏览器索引 index.json（v2 合并逻辑）。
 所有资产按「归一化基ID → 完整皮肤stem」挂载，Spine/Live2D 绑定到对应 skin。
 """
-import sys, os, re, json, glob
+import sys, os, re, json, glob, collections
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 import skin_table  # 皮肤表唯一读取口（azdata 快照 + 设备侧权威表逐字段合并）
@@ -544,12 +544,21 @@ EXTRA_SHIP = {'haorenlichade',
     'vtuber_aqua_wjz','vtuber_ayame_wjz','vtuber_fubuki_wjz','vtuber_matsuri_wjz',
     'vtuber_mio_wjz','vtuber_shion_wjz','vtuber_sora_wjz'}
 WIKI_NAMES = set(meta_by_cn.keys())
+
+# 「其他」档判据的唯一正本在 `scripts/gallery_buckets.py`（索引器与闸门共用一份，见那份的 §85 说明）
+# 用户 2026-10-05 定档：类别只留 舰船 / 剧情角色 / 其他；`_alter`（META）不在此档，
+# 例外只有 `npc*_alter` 与 `left/mid/right*_alter`。
+from gallery_buckets import is_other     # noqa: E402
+
+
 def reclassify():
     for s in ships.values():
         k = s['id']; name = s['name']
-        if k in EXTRA_SHIP:                                    # 用户勾选确认的自机：舰船 + 保留 ship_meta 属性
+        if is_other(k):                                        # 组件立绘 / 剪影 / 剧情分身
+            s['category'] = 'other'; s['faction'] = ''; s['type'] = ''; s['rarity'] = ''
+        elif k in EXTRA_SHIP:                                  # 用户勾选确认的自机：舰船 + 保留 ship_meta 属性
             s['category'] = 'ship'
-        elif ('？' in name) or SIREN_PREFIX.match(k):          # 塞壬/BOSS/NPC：剧情角色 + 清空战斗属性
+        elif ('？' in name) or SIREN_PREFIX.match(k):           # 塞壬/BOSS/NPC：剧情角色 + 清空战斗属性
             s['category'] = 'story'; s['faction'] = ''; s['type'] = ''; s['rarity'] = ''
         elif s['faction'] or name in WIKI_NAMES or any(COLLAB_SKIN.search(sk['key']) for sk in s['skins']):
             s['category'] = 'ship'
@@ -592,27 +601,8 @@ for sh in ship_list:
 # 只剩剪影的船（1 艘）从主网格摘掉——它的全部"皮肤"都是剪影，留着就是一张假卡
 ship_list = [sh for sh in ship_list if sh['skins']]
 
-# ---------- 探索者连线关卡 NPC 外迁（2026-10-04 用户拍板）----------
-# `tansuozhe*`（探索者）、`lingyangzhe*`（领航员）、`linghangyuan*`（领航学院）这三族共 45 条，
-# 权威皮肤表里**一行都没有**（既不在 ship_skin_template 也不在 ship_data_statistics），
-# 它们不是任何舰船的皮肤，而是关卡里反复出现的 NPC。留在皮肤区只会显示成「皮肤1/皮肤2」。
-# ⇒ 与 `_hei` 剪影同档处理：从皮肤区摘出去，只从顶部「剧情剪影」进。
-#
-# ⚠️ 判据按**基名**而不是全名匹配：族内既有 `_1/_2/_3` 皮肤序号，也有 `_n` 画法变体
-#    （`linghangyuan1_2`、`lingyangzhe3_2_n`、`tansuozhe_2_n`），还有 `npclingyangzhe3_2`
-#    这种带 npc 前缀的。写成"族名 + 若干数字段 + 可选 _n"才盖得全。
-EXPLORER_BASE = re.compile(r'^(?:npc)?(?:tansuozhe|lingyangzhe|linghangyuan)\d*(?:_\d+)*(?:_n)?$')
-for sh in ship_list:
-    keep = []
-    for sk in sh['skins']:
-        if not EXPLORER_BASE.match(sk['key'].lower()):
-            keep.append(sk)
-            continue
-        silhouettes.append({
-            'key': sk['key'], 'label': sk['label'], 'image': sk['image'],
-            'ship': sh['id'], 'srcSkin': '', 'shipName': sh['name']})
-    sh['skins'] = keep
-ship_list = [sh for sh in ship_list if sh['skins']]
+# （2026-10-04 那轮的「三族 45 条外迁进剪影档」已撤销 —— 见文件末尾的秘书舰 NPC 分卡块：
+#  它们是彩色皮肤、各有配音包，不是剪影。用户 2026-10-05 改判为三档制。）
 
 # 来源船必须真能在主网格点开，否则前端那条链接是死的（`shipCn` 就是这个意思）
 alive = {sh['id'] for sh in ship_list}
@@ -650,6 +640,88 @@ for v in variants:
     v['hostOk'] = v['host'] in alive          # 宿主卡点不开的话，前端那条链接就是死的
 variants.sort(key=lambda x: (x['family'], x['root'], x['key']))
 
+# ---------- 秘书舰 NPC 三族：做成 3 张实体卡（2026-10-05 用户定三档制，它们属「剧情角色」）----------
+# 2026-10-04 那轮把这三族 45 条整体搬进 `silhouettes`（当时只为了解决"显示成皮肤1/皮肤2"），
+# 代价是它们**不再是卡**、还顶着「剧情剪影」的名——而它们是彩色皮肤、各有配音包。
+# 权威源 `inputs/gamecfg/npc_painting_name.json`（由 secretary_special_ship 发布）每行带
+# `character_id` + `cn` + `group` + `row_id`：character_id 就是"哪个角色"（1000 领航员-TB /
+# 2000 领洋者-娜比娅 / 3000 探索者-艾普洛），group 是"哪套皮肤"，row_id 最小的那行是游戏自己的
+# 默认形态（1000 → `tbniang`），拿它当卡 id。
+NPC_TAB = json.load(open(os.path.join(ROOT, 'inputs', 'gamecfg', 'npc_painting_name.json'),
+                         encoding='utf-8')) if os.path.exists(
+    os.path.join(ROOT, 'inputs', 'gamecfg', 'npc_painting_name.json')) else {}
+EXPLORER_BASE = re.compile(r'^(?:npc)?(?:tansuozhe|lingyangzhe|linghangyuan)\d*(?:_\d+)*(?:_n)?$')
+by_char = collections.defaultdict(list)
+for _k, _r in NPC_TAB.items():
+    by_char[_r['character_id']].append((_r['row_id'], _k, _r))
+sec_cards = {}          # character_id -> 船卡
+for _cid, rows in by_char.items():
+    rows.sort()
+    base = rows[0][1]
+    sec_cards[_cid] = {'id': base, 'name': rows[0][2]['cn'], 'hasCn': True, 'npc': True,
+                       'type': '', 'rarity': '', 'faction': '', 'category': 'story',
+                       'voiceCount': 0, 'skins': [], 'spineSkins': [], 'live2dSkins': [],
+                       'charId': _cid}
+_key2char = {}
+for _cid, rows in by_char.items():
+    for _rid, _k, _r in rows:
+        _key2char[_k.lower()] = _cid
+# 画法变体（`linghangyuan3_2_n` / `..._hx`）在权威表里没有自己的行，剥掉画法后缀再认角色，
+# 否则它们会被当成"认不出"退回剪影档（实测 4 条）。
+_SUF_RE = re.compile(r'(_n|_hx)+$')
+for _k, _cid in list(_key2char.items()):
+    _b = _SUF_RE.sub('', _k)
+    if _b != _k:
+        _key2char.setdefault(_b + '_n', _cid)
+        _key2char.setdefault(_b + '_hx', _cid)
+
+explorer_moved = 0
+sec_orphans = []
+for sh in ship_list:
+    keep = []
+    for sk in sh['skins']:
+        kk = sk['key'].lower()
+        cid = _key2char.get(kk)
+        if cid is None and not EXPLORER_BASE.match(kk):
+            keep.append(sk)
+            continue
+        if cid is None:                       # 表里没这一行：族内认不出角色，退回剪影档
+            sec_orphans.append(sk['key'])
+            silhouettes.append({'key': sk['key'], 'label': sk['label'], 'image': sk['image'],
+                                'ship': sh['id'], 'srcSkin': '', 'shipName': sh['name']})
+            continue
+        card = sec_cards[cid]
+        # 默认形态那一行**也是它自己的皮肤**（与普通船一致：卡 id == 默认皮肤 key）。
+        # 曾经把它跳过 ⇒ `tbniang` 这张立绘从索引里整个消失（闸门报「皮肤掉出索引」），
+        # 而且卡片的缩略图会掉到 `linghangyuan1_1` 上。
+        card['skins'].append(sk)
+        explorer_moved += 1
+    sh['skins'] = keep
+ship_list = [sh for sh in ship_list if sh['skins']]
+for card in sec_cards.values():
+    card['skins'].sort(key=lambda s: (NPC_TAB.get(s['key'], {}).get('group', 0), s['key']))
+    ships[card['id']] = card
+    ship_list.append(card)
+print('[i] 秘书舰 NPC：%d 条皮肤已并回 %d 张角色卡（%s），%d 条认不出角色退回剪影档 %s'
+      % (explorer_moved, len(sec_cards),
+         ' / '.join('%s×%d皮肤' % (c['name'], len(c['skins'])) for c in
+                    sorted(sec_cards.values(), key=lambda x: x['charId'])),
+         len(sec_orphans), ('：' + ', '.join(sorted(sec_orphans))) if sec_orphans else ''))
+
+# ---------- 三档制的 category 落位（前端只认 ship / story / other 三个值）----------
+# `silhouettes` 里现在只剩两类：真 `_hei` 剧情剪影、以及族内认不出角色的条目 ⇒ 都进「其他」。
+# `variants` 是挂在别人卡下的 `_alter`/`_memory`/`_dark` 立绘 ⇒ 按**它自己那个 root** 判档：
+# 组件立绘/剧情分身 → 其他，表里能查到自机舰级信息的 → 舰船，其余 → 剧情角色。
+for s in silhouettes:
+    s['category'] = 'other'
+for v in variants:
+    v['category'] = ('other' if is_other(v['root']) else
+                     'ship' if (SHIP_META.get(v['root']) or {}).get('category') == 'ship'
+                     else 'story')
+alive = {sh['id'] for sh in ship_list}      # 秘书舰那 3 张卡是刚补进来的，宿主可达性要重算
+for v in variants:
+    v['hostOk'] = v['host'] in alive
+
 cnt = {
     'ships': len(ship_list), 'with_cn': sum(1 for s in ship_list if s['hasCn']),
     'silhouettes': len(silhouettes),
@@ -664,6 +736,9 @@ cnt = {
     'with_faction': sum(1 for s in ship_list if s['faction']),
     'ship': sum(1 for s in ship_list if s['category'] == 'ship'),
     'story': sum(1 for s in ship_list if s['category'] == 'story'),
+    'other': sum(1 for s in ship_list if s['category'] == 'other')
+               + len(silhouettes)
+               + sum(1 for v in variants if v['category'] == 'other'),
 }
 index = {'generated': 'v2', 'counts': cnt, 'ships': ship_list,
          'silhouettes': silhouettes, 'variants': variants}

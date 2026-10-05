@@ -5412,3 +5412,57 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
 `scripts/diag/ship_meta_authority_diff.py`、`scripts/diag/gallery_index_diff_check.py`、
 `scripts/diag/test_meta_gate_proofs.py`。相关：§56（min(id) 被脏行打穿的第一版）、§82（权威表缺行
 导致 label 回落）、§93、§95、WF-26。
+
+---
+
+## §102. 三档制：类别判据必须只有一份正本，前端不许自己发明第二份（2026-10-05 用户定档）
+
+**症状**：用户看「剧情剪影」档 61 张，一大半是领航员/领洋者/探索者的**彩色皮肤立绘**，
+而且 19 张 `linghangyuan*` 全顶着「领航员-TB」一个名字——"三个领航员是有单独名字的"。
+
+**根因（三层）**
+1. **它们已经不是卡了**：2026-10-04 那轮（§93）为了解决"显示成皮肤1/皮肤2"，把三族 45 条
+   整体搬进顶层 `silhouettes`，前端再包成"单皮肤伪船"。搬走的代价是它们不再是实体、
+   还顶着「剧情剪影 · 无配音」的名——而 `secretary_special_ship` 里每个角色都有
+   `voice: cv-1000`~`cv-3300`（13 个包**早就在 `Output/Audio/CV/`**）。
+2. **名字其实早就是对的**：`npc_painting_name.json` 每行带 `character_id` + `cn`
+   （1000 领航员-TB / 2000 领洋者-娜比娅 / 3000 探索者-艾普洛），只是 45 条平铺成一堆
+   看起来像一个人的皮肤堆。
+3. **类别是前端发明的第二份语义**：`gallery_src/index.html` 里 `catOf()` 硬编码
+   `'hei'`/`'variant'`，索引里根本没有 `category='other'` 这个值 ⇒ 改数据不改前端、
+   或改前端不改数据，都会静默分错档。
+
+**修法（用户定档：只留 舰船 / 剧情角色 / 其他）**
+- 「其他」判据抽成**唯一正本** `scripts/gallery_buckets.py`（`npc` 前缀 / 含 `unknown` /
+  `_hei`·`_shadow`·`_undefined` 结尾 / `left|mid|right` 前缀 / 4 个点名的组件立绘）。
+  索引器产生 `category`，闸门 `gallery_index_diff_check` **从同一处 import** 来放行
+  `story→other`——写两份必然漂移，本项目已为同类漂移付过一次 12 条语音错派的代价（§85）。
+- 秘书舰三族从剪影区**并回 3 张角色卡**：卡 id 取该角色 `row_id` 最小那行的 painting
+  （`tbniang` / `lingyangzhe32_3` / `tansuozhe32_3`），皮肤按 `group` 排序。
+- 前端只读 `category`：`catOf()` 三值、档位条 4 个按钮、「全部」= 三档之和。
+- `_hei` 仍留在 `silhouettes` 数据结构里（它带 `ship`/`srcSkin` 的"来源可跳回本体"元数据，
+  那是真价值），但**档位归「其他」**。
+
+**判据（本轮真跑的）**
+- 索引闸门 `gallery_index_diff_check`：白名单外零差异，`船改判为其他档 77` 全部由
+  `is_other()` 回查放行（反向 `other→story` 与 `ship→other` 一律红）。
+- 新探针 `scripts/diag/gallery_cat3_probe.py`（无头 Chrome + CDP，**读渲染那一刻的 DOM**）6 条全绿：
+  档位条恰好 4 档、旧两档消失、`全部 1023 == 舰船 877 + 剧情角色 49 + 其他 97`、
+  「其他」里有 npc 卡与剪影伪卡且**没有**秘书舰卡、三族各是一张 ≥10 皮肤的独立卡、
+  页面卡总数 == 索引三档之和。
+- 抽公共模块后重跑索引，`index.json` 与抽前**逐字节相同**（`ee2b0d31142e`）——证明重构没夹带行为变化。
+
+**踩坑（本轮自己撞的两条）**
+- ⚠️ 并卡时把"默认形态那一行"跳过不当皮肤 ⇒ `tbniang` 这张立绘**整个从索引里消失**，
+  被闸门以「皮肤掉出索引」抓回来。普通船的规矩是 卡 id == 默认皮肤 key，秘书舰不能例外。
+- ⚠️ 族内画法变体（`linghangyuan3_2_n` 等）在权威表里没有自己的行 ⇒ 第一版认不出角色、
+  4 条退回剪影档。要按「基名 + `_n`/`_hx` 后缀」双向登记；剩下 `tansuozhe21_2` 是
+  **表里真没有这一行**（不是匹配漏了），留在「其他」是正确状态。
+- ⚠️ 探针第 6 条把 CDP 返回的 int 又 `json.loads` 一次 ⇒ `TypeError`。`Page.ev` 的返回类型
+  跟着 JS 表达式走，别一律按字符串处理。
+
+**涉及文件**：`scripts/gallery_buckets.py`（★新增，判据唯一正本）、`scripts/build_gallery_index.py`
+（秘书舰并卡 + `category` 三值 + 剪影/形态带 category）、`scripts/diag/gallery_index_diff_check.py`
+（`story→other` 方向性放行）、`scripts/diag/gallery_cat3_probe.py`（★新增，前端 DOM 验收）、
+`gallery_src/index.html`（档位条 4 档 / `catOf` / 计数自洽断言）。相关：§88、§90、§93（本轮改判）、
+§101、WF-26。

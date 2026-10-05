@@ -25,6 +25,9 @@ DEF_AZDATA = os.path.join(ROOT, 'inputs', 'azdata', 'azdata_ship_skin_template.j
 VAR_TAIL = re.compile(r'(_hx|_n|_rw|_bj|_jz|_alter|_heihei|_hei)+$')
 # 黑化后缀 = 独立发声实体（2026-10-02 用户裁定，见 docs/TROUBLESHOOTING.md §84）
 HEI_TAIL = re.compile(r'(_heihei|_hei)$')
+# 「其他」档判据取索引器的唯一正本（同一套语义写两份 = §85 那批错派的成因）
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+from gallery_buckets import is_other      # noqa: E402
 
 
 def empty(v):
@@ -241,6 +244,11 @@ def diff(old, new, allow_ship, allow_skin, packs, expect=None, meta=None):
             elif empty(a.get(k)) and not empty(b.get(k)):
                 # 从"没有"变成"有" = 补全，不是回退（撤掉错派语音后台词层接管就是这一类）
                 rep['船标量补全:%s' % k] += 1
+            elif k == 'category' and (a.get(k), b.get(k)) == ('story', 'other') and is_other(sid):
+                # 三档制改判（2026-10-05 用户定档）：只有**满足「其他」判据**的卡才许从剧情角色
+                # 挪进其他；反向（other→story）与 ship→other 一律判红。判据与索引器同源，
+                # 不是按名字放行——按名字放行等于从此任何误改类别都不再报。
+                rep['船改判为其他档'] += 1
             elif meta_blessed_ship(sid, k, a, b, mo, mn):
                 rep['船标量随元数据变化:%s' % k] += 1
             else:

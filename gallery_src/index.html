@@ -583,7 +583,7 @@ main{position:relative;z-index:1}
   <h1>碧蓝航线资产浏览器</h1>
   <div class="ctl"><input type="text" id="search" placeholder="搜索 中文名 / 拼音ID"></div>
   <div class="ctl"><label>类别</label><div class="seg" id="fCat">
-    <button data-c="" class="on">全部</button><button data-c="ship">舰船</button><button data-c="story">剧情角色</button><button data-c="hei">剧情剪影</button><button data-c="variant">特殊形态</button>
+    <button data-c="" class="on">全部</button><button data-c="ship">舰船</button><button data-c="story">剧情角色</button><button data-c="other">其他</button>
   </div></div>
   <div class="ctl"><label>阵营</label><select id="fFaction"><option value="">全部</option></select></div>
   <div class="ctl"><label>舰种</label><select id="fType"><option value="">全部</option></select></div>
@@ -628,31 +628,30 @@ main{position:relative;z-index:1}
 <script>
 const G = window.GALLERY;
 const P = location.protocol === 'file:' ? '../' : '../'; // 图片相对路径前缀（两种协议下均可）
-/* ---------- 剧情剪影（`_hei`）：不是皮肤，也不配音 ----------
-   §88 查清：`_hei` 是剧情里的**黑脸剪影**，不是角色、没有配音；用户 2026-10-03 拍板
-   「不显示在皮肤区，但保留一个入口方便管理」。索引层已把它们从 `ships[].skins` 外迁到
-   顶层 `silhouettes`，这里包成"单皮肤伪船"，好让卡片 / 搜索 / 弹层**复用同一条渲染路径**，
-   不另写一套 UI（另写的那套永远会和主路径漂移）。
-   ⚠️ 它们只从顶部第 4 档进：`catOf()` 返回 'hei'，而 `renderGrid()` 在「全部」档只渲染
-   ship + story 两组 ⇒ 主网格与各船皮肤区都不出现它们。 */
+/* ---------- 「其他」档的两类条目：剧情剪影（`_hei`）与认不出归属的组件立绘 ----------
+   §88 查清：`_hei` 是剧情里的**黑脸剪影**，不是角色、没有配音。2026-10-03 曾为它们单开一档，
+   2026-10-05 用户改判三档制（舰船 / 剧情角色 / 其他）⇒ 档位由**索引里的 `category`** 决定，
+   前端不再自己发明类别（前端发明一份，就永远和索引那份漂移）。
+   仍然包成"单皮肤伪船"，好让卡片 / 搜索 / 弹层复用同一条渲染路径，不另写一套 UI。 */
 const HEI = (G.silhouettes||[]).map(s=>({
   id:s.key, name:(s.shipName||'')+' · 剧情剪影', hasCn:false, npc:false,
-  type:'', rarity:'', faction:'', category:'hei', voiceCount:0, sil:s,
+  type:'', rarity:'', faction:'', category:s.category||'other', voiceCount:0, sil:s,
   skins:[{key:s.key, label:'剧情剪影', image:s.image, spine:false, live2d:''}],
   spineSkins:[], live2dSkins:[]}));
-/* ---------- 特殊形态（`_alter`/`_memory`/`_dark`）：另一张卡的立绘，不是宿主船的皮肤 ----------
-   索引层按归属判的外迁（`E.form_root(key)` 剥完画法层仍带形态后缀、且不等于卡 id），
-   2026-10-03 用户拍板「挪出去单独一档」。同样包成单皮肤伪船，走与剪影一致的那条渲染路径。 */
+/* ---------- 形态族（`_alter`/`_memory`/`_dark`）：另一张卡的立绘，不是宿主船的皮肤 ----------
+   索引层按归属判的外迁（`E.form_root(key)` 剥完画法层仍带形态后缀、且不等于卡 id）。
+   三档制下它们不再自成一档：`category` 由索引按**它自己那个 root** 给（自机→舰船 / 其余→剧情角色 /
+   `npc`·左中右分身→其他）。 */
 const VAR = (G.variants||[]).map(s=>({
   id:s.key, name:(s.name||s.key)+' · '+s.familyCn, hasCn:false, npc:false,
-  type:'', rarity:'', faction:'', category:'variant', voiceCount:s.voiceCount||0,
+  type:'', rarity:'', faction:'', category:s.category||'story', voiceCount:s.voiceCount||0,
   voiceText:s.voiceText||0, var:s,
   skins:[{key:s.key, label:s.label||s.familyCn, image:s.image, spine:false, live2d:'',
           voiceCount:s.voiceCount||0}],
   spineSkins:[], live2dSkins:[]}));
 const ships = G.ships.concat(HEI, VAR);
 let view = ships.slice();
-let catFilter = '';   // ''=全部 / ship=舰船 / story=剧情角色 / hei=剧情剪影 / variant=特殊形态
+let catFilter = '';   // ''=全部 / ship=舰船 / story=剧情角色 / other=其他
 
 /* ---------- 全局交互开关（localStorage 持久化，三个视图共用） ----------
    两条各自独立：关掉「点击出声」后点画面仍然会上字幕（只是不出声），
@@ -739,7 +738,7 @@ function uniqCount(arr){ const m={}; arr.forEach(x=>{if(x)m[x]=(m[x]||0)+1;}); r
 
 /* ---------- 渲染网格（按 category 分区：舰船 / 剧情角色） ---------- */
 const mainEl = document.getElementById('main');
-function catOf(s){ return s.category==='hei' ? 'hei' : (s.category==='variant' ? 'variant' : (s.category==='story' ? 'story' : 'ship')); }
+function catOf(s){ return s.category==='other' ? 'other' : (s.category==='story' ? 'story' : 'ship'); }
 /* 伪船（剪影 / 特殊形态）在卡片副标题上要说清"它不是皮肤"，两种一起判，别再各写一遍三元 */
 function pseudoKind(s){ return s.sil?'剧情剪影':(s.var?'特殊形态':''); }
 function makeCard(s){
@@ -768,8 +767,9 @@ function renderGrid(){
   mainEl.innerHTML='';
   const cntEl=document.getElementById('count');
   if(!view.length){ mainEl.innerHTML='<div class="empty">没有匹配的内容</div>'; cntEl.textContent='共 0 项'; return; }
-  const CATL={ship:'舰船',story:'剧情角色',hei:'剧情剪影',variant:'特殊形态'};
-  const groups = catFilter==='' ? [['ship','舰船'],['story','剧情角色']] : [[catFilter, CATL[catFilter]||catFilter]];
+  const CATL={ship:'舰船',story:'剧情角色',other:'其他'};
+  const groups = catFilter==='' ? [['ship','舰船'],['story','剧情角色'],['other','其他']]
+                                : [[catFilter, CATL[catFilter]||catFilter]];
   let shown=0; const per={};
   groups.forEach(([key,label])=>{
     const list = view.filter(s=>catOf(s)===key);
@@ -785,7 +785,7 @@ function renderGrid(){
     g.appendChild(frag); mainEl.appendChild(g);
   });
   if(!shown){ mainEl.innerHTML='<div class="empty">该类别下没有匹配项</div>'; }
-  cntEl.textContent = catFilter==='' ? `共 ${shown} 项 · 舰船 ${per.ship||0} / 剧情 ${per.story||0}` : `共 ${shown} 项`;
+  cntEl.textContent = catFilter==='' ? `共 ${shown} 项 · 舰船 ${per.ship||0} / 剧情 ${per.story||0} / 其他 ${per.other||0}` : `共 ${shown} 项`;
 }
 
 /* ---------- 卡片跟随鼠标倾斜 + 毛玻璃按需挂载 ----------
@@ -1996,7 +1996,7 @@ async function startSpine(s, sk){
 
 /* ---------- 类别分段控件：总数标注 + 点击切换分区 ---------- */
 (function initCatSeg(){
-  const all=ships.reduce((a,s)=>{a[catOf(s)]++;return a;},{ship:0,story:0,hei:0,variant:0});
+  const all=ships.reduce((a,s)=>{a[catOf(s)]++;return a;},{ship:0,story:0,other:0});
   const seg=document.getElementById('fCat');
   const sl=document.createElement('span'); sl.className='segslide'; seg.appendChild(sl);
   const on=()=>seg.querySelector('button.on');
@@ -2004,10 +2004,10 @@ async function startSpine(s, sk){
     const c=b.dataset.c;
     if(c==='ship')b.textContent='舰船 '+all.ship;
     else if(c==='story')b.textContent='剧情角色 '+all.story;
-    else if(c==='hei')b.textContent='剧情剪影 '+all.hei;
-    else if(c==='variant')b.textContent='特殊形态 '+all.variant;
-    /* 「全部」的数**不含**剪影与特殊形态：它们不在主网格出现，把它算进去就等于报一个点不到的数。 */
-    else b.textContent='全部 '+G.ships.length;
+    else if(c==='other')b.textContent='其他 '+all.other;
+    /* 「全部」= 三档之和（含伪船卡）。三档制之前剪影/特殊形态不在主网格，
+       所以那时它报的是 G.ships.length；现在这三个数必须能加得起来。 */
+    else b.textContent='全部 '+ships.length;
     b.onclick=()=>{catFilter=c; document.querySelectorAll('#fCat button').forEach(x=>x.classList.toggle('on',x===b));
       slidePill(sl,on(),true); renderGrid();};
   });
