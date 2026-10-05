@@ -5513,3 +5513,18 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
 （`merge_npc_words`）、`scripts/build_gallery_index.py`（船级语音重算）、
 `scripts/diag/gallery_cat3_probe.py`。相关：§82（语音/台词同源）、§85（一份语义两处写 = 错派成因）、
 §93（本轮改判）、§102、WF-21/WF-22。
+
+**已排除的假设（2026-10-05，B 项取证）：没有任何表给秘书舰换装命名**
+拿两个已知明文（`linghangyuan1_5` = 有真名「超级AI-TC」、`linghangyuan1_2` = 无真名）反查
+`.diag/sharecfg_re/` 下全部 **774 张 lua 表 + 32 张磁盘表**，只有 3 张表提到这些立绘名：
+
+| 表 | 提到它的方式 | 有没有皮肤名 |
+|---|---|---|
+| `secretary_special_ship` | 每行的 `painting` / `head` 列 | ❌ `name` 列是**角色名**（领航员-TB），41 行只有 3 个不同值 |
+| `painting_filte_map` | 2725 行 | ❌ **整表只有 `key` 一列**（是一张立绘白名单，没有文案） |
+| `ship_skin_template` | 只有 2 行 | ✅ 仅 `linghangyuan1_5`=超级AI-TC、`linghangyuan3_2`=数据集：无数的我 |
+
+另查 `secretary_special_ship_expression`（41 行，字段名与主表逐字相同）——它是**按形态覆盖台词**的表，
+本版全部为空串，也没有名字列。⇒ **"15 张显示成皮肤N"不是取数漏了，是游戏里就没有这个名字**；
+唯一诚实的做法是保留占位并在此记档，而不是编一个名字或把 `unlock_desc`（"解锁10组瞬间"，
+那是**获取方式**不是名字）当皮肤名显示。
