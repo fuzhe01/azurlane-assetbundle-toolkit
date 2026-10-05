@@ -5750,3 +5750,55 @@ CG 渲成 45° 菱形（房间占满、角色缩成中间一小点）。
 `scripts/diag/ship_meta_authority_diff.py`（新判据 `pair_rescue` / `pair_tiebreak`）、
 `scripts/diag/test_meta_gate_proofs.py`（26→41 例反向对照）、`scripts/diag/gallery_cat3_probe.py`（9→13 条 DOM 判据）。
 相关：§101、§102、WF-26、`_dark`/`_alter` 后缀语义见记忆「立绘变体后缀真实语义」。
+
+---
+
+## §107. 弹窗"缺件"的第三种成因：`normal` 动画中后段是**角色消散的演出段**（用户拍板保持原样，2026-10-05）
+
+**症状**：用户两张实机截图对比 —— 动画选 `normal` 时**菱形房间在中央、角色只剩几条腿和狐尾、
+两者不重叠、大片空白**；切成 `touch_body` 后画面完整（房间铺满、角色居中）。
+用户："你看，这肯定有问题呀"。
+
+**先排掉的四件事**（都做了实测，别再重走）：
+1. **不是取景/像素判据** —— §105 的背景巨幕剔除已生效（`box` 2205×3065、`base1` 0.421 正常）；
+2. **不是 skin** —— 那是 §106 的病，已修（本截图里下拉显示的是修好的「（自动 · 最优 skin）」）；
+3. **不是图层绘制顺序** —— 把 `window.__spLayers` 数组**整体反转**再截图，画面**没有变化**，
+   说明"房间压住角色"不成立（房间的不透明区与角色不重叠，谁先画都一样）；
+4. **不是"角色没渲染"** —— 逐层隔离截图里主层有完整角色（头/身/腿/大狐尾）。
+
+**定案方式（本轮唯一有效的动作）**：**把动画精确推进到指定相位再截图**。
+给页面加 `window.__seekAnim(sec)`（1/30s 小步推进，复刻帧循环），给探针加 `--anim/--at/--seek`：
+`py -3 scripts/diag/spine_dialog_shot.py 天津风 tianjinfeng_2 --anim normal --at 1 --seek 9`
+→ 截出的画面**与用户截图一致**（角色主体消失、只剩笼子里的腿 + 散开的光斑）。
+另一条独立路径（node 侧 `scripts/diag/anim_timeline.js` 逐层扫时间轴）给出**同一结论**：
+
+| 时刻 | 主层世界框 | 画面 |
+|---|---|---|
+| t=0.5~6s | 1535×1571（正常） | 角色完整 |
+| t≈8s 起 | 30316×46333（拉散）/ 510×397（压没） | **角色主体消失** |
+| t=20~32s | 稳定在"散架"态 | 只有腿/狐尾 + 光效 |
+
+⇒ **`normal` 这条 33.3 秒动画本身在后段是"退场/消散"演出**，与渲染管线无关
+（同一份 skel + 同一套官方 runtime ⇒ 游戏里播 normal 也会这样）。
+官方立绘 `Paintings_v2/tianjinfeng_2.png` 永远完整，是因为**合成管线根本不播动画**（静态 sprite 摆放）。
+
+**影响面（全库取证）**：`node scripts/diag/anim_stability_scan.js`
+→ 234 个目录里 **6 个**命中（2.6%）：`siwangzhuzai_2`、`feiteliedadi_5`、`leiniya_2`、
+`baifeng`、`ougen_7`、`tianjinfeng_2`。判据 = 主层**框面积**偏离中位数 3 倍以上、
+占比 >10% 且持续 >2s（⚠️ 不能用"可见附件数"：本病例附件数只掉到 61%，抓不住）。
+
+**用户拍板：保持原样**（认作官方演出，不改播放行为）。
+
+**教训**：
+1. **动画相位必须能精确控制才谈得上定案**。真实播放受帧率与 `dt` 钳制影响极大 ——
+   headless 里"等了 16 秒"实际只推进了约 2 秒动画，于是我用 2/5/10/18 秒的截图反复
+   "确认已修好"，而用户 60fps 下 8 秒就进了散架段。→ `--seek` 才是可信的时间控制。
+2. **采样脚本必须逐条复刻页面的判据**，否则会造出假象：本轮两次被自己的脚本误导 ——
+   先是漏了 `setToSetupPose`（骨骼未初始化 → 顶点乱飞），再是漏了 `slot.data.color` 过滤
+   （把 setup alpha=0 的隐藏巨幕当成"在渲染"）。
+3. **画面散架先查动画相位，别改取景**（本轮的"分离感"一度被误判成层次序/取景问题）。
+
+**涉及文件**：`gallery_src/index.html`（`window.__seekAnim/__layerBoxes/__spineLayers/__setAllSkin/__skinInfo`
+诊断出口 + 渲染循环的 `L.hidden` 开关）、`scripts/diag/spine_dialog_shot.py`（`--skin/--anim/--at/--seek`）、
+新增 `scripts/diag/anim_timeline.js`（逐层时间轴）与 `scripts/diag/anim_stability_scan.js`（全库筛选）。
+相关：§105（取景）、§106（skin）。

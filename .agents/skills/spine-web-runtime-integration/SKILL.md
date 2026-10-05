@@ -1,7 +1,7 @@
 ---
 name: spine-web-runtime-integration
 description: 在网页里集成 Spine 3.8 (spine-webgl) 运行时做动态立绘渲染与批量出图，覆盖 .skel/.json 骨架分流、atlas 多页加载、必须 setSkin（否则命名 skin 独有部件整块不显示）、setup pose 与动画第 0 帧是两种语义、相机视口与 fit 包围盒陷阱（含"恒不渲染的巨幕遮罩撑爆取景"与"不透明纯色黑底撑爆取景"两类，以及判据必须落在取景那一刻）、readPixels 在实时 viewer 里不可用、0 秒占位动画过滤、TDZ 变量遮蔽、无头 CDP 验收判据。当需要让 .skel/.atlas 模型在浏览器里动起来、反馈"模型缺胳膊少腿/比例怪/层加载失败/导出出来是中间一小块四周全黑"、或要批量渲染 Spine 立绘成 PNG 时使用。触发词：Spine 网页播放、spine-webgl、spine-all.js、SkeletonBinary、SkeletonJson、atlas 图集页、setSkin、皮肤、SceneRenderer、比例怪、缺下半身、部件不显示、setup pose、CG 导出、层失败、动态立绘渲染、骨骼动画截图、取景、包围盒、画面太小、只占中间一小块、四周全黑、fit。不适用于 AssetBundle 侧的 Spine 资源还原与页纹理补齐（那是 unity-assetbundle-painting-restore），也不适用于 Live2D 网页集成（live2d-web-runtime-integration）。
-version: 1.1.4
+version: 1.1.5
 ---
 
 # Spine 网页运行时集成与批量出图
@@ -241,6 +241,8 @@ const anims = (data.animations || []).filter(a => a.duration > 0.01)
 - [ ] `setSkin(data.findSkin(name))` 传对象不传字符串，且在 `setSlotsToSetupPose()` **之前**
 - [ ] skin 下拉的"自动/不设"项回退到 `data.defaultSkin` **对象**（绝不传 `null`），见 §4
 - [ ] 换 skin 后重算取景/包围盒前先 `anim.update(0)+apply()`（否则量的是 setup pose）
+- [ ] 「画面散架/角色消失」先按 §12 查**动画相位**（`--seek`），别改取景
+- [ ] 写采样脚本要复刻页面判据（`setToSetupPose` + `slot.data.color` 过滤 + 1/60s 小步）
 - [ ] skin 选择用 `coverOf`（只量动画帧），平手有手动下拉可切
 - [ ] 导出层若要补部件，用"动画第 0 帧"开关且默认关闭；开则全量重导，不只重导子集
 - [ ] `scene.camera.setViewport(w, h)` 跟着 `scene.resize()` 一起调
@@ -362,10 +364,27 @@ const anims = (data.animations || []).filter(a => a.duration > 0.01)
 （4 顶点 45° 方形），贴图是一整张矩形房间图。想拿"贴图 alpha 收紧 mesh 背景的取景"是死路。
 
 ⚠️ **官方立绘（`Paintings_v2/`）与 Spine 渲染是两条管线，构图可能根本不同**：合成器走
-Unity sprite 路径（房间贴图**拉伸铺满 root 画框**，没有菱形 mesh），Spine 渲染（游戏内
+Unity sprite 路径（背景贴图**拉伸铺满 root 画框**，没有菱形 mesh），Spine 渲染（游戏内
 动态立绘同款）才是菱形。用户拿立绘当"完整"基准时，先讲清这个差异再谈取景——
 菱形 mesh（对角 d）的内接矩形 w+h ≤ d，横向弹窗里「房间铺满 + 边框出画 + 角色完整」
-可能**数学上不可兼得**，别应承做不到的构图。
+可能**数学上不可兼得**，别应承做不到的构图。**而且立绘永远"完整"**，因为它不播动画
+（上面那条"动画后段散架"的病，立绘天然免疫）—— 所以拿立绘对照时别把"动画相位问题"
+误判成"渲染缺件"。
+
+⚠️ **「画面散架 / 角色主体消失」先查动画相位，别改取景**（2026-10-05 实测）：
+有些 skel 的同名动画**中后段就是"退场/消散"演出**（角色被拉散或压没，只剩零星部件 + 光效），
+而 prefab 的 `startingAnimation` 恰恰可能是它。实测某皮肤 `normal`（33.3s）：t=0.5~6s 主层框
+1535×1571（正常）→ t≈8s 起 30316×46333 或 510×397（散架）。全库 234 个目录里 6 个有这现象。
+
+⚠️ **动画相位必须能精确控制才谈得上定案**：真实播放受帧率与 `dt` 钳制影响极大 ——
+headless 里"等 16 秒"实际只推进约 2 秒动画。给页面加 `__seekAnim(sec)`（1/30s 小步推进）、
+给探针加 `--anim/--at/--seek`，才是可信的时间控制；否则会拿"恰好稳定"的截图反复"确认已修好"。
+
+⚠️ **写采样脚本必须逐条复刻页面的判据**，否则全是假象。本轮两次被自己的脚本误导：
+① 漏 `setToSetupPose()` ⇒ 骨骼未初始化 ⇒ 顶点乱飞（虚报 2T 层 29780×15185，实际 1117×2311）；
+② 漏 `slot.data.color` 的 alpha 过滤 ⇒ 把 setup alpha=0 的隐藏巨幕当成"在渲染"。
+另外**小步推进**（1/60s）是必须的，且判据要落在**框面积**上、不能落在"可见附件数"上
+（本病例附件数只掉到 61%，抓不住）。
 
 ## 涉及文件与延伸
 

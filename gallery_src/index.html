@@ -1907,6 +1907,24 @@ async function startSpine(s, sk){
       camX:+camX.toFixed(1), camY:+camY.toFixed(1), base1:+base1.toFixed(5), zoom:+zoom.toFixed(4),
       didPixelFit, pendingPixelFit, W:cv.width, H:cv.height,
       cssW:cv.clientWidth, cssH:cv.clientHeight, cz:+scene.camera.zoom.toFixed(5), per:framePer});
+    /* 诊断出口：**实时**读各层当前世界框（`spine_dialog_shot.py --anim X --at N` 用）。
+       回答"此刻是哪一层的框大得离谱"—— 实测 `tianjinfeng_2` 的 2T 层在 normal 的
+       t≈8~32s 会爆到 29780×15185（正常 1117×2311），而取景框只在打开那一瞬算一次。 */
+    /* 诊断出口：把各层动画**精确推进** sec 秒（小步 1/30s，复刻帧循环的步进方式）。
+       用来回答"动画播到第 N 秒时各层到底什么样" —— 真实播放受帧率/dt 钳制影响，
+       在 60fps 机器上 8 秒真实时间 = 8 秒动画，而 headless 下可能只推进了 2 秒。 */
+    window.__seekAnim=(sec)=>{ const dt=1/30; let left=Math.max(0,+sec||0);
+      while(left>1e-6){ const d=Math.min(dt,left);
+        layers.forEach(L=>{ try{ if(L.anim){ L.anim.update(d); L.anim.apply(L.skeleton);
+          L.skeleton.updateWorldTransform(); } }catch(e){} });
+        left-=d; }
+      return +(1).toFixed(0); };
+    window.__layerBoxes=()=>layers.map(L=>{ try{ const l=extents(L), b=union(l);
+      const tr=(L.anim&&L.anim.tracks&&L.anim.tracks[0])||null;
+      const tm=(tr&&tr.time!=null)?+Number(tr.time).toFixed(2):null;
+      const du=(tr&&tr.animation&&tr.animation.duration!=null)?+Number(tr.animation.duration).toFixed(1):null;
+      return {name:L.name, n:l.length, t:tm, dur:du, box:b&&b.map(x=>Math.round(x))}; }
+      catch(e){ return {name:L.name, err:String(e)}; } });
     /* ⚠️ **像素级二次构图**（2026-10-04，§98 —— 天津风皮肤2「缺部件」的真正修法）。
        为什么顶点包围盒不够：各层的**坐标系互不重合**，并起来是个巨框。
        `tianjinfeng_2` 五层在 `normal` 动画下的 bbox 实测：

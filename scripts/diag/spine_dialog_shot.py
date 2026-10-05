@@ -35,6 +35,20 @@ if '--skin' in sys.argv:
     SKIN = sys.argv[sys.argv.index('--skin') + 1] if sys.argv.index('--skin') + 1 < len(sys.argv) else ''
     if SKIN == 'none':
         SKIN = ''
+# --anim <名字>：先切到该动画再截图（走页面的动画下拉，等同用户手动切换）
+ANIM = None
+if '--anim' in sys.argv:
+    ANIM = sys.argv[sys.argv.index('--anim') + 1] if sys.argv.index('--anim') + 1 < len(sys.argv) else ''
+    if ANIM == 'setup':
+        ANIM = ''
+# --at <秒>：切完动画后再等这么多秒才截图（复现"播到某一刻才出问题"）
+AT = None
+if '--at' in sys.argv:
+    AT = sys.argv[sys.argv.index('--at') + 1] if sys.argv.index('--at') + 1 < len(sys.argv) else None
+# --seek <秒>：切完动画后由页面**精确推进**这么多秒（不受真实帧率/dt 钳制影响）
+SEEK = None
+if '--seek' in sys.argv:
+    SEEK = sys.argv[sys.argv.index('--seek') + 1] if sys.argv.index('--seek') + 1 < len(sys.argv) else None
 
 
 def free_port():
@@ -124,6 +138,33 @@ def main() -> int:
             "(()=>{const s=document.getElementById('spSkin');return s&&s.style.display!=='none'?s.value:null;})()"))
         print('skin 自报(默认路径): %s' % p.ev(
             "(window.__skinInfo?JSON.stringify(window.__skinInfo()):'-')"))
+
+        # --anim：切到指定动画再截（走页面自己的动画下拉，等同用户手动切换）。
+        # 2026-10-05：用户指出「normal 下房间和角色分开、touch_body 下才是正常的」——
+        # 层间相对位置**随动画不同**，必须能逐动画取证。
+        if ANIM:
+            print('切换动画 -> %r（%r）' % (ANIM, p.ev(
+                "(()=>{const s=document.getElementById('spAnim');if(!s)return 'no select';"
+                "s.value=%r;s.dispatchEvent(new Event('change'));return s.value;})()" % ANIM)))
+            # --at <秒>：切完动画再等这么多秒才截 —— 用来复现"动画播到某一刻才出问题"
+            # （实测 tianjinfeng_2 的 2T 层在 t≈8~32s 会爆到 29780×15185，而取景框只在
+            #  打开那一瞬算一次 ⇒ 画面正常与否取决于打开时动画停在哪个相位）。
+            time.sleep(float(AT) if AT else 6.0)
+            print('取景自报(动画后): %s' % p.ev(
+                "(window.__frameInfo?JSON.stringify(window.__frameInfo()):'-')"))
+            if SEEK:
+                print('推进动画 %ss -> %r' % (SEEK, p.ev(
+                    "(window.__seekAnim?window.__seekAnim(%s):'没有 __seekAnim')" % SEEK)))
+                time.sleep(0.6)
+                # 推完**立刻**截一张：这是"动画播到该相位时画面到底长什么样"的唯一硬证据
+                fp = os.path.join(DIAG, 'seek_%s_%ss.png' % (KEY, SEEK))
+                d = p.cmd('Page.captureScreenshot', {'format': 'png'})
+                with open(fp, 'wb') as f:
+                    f.write(base64.b64decode(d['data']))
+                print('  seek 截图 -> %s（%.2f MB）' % (os.path.basename(fp),
+                      os.path.getsize(fp) / 1048576.0))
+            print('层实时快照: %s' % p.ev(
+                "(window.__layerBoxes?JSON.stringify(window.__layerBoxes()):'-')"))
 
         # --skin：复现"用户手动切 skin"。
         #   --skin none  → 走 __setAllSkin('')，即**裸 setup**（诊断用，附件会大面积消失）
