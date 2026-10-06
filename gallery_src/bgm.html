@@ -5,173 +5,407 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>音乐库 · 碧蓝航线资产浏览器</title>
 <script>/* 与 index.html 同一条规则：先定主题再渲染，否则刷新闪一下默认色 */try{document.documentElement.dataset.theme=localStorage.getItem('gallery.theme')||'light'}catch(e){document.documentElement.dataset.theme='light'}</script>
-<!-- 配色/圆角/弹性只有一份正本：theme.css（由 index.html 抽出，两边共用）。
-     ⚠️ 本文件的组件规则里**不许出现字面颜色**，否则深色主题会漏色（同 index.html 那条约束）。 -->
+<!-- 配色/圆角/弹性只有正本 theme.css（与 index.html 共用）。
+     ⚠️ 本文件的组件规则里不许出现字面颜色：所有透明层都用 color-mix() 从 token 派生，
+        这样「昼/夜」两套主题会一起动，不会只有一边对。 -->
 <link rel="stylesheet" href="theme.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
 body{font-family:'Segoe UI',"Microsoft YaHei",system-ui,sans-serif;color:var(--txt);
-  min-height:100vh;background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%) fixed;
-  padding-bottom:96px}
-header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;
-  padding:12px 18px;background:var(--nav-bg);backdrop-filter:blur(var(--nav-blur));
-  border-bottom:1px solid var(--nav-line)}
-header h1{font-size:16px;font-weight:800;letter-spacing:.02em;color:var(--title);white-space:nowrap}
-header .sub{font-size:12px;color:var(--dim);white-space:nowrap}
+  min-height:100vh;padding-bottom:132px;overflow-x:hidden;
+  background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%) fixed}
+
+/* ── 环境光：两团极慢漂移的潮光。放在内容之下、只有透明度在动，不抢注意力 ── */
+.amb{position:fixed;inset:-20% -10%;z-index:-1;pointer-events:none;overflow:hidden}
+.amb i{position:absolute;display:block;border-radius:50%;filter:blur(70px);opacity:.5;
+  animation:drift 46s var(--ease-ios) infinite alternate}
+.amb i:nth-child(1){width:52vw;height:52vw;left:-8vw;top:-10vw;
+  background:radial-gradient(circle at 40% 40%,color-mix(in srgb,var(--brand) 42%,transparent),transparent 68%)}
+.amb i:nth-child(2){width:44vw;height:44vw;right:-6vw;top:22vh;animation-duration:61s;animation-delay:-14s;
+  background:radial-gradient(circle at 60% 45%,color-mix(in srgb,var(--pop) 30%,transparent),transparent 66%)}
+.amb i:nth-child(3){width:60vw;height:26vw;left:18vw;bottom:-6vw;animation-duration:74s;animation-delay:-30s;
+  background:radial-gradient(ellipse at 50% 60%,color-mix(in srgb,var(--brand) 24%,transparent),transparent 70%)}
+@keyframes drift{from{transform:translate3d(0,0,0) scale(1)}
+  to{transform:translate3d(4vw,-3vh,0) scale(1.14)}}
+
+/* ── 顶栏：雨后玻璃。几乎不糊、近乎全透，靠三样特征读作"湿玻璃"：
+     ① 上沿一道亮发丝 ② 整片斜向反光 ③ 底下垫一层极淡的雾 ── */
+header{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:12px 20px;border:0;
+  background:color-mix(in srgb,var(--panel) 62%,transparent);
+  backdrop-filter:blur(26px) saturate(1.6);-webkit-backdrop-filter:blur(26px) saturate(1.6);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent),var(--sh1)}
+header::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background:linear-gradient(112deg,color-mix(in srgb,#fff 22%,transparent) 0%,transparent 34%,transparent 66%,
+    color-mix(in srgb,var(--brand) 10%,transparent) 100%)}
+header>*{position:relative;z-index:1}
+header h1{font-size:17px;font-weight:800;letter-spacing:.02em;color:var(--title);white-space:nowrap}
+header .sub{font-size:12px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
 header .sp{flex:1}
-a.back{font-size:13px;color:var(--txt2);text-decoration:none;padding:6px 12px;
-  border:1px solid var(--chip-line);border-radius:var(--r-chip);background:var(--chip);
-  transition:transform var(--t-col) var(--ease-ios),color var(--t-col) var(--ease-ios)}
-a.back:hover{color:var(--brand-d);transform:translateY(-1px)}
+a.back{font-size:13px;color:var(--txt2);text-decoration:none;padding:7px 14px;
+  border-radius:var(--r-chip);background:color-mix(in srgb,var(--panel) 70%,transparent);
+  border:1px solid var(--chip-line);
+  transition:transform var(--t-col) var(--ease-ios),color var(--t-col) var(--ease-ios),
+    box-shadow var(--t-col) var(--ease-ios)}
+a.back:hover{color:var(--brand-d);transform:translateY(-1px);box-shadow:var(--sh2)}
 a.back:active{transform:scale(.97)}
-.wrap{max-width:1000px;margin:0 auto;padding:16px 18px}
-.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
-input.q{flex:1;min-width:200px;font:inherit;font-size:14px;color:var(--txt);background:var(--panel);
-  border:1px solid var(--line);border-radius:var(--r-in);padding:9px 13px;outline:none;
-  transition:border-color var(--t-col) var(--ease-ios),box-shadow var(--t-col) var(--ease-ios)}
-input.q:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--on-bg)}
-.chip{font-size:12.5px;color:var(--txt2);background:var(--chip);border:1px solid var(--chip-line);
-  border-radius:var(--r-chip);padding:6px 12px;cursor:pointer;white-space:nowrap;
-  transition:transform var(--t-col) var(--ease-ios),background var(--t-col) var(--ease-ios),color var(--t-col) var(--ease-ios)}
-.chip:hover{transform:translateY(-1px)}
-.chip.on{background:var(--grad-brand);color:#fff;border-color:transparent}
-.row{display:grid;grid-template-columns:34px 1fr auto auto;gap:12px;align-items:center;
-  padding:10px 12px;margin-bottom:6px;background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--r-card);box-shadow:var(--sh1);
-  transition:transform var(--t-col) var(--ease-ios),box-shadow var(--t-col) var(--ease-ios),border-color var(--t-col) var(--ease-ios)}
-.row:hover{transform:translateY(-2px);box-shadow:var(--sh2)}
-.row.playing{border-color:var(--brand);box-shadow:0 0 0 3px var(--on-bg)}
+
+.wrap{max-width:1020px;margin:0 auto;padding:18px 20px 0}
+
+/* ── 筛选区：三组同一套 chip，只有一组能"选中"，避免看起来像三套控件 ── */
+.tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+input.q{flex:1;min-width:230px;font:inherit;font-size:14px;color:var(--txt);
+  background:color-mix(in srgb,var(--panel) 74%,transparent);
+  border:1px solid var(--line);border-radius:var(--r-chip);padding:10px 16px;outline:none;
+  box-shadow:inset 0 1px 2px color-mix(in srgb,var(--dim) 18%,transparent);
+  transition:border-color var(--t-col) var(--ease-ios),box-shadow var(--t-col) var(--ease-ios),
+    background var(--t-col) var(--ease-ios)}
+input.q:focus{border-color:var(--brand);background:color-mix(in srgb,var(--panel) 92%,transparent);
+  box-shadow:0 0 0 4px var(--on-bg),inset 0 1px 2px color-mix(in srgb,var(--dim) 12%,transparent)}
+.grp{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:2px 0 10px}
+.grp>span{font-size:11.5px;color:var(--dim);margin-right:1px;white-space:nowrap}
+.chip{font-size:12.5px;color:var(--txt2);background:color-mix(in srgb,var(--panel) 62%,transparent);
+  border:1px solid var(--chip-line);border-radius:var(--r-chip);padding:5px 12px;cursor:pointer;
+  white-space:nowrap;user-select:none;
+  transition:transform var(--t-col) var(--ease-ios),background var(--t-col) var(--ease-ios),
+    color var(--t-col) var(--ease-ios),border-color var(--t-col) var(--ease-ios)}
+.chip:hover{transform:translateY(-1px);border-color:var(--brand);color:var(--brand-d)}
+.chip.on{background:var(--grad-brand);color:#fff;border-color:transparent;box-shadow:var(--sh1)}
+.chip b{font-weight:400;opacity:.62;margin-left:4px;font-variant-numeric:tabular-nums}
+
+/* ── 曲目行：湿玻璃卡片。进场用一次交错浮现，之后只保留 hover/playing 两种状态 ── */
+.row{display:grid;grid-template-columns:38px 1fr auto 40px;gap:13px;align-items:center;
+  padding:11px 14px;margin-bottom:8px;border-radius:var(--r-card);
+  background:color-mix(in srgb,var(--panel) 58%,transparent);
+  border:1px solid color-mix(in srgb,var(--line) 70%,transparent);
+  backdrop-filter:blur(14px) saturate(1.35);-webkit-backdrop-filter:blur(14px) saturate(1.35);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 42%,transparent),var(--sh1);
+  opacity:0;transform:translateY(9px);
+  transition:opacity .5s var(--ease-ios),transform .5s var(--ease-ios),
+    border-color var(--t-col) var(--ease-ios),box-shadow var(--t-col) var(--ease-ios),
+    background var(--t-col) var(--ease-ios)}
+.row.in{opacity:1;transform:none}
+.row:hover{border-color:color-mix(in srgb,var(--brand) 55%,transparent);
+  background:color-mix(in srgb,var(--panel) 78%,transparent);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent),var(--sh2)}
+.row.playing{border-color:color-mix(in srgb,var(--brand) 72%,transparent);
+  background:color-mix(in srgb,var(--brand-l) 62%,transparent);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 60%,transparent),0 0 0 3px var(--on-bg),var(--sh2)}
 .row .no{font-size:12px;color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
-.row .nm{font-size:14.5px;font-weight:650;color:var(--txt);line-height:1.35;word-break:break-word}
-.row .en{font-size:12px;color:var(--dim);font-weight:400;margin-top:2px;word-break:break-all}
-.row .al{font-size:11.5px;color:var(--brand-d);background:var(--brand-l);border-radius:var(--r-chip);
-  padding:3px 9px;white-space:nowrap}
-.row .mt{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
-.play{width:34px;height:34px;flex:0 0 auto;border:0;border-radius:50%;cursor:pointer;
-  background:var(--grad-brand);color:#fff;display:grid;place-items:center;
-  transition:transform var(--t-col) var(--ease-ios)}
-.play:hover{transform:scale(1.06)}
-.play:active{transform:scale(.97)}
-.play svg{width:15px;height:15px;fill:currentColor}
-.bar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--bar);
-  backdrop-filter:blur(var(--glass-blur));border-top:1px solid var(--glass-line);
-  box-shadow:var(--sh-float);padding:10px 18px 12px;display:none}
-.bar.on{display:block}
-.bar .in{max-width:1000px;margin:0 auto}
-.bar .top{display:flex;align-items:center;gap:12px}
-.bar .cur{font-size:13.5px;font-weight:650;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-.bar .tm{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+.row .nm{font-size:14.5px;font-weight:650;line-height:1.35;word-break:break-word}
+.row .en{display:block;font-size:11.5px;color:var(--dim);font-weight:400;margin-top:3px;word-break:break-all}
+.row .tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.tag{font-size:10.5px;line-height:1;padding:4px 8px;border-radius:var(--r-chip);
+  color:var(--txt2);background:color-mix(in srgb,var(--panel2) 70%,transparent);
+  border:1px solid color-mix(in srgb,var(--line) 80%,transparent)}
+.tag.al{color:var(--brand-d);background:color-mix(in srgb,var(--brand-l) 78%,transparent);
+  border-color:color-mix(in srgb,var(--brand) 26%,transparent)}
+.tag.sh{color:var(--pop-d);background:color-mix(in srgb,var(--pop-l) 78%,transparent);
+  border-color:color-mix(in srgb,var(--pop) 26%,transparent)}
+.row .mt{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.row .mt i{display:block;font-style:normal;font-size:10.5px;opacity:.72}
+.play{width:36px;height:36px;border:0;border-radius:50%;cursor:pointer;position:relative;
+  background:var(--grad-brand);color:#fff;display:grid;place-items:center;overflow:hidden;
+  box-shadow:var(--sh1),inset 0 1px 0 color-mix(in srgb,#fff 45%,transparent);
+  transition:transform var(--t-col) var(--ease-ios),box-shadow var(--t-col) var(--ease-ios)}
+.play:hover{transform:scale(1.08);box-shadow:var(--sh2)}
+.play:active{transform:scale(.96)}
+.play svg{width:14px;height:14px;fill:currentColor;position:relative;z-index:1}
+/* 播放中：三角换成三根水位条，只有真在出声时才跳（暂停即冻住）——状态由数据驱动，不做装饰动画 */
+.eq{display:none;gap:2px;align-items:flex-end;height:14px}
+.row.playing .play svg{display:none}
+.row.playing .play .eq{display:flex}
+.eq u{display:block;width:2.5px;border-radius:2px;background:currentColor;height:30%}
+.row.playing .eq u{animation:bob 1.1s ease-in-out infinite}
+.eq u:nth-child(2){animation-delay:.18s}.eq u:nth-child(3){animation-delay:.36s}
+@keyframes bob{0%,100%{height:26%}50%{height:100%}}
+
+/* ── 播放器：整块抬起来的一片玻璃，潮水进度条是它的主角 ── */
+.bar{position:fixed;left:50%;transform:translateX(-50%) translateY(105%);bottom:14px;z-index:40;
+  width:min(1020px,calc(100vw - 26px));padding:12px 18px 14px;border-radius:var(--r-panel);
+  background:color-mix(in srgb,var(--panel) 66%,transparent);
+  backdrop-filter:blur(30px) saturate(1.7);-webkit-backdrop-filter:blur(30px) saturate(1.7);
+  border:1px solid color-mix(in srgb,var(--glass-line) 90%,transparent);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 48%,transparent),var(--sh-float);
+  transition:transform .55s var(--ease-ios),opacity .4s var(--ease-ios);opacity:0}
+.bar.on{transform:translateX(-50%) translateY(0);opacity:1}
+.bar .top{display:flex;align-items:center;gap:10px}
+.bar .cur{font-size:13.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.bar .cur i{font-style:normal;font-weight:400;color:var(--dim);margin-left:8px;font-size:11.5px}
+.bar .tm{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;min-width:38px;text-align:center}
 .bar button{border:0;background:transparent;cursor:pointer;color:var(--txt2);width:30px;height:30px;
-  border-radius:50%;display:grid;place-items:center;transition:transform var(--t-col) var(--ease-ios),background var(--t-col) var(--ease-ios)}
-.bar button:hover{background:var(--panel2);transform:scale(1.06)}
-.bar button:active{transform:scale(.97)}
-.bar button.on{color:var(--brand-d)}
+  border-radius:50%;display:grid;place-items:center;
+  transition:transform var(--t-col) var(--ease-ios),background var(--t-col) var(--ease-ios),
+    color var(--t-col) var(--ease-ios)}
+.bar button:hover{background:color-mix(in srgb,var(--panel2) 85%,transparent);transform:scale(1.08)}
+.bar button:active{transform:scale(.95)}
+.bar button.on{color:var(--brand-d);background:color-mix(in srgb,var(--brand-l) 70%,transparent)}
 .bar svg{width:15px;height:15px;fill:currentColor}
-.seek{width:100%;height:4px;margin:9px 0 4px;-webkit-appearance:none;appearance:none;
-  background:var(--line);border-radius:var(--r-chip);outline:none;cursor:pointer}
-.seek::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;
-  background:var(--brand);border:2px solid var(--panel);box-shadow:var(--sh1);cursor:pointer}
-.seek::-moz-range-thumb{width:12px;height:12px;border:2px solid var(--panel);border-radius:50%;
+.bar .vol{width:74px;height:4px;-webkit-appearance:none;appearance:none;outline:none;cursor:pointer;
+  background:color-mix(in srgb,var(--line) 80%,transparent);border-radius:var(--r-chip)}
+.bar .vol::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;
+  background:var(--brand);border:2px solid var(--panel);box-shadow:var(--sh1);cursor:pointer;
+  transition:transform var(--t-col) var(--ease-ios)}
+.bar .vol:hover::-webkit-slider-thumb{transform:scale(1.18)}
+.bar .vol::-moz-range-thumb{width:11px;height:11px;border:2px solid var(--panel);border-radius:50%;
   background:var(--brand);cursor:pointer}
-.vol{width:78px;height:4px}
-.empty{padding:40px 10px;text-align:center;color:var(--dim);font-size:13.5px;line-height:1.9}
-code{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;background:var(--panel2);
+
+/* 潮汐进度条：SVG 两层波 + 水面高光 + 悬停浮出的时间泡 */
+.tide{position:relative;height:46px;margin:6px 0 2px;cursor:pointer;touch-action:none}
+.tide svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible}
+.tide .trough{fill:color-mix(in srgb,var(--line) 62%,transparent)}
+.tide .w1{fill:color-mix(in srgb,var(--brand) 34%,transparent)}
+.tide .w2{fill:color-mix(in srgb,var(--brand) 20%,transparent)}
+.tide .crest{stroke:color-mix(in srgb,var(--brand) 92%,transparent);stroke-width:1.8;fill:none;
+  stroke-linecap:round;filter:drop-shadow(0 0 4px color-mix(in srgb,var(--brand) 55%,transparent))}
+.tide .spec{stroke:color-mix(in srgb,#fff 72%,transparent);stroke-width:1;fill:none;opacity:.55}
+.tide .w1,.tide .w2{transition:none}
+.tide .bead{fill:var(--panel);stroke:var(--brand);stroke-width:2;
+  transition:r .3s var(--ease-ios)}
+.tide:hover .bead{r:6}
+.tide .rip{fill:none;stroke:color-mix(in srgb,var(--brand) 70%,transparent);stroke-width:1.4;opacity:0}
+.tide .rip.go{animation:rip .62s var(--ease-ios) forwards}
+@keyframes rip{from{opacity:.85;r:2}to{opacity:0;r:22}}
+.tide .bub{position:absolute;transform:translate(-50%,-100%);pointer-events:none;
+  font-size:11px;font-variant-numeric:tabular-nums;color:var(--txt);
+  background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--chip-line);
+  border-radius:var(--r-chip);padding:3px 8px;box-shadow:var(--sh1);
+  opacity:0;transition:opacity .22s var(--ease-ios)}
+.tide:hover .bub,.tide.drag .bub{opacity:1}
+.hint{font-size:11px;color:var(--dim);text-align:center;margin-top:2px;
+  transition:opacity .5s var(--ease-ios)}
+.hint.off{opacity:0}
+/* 主题切换：`.opt` 的样式在 index.html 自己的 <style> 里（theme.css 只有 token），
+   所以本页必须自带这一小段，否则按钮会掉回浏览器默认外观。全部用 token，不写字面色。 */
+.opt{display:flex;gap:0;border:1px solid var(--chip-line);border-radius:var(--r-chip);overflow:hidden;
+  background:color-mix(in srgb,var(--panel) 62%,transparent)}
+.opt button{font:inherit;font-size:12.5px;border:0;cursor:pointer;padding:6px 13px;background:transparent;
+  color:var(--txt2);transition:background var(--t-col) var(--ease-ios),color var(--t-col) var(--ease-ios)}
+.opt button+button{border-left:1px solid var(--chip-line)}
+.opt button:hover{background:color-mix(in srgb,var(--panel2) 80%,transparent)}
+.opt button.on{background:var(--grad-brand);color:#fff}
+.empty{padding:46px 10px;text-align:center;color:var(--dim);font-size:13.5px;line-height:1.9}
+code{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;
+  background:color-mix(in srgb,var(--panel2) 80%,transparent);
   border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+@media (prefers-reduced-motion:reduce){
+  .amb i{animation:none}.row{transition:opacity .2s linear,transform .2s linear}
+  .row.playing .eq u{animation:none;height:60%}}
 </style>
 </head>
 <body>
+<div class="amb"><i></i><i></i><i></i></div>
 <header>
   <a class="back" href="index.html">← 资产浏览器</a>
   <h1>音乐库</h1>
   <span class="sub" id="sub">载入中…</span>
   <span class="sp"></span>
-  <span class="sub" id="load"></span>
+  <div class="opt" id="gTheme" title="昼 / 夜配色（状态会记住）">
+    <button data-t="light">昼</button><button data-t="dark">夜</button>
+  </div>
 </header>
 
 <div class="wrap">
-  <div class="tools">
-    <input class="q" id="q" placeholder="搜曲名 / 英文标识…" autocomplete="off">
-    <span id="chips" style="display:flex;gap:8px;flex-wrap:wrap"></span>
-  </div>
+  <div class="tools"><input class="q" id="q" placeholder="搜曲名 / 中文 / 标识符 / 舰名   （/ 聚焦）" autocomplete="off"></div>
+  <div class="grp" id="gUsage"><span>用途</span></div>
+  <div class="grp" id="gScene"><span>出处</span></div>
+  <div class="grp" id="gAlbum"><span>专辑</span></div>
   <div id="list"></div>
 </div>
 
 <div class="bar" id="bar">
-  <div class="in">
-    <div class="top">
-      <button id="prev" title="上一首"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zm3 7l9 7V5z"/></svg></button>
-      <button id="pp" title="播放 / 暂停"><svg viewBox="0 0 24 24"><path id="ppath" d="M8 5v14l11-7z"/></svg></button>
-      <button id="next" title="下一首"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM6 19l9-7-9-7z"/></svg></button>
-      <span class="tm" id="t0">0:00</span>
-      <span class="cur" id="cur">—</span>
-      <span class="tm" id="t1">0:00</span>
-      <button id="lp" title="单曲循环"><svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></svg></button>
-      <input class="seek vol" id="vol" type="range" min="0" max="1" step="0.01" title="音量">
-    </div>
-    <input class="seek" id="sk" type="range" min="0" max="1000" value="0">
+  <div class="tide" id="tide">
+    <svg viewBox="0 0 1000 46" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <clipPath id="clip"><rect x="0" y="0" width="1000" height="46" rx="12"/></clipPath>
+        <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color:var(--brand);stop-opacity:.62"/>
+          <stop offset="1" style="stop-color:var(--brand-d);stop-opacity:.30"/></linearGradient>
+        <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color:var(--brand);stop-opacity:.26"/>
+          <stop offset="1" style="stop-color:var(--brand);stop-opacity:.10"/></linearGradient>
+      </defs>
+      <g clip-path="url(#clip)">
+      <rect class="trough" x="0" y="0" width="1000" height="46"/>
+      <path class="w2" id="w2" d="" fill="url(#g2)"/><path class="w1" id="w1" d="" fill="url(#g1)"/>
+      <path class="spec" id="spec" d=""/>
+      <path class="crest" id="crest" d=""/>
+      <circle class="rip" id="rip" cx="0" cy="23" r="2"/>
+      <circle class="bead" id="bead" cx="0" cy="17" r="4.5"/></g>
+    </svg>
+    <span class="bub" id="bub">0:00</span>
   </div>
+  <div class="top">
+    <button id="prev" title="上一首（Ctrl+←）"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zm3 7l9 7V5z"/></svg></button>
+    <button id="pp" title="播放 / 暂停（空格）"><svg viewBox="0 0 24 24"><path id="ppath" d="M8 5v14l11-7z"/></svg></button>
+    <button id="next" title="下一首（Ctrl+→）"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM6 19l9-7-9-7z"/></svg></button>
+    <span class="tm" id="t0">0:00</span>
+    <span class="cur" id="cur">—</span>
+    <span class="tm" id="t1">0:00</span>
+    <button id="lp" title="单曲循环"><svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></svg></button>
+    <input class="vol" id="vol" type="range" min="0" max="1" step="0.01" title="音量（↑↓）">
+  </div>
+  <div class="hint" id="hint">拖动水面就是进度 · 空格播放/暂停 · ↑↓ 音量 · / 搜索</div>
 </div>
 
 <script>
-const P='';                                   // bgm.json 与本页同目录
-let T=[], view=[], idx=-1, album='', knownDur=0;
+const P='';
+let T=[],view=[],idx=-1,fU='',fS='',fA='',knownDur=0;
 const A=new Audio(); A.volume=+(localStorage.getItem('gallery.vol')??0.8);
 const $=id=>document.getElementById(id);
 const mmss=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 const name=t=>t.title_cn||t.title;
+const REDUCE=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const mb=b=>b>=2**30?(b/2**30).toFixed(2)+' GB':(b/2**20).toFixed(1)+' MB';
 
+/* ───────── 潮水进度条 ─────────
+   两层正弦波叠加（振幅不等、相位反向）→ 读起来像"潮"而不像"抖动"。
+   振幅由播放状态驱动：出声时涨起来，暂停后 1.2 秒内退平。
+   不接 WebAudio 分析器：那需要 MediaElementSource，一旦漏接 destination 就会把声音本身弄没，
+   换来的只是"波峰随音量跳"这一点效果 —— 不值得拿"能不能出声"去赌。 */
+const W=1000,H=46,SURF=17;              /* SURF = 静止水面高度 */
+const K1=Math.PI*2*3.1,K2=Math.PI*2*7.4; /* 一条进度条上摆 3 个主波 + 7 个细波 */
+let phase=0,amp=0,raf=0,last=0;
+const surfY=(x,ph,am,base)=>base+Math.sin(x/W*K1+ph)*am+Math.sin(x/W*K2-ph*1.7)*am*.34;
+function wavePath(prog,ph,am,base,dir){
+  const x1=prog*W;
+  if(x1<=0)return '';
+  let d=`M0 ${H}L0 ${surfY(0,ph*dir,am,base).toFixed(2)}`;
+  for(let x=8;x<=x1;x+=6) d+=`L${Math.min(x,x1).toFixed(1)} ${surfY(x,ph*dir,am,base).toFixed(2)}`;
+  /* 前沿不能直接 `L x1 H` —— 那是一刀垂直壁，读作悬崖不读作水。
+     用一条 x 方向带偏移的二次曲线把水面收进池底，就是弯月面。 */
+  const yE=surfY(x1,ph*dir,am,base);
+  return d+`Q${(x1+2.5).toFixed(1)} ${(yE+7).toFixed(2)} ${x1.toFixed(1)} ${H}Z`;
+}
+function crestPath(prog,ph,am,base){
+  const x1=prog*W;let d='';
+  for(let x=0;x<=x1;x+=6) d+=(d?'L':'M')+Math.min(x,x1).toFixed(1)+' '+surfY(x,ph,am,base).toFixed(2);
+  return d;
+}
+function tick(ts){
+  const dt=Math.min(.05,(ts-last)/1000||0);last=ts;
+  const want=(A.paused||!A.src)?0:1;
+  amp+= (want?1:-1)*dt*(want?2.6:1.1); amp=Math.max(0,Math.min(1,amp));
+  if(!REDUCE) phase+=dt*(want?1.25:.35);
+  draw();
+  raf=requestAnimationFrame(tick);
+}
+function draw(){
+  const d=total();const prog=d?Math.min(1,A.currentTime/d):0;
+  const a=2.4+amp*5.2;                                  /* 静止 2.4px 微澜，出声涨到 7.6px */
+  $('w2').setAttribute('d',wavePath(prog,phase*0.62,a*0.8,SURF+5,-1));
+  $('w1').setAttribute('d',wavePath(prog,phase,a,SURF,1));
+  $('crest').setAttribute('d',prog>0?crestPath(prog,phase,a,SURF):'');
+  $('spec').setAttribute('d',prog>0?crestPath(prog,phase+0.5,a,SURF+2.6):'');
+  $('bead').setAttribute('cx',(prog*W).toFixed(1));
+  $('bead').setAttribute('cy',(SURF+Math.sin(prog*W/W*K1+phase)*a).toFixed(1));
+}
+const total=()=>isFinite(A.duration)&&A.duration>0?A.duration:knownDur;
+
+/* ───────── 数据 ───────── */
 async function boot(){
   let j;
   try{ j=await (await fetch(P+'bgm.json',{cache:'no-store'})).json() }
   catch(e){ $('list').innerHTML='<div class="empty">读不到 <code>bgm.json</code>。<br>生成：'+
     '<code>py -3 scripts/build_bgm_index.py</code></div>'; $('sub').textContent='数据缺失'; return }
-  T=j.tracks; $('sub').textContent=`${j.counts.tracks} 首 · ${j.counts.hours} 小时 · `+
-    `${j.counts.mb} MB · 官方中文名 ${j.counts.named_cn} 首`;
-  const al=[...new Set(T.map(t=>t.album).filter(Boolean))];
-  $('chips').innerHTML=['<span class="chip on" data-a="">全部</span>']
-    .concat(al.map(a=>`<span class="chip" data-a="${esc(a)}">${esc(a)}</span>`)).join('');
-  $('chips').onclick=e=>{const b=e.target.closest('.chip'); if(!b)return;
-    album=b.dataset.a; [...$('chips').children].forEach(c=>c.classList.toggle('on',c===b)); render()};
+  T=j.tracks; const c=j.counts;
+  $('sub').textContent=`${c.tracks} 首 · ${c.hours} 小时 · ${c.mb} MB · 官方中文名 ${c.named_cn} · 有出处 ${c.with_scene}`;
+  chips('gUsage','usage',c.usages,'用途');chips('gScene','scene',c.scene_kinds,'出处');
+  chips('gAlbum','album',[...new Set(T.map(t=>t.album).filter(Boolean))],'专辑');
   render();
+  const th=$('gTheme');th.querySelector('[data-t="'+(document.documentElement.dataset.theme||'light')+'"]')
+    .classList.add('on');
+  th.onclick=e=>{const b=e.target.closest('button');if(!b)return;
+    [...th.querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x===b))};
+  if(!REDUCE) raf=requestAnimationFrame(t=>{last=t;tick(t)}); else draw();
+}
+function chips(box,key,vals,label){
+  if(!vals.length)return;
+  const cnt=v=>key==='usage'?T.filter(t=>t.usage===v).length
+    :key==='scene'?T.filter(t=>t.scenes.some(s=>s.t===v)).length
+    :T.filter(t=>t.album===v).length;
+  const el=$(box);
+  el.insertAdjacentHTML('beforeend',vals.map(v=>
+    `<span class="chip" data-k="${key}" data-v="${esc(v)}">${esc(v)}<b>${cnt(v)}</b></span>`).join(''));
 }
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function render(){
   const q=$('q').value.trim().toLowerCase();
-  view=T.filter(t=>(!album||t.album===album)&&(!q||name(t).toLowerCase().includes(q)||
-    t.slug.toLowerCase().includes(q)||(t.title_cn||'').toLowerCase().includes(q)));
+  view=T.filter(t=>(!fU||t.usage===fU)&&(!fA||t.album===fA)&&(!fS||t.scenes.some(s=>s.t===fS))&&
+    (!q||name(t).toLowerCase().includes(q)||t.slug.toLowerCase().includes(q)||
+      (t.title_cn||'').toLowerCase().includes(q)||(t.ship||'').includes(q)));
+  const tags=t=>{const a=[];
+    /* 预算 3 个标签，其余折进 +N（全量留在 title 里）—— 归属是线索，不是把整张表搬到脸上 */
+    const all=[];
+    if(t.album)all.push(['al',t.album,'官方专辑']);
+    if(t.ship)all.push(['sh',t.ship,'关联角色']);
+    /* 一张表 = 一个标签：`远征地图·远汇点作战` 比并排两个标签读得清楚，
+       也顺手把"类别"和"行名"的关系写明了（拆两个标签会让人以为是两个不同出处）*/
+    t.scenes.forEach(s=>all.push(['',s.t+(s.n?'·'+s.n:''),s.t+(s.n?'：'+s.n:'')]));
+    const uniq=[];all.forEach(x=>{if(!uniq.some(y=>y[1]===x[1]))uniq.push(x)});
+    const show=uniq.slice(0,3),hide=uniq.slice(3);
+    show.forEach(([c,x,ti])=>a.push(`<span class="tag ${c}" title="${esc(ti)}">${esc(x)}</span>`));
+    if(hide.length)a.push(`<span class="tag" title="${esc(hide.map(h=>h[1]).join(' · '))}">+${hide.length}</span>`);
+    return a.length?`<span class="tags">${a.join('')}</span>`:''};
   $('list').innerHTML=view.length?view.map((t,i)=>`
     <div class="row${i===idx?' playing':''}" data-i="${i}">
       <span class="no">${i+1}</span>
-      <span><span class="nm">${esc(name(t))}</span><span class="en">${esc(t.slug)}</span></span>
-      <span class="mt">${mmss(t.dur)} · ${(t.size/2**20).toFixed(1)} MB${t.album?'':''}</span>
-      <button class="play" data-i="${i}" title="播放"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
-    </div>`).join('')
-    :'<div class="empty">没有匹配的曲子</div>';
+      <span><span class="nm">${esc(name(t))}</span><span class="en">${esc(t.slug)}</span>${tags(t)}</span>
+      <span class="mt">${mmss(t.dur)}<i>${mb(t.size)}</i></span>
+      <button class="play" data-i="${i}" title="播放"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <span class="eq"><u></u><u></u><u></u></span></button>
+    </div>`).join(''):'<div class="empty">没有匹配的曲子</div>';
+  reveal();
+}
+/* 进场浮现：只给新进入视口的行加 .in，滚回去不再重播 */
+let io=null;
+function reveal(){
+  if(io)io.disconnect();
+  const rows=[...document.querySelectorAll('.row')];
+  if(REDUCE){rows.forEach(r=>r.classList.add('in'));return}
+  io=new IntersectionObserver(es=>es.forEach((e,k)=>{
+    if(e.isIntersecting){setTimeout(()=>e.target.classList.add('in'),k*28);io.unobserve(e.target)}
+  }),{rootMargin:'0px 0px -8% 0px'});
+  rows.forEach(r=>io.observe(r));
 }
 
 function play(i){
   if(i<0||i>=view.length)return;
-  idx=i; const t=view[i];
-  /* 总时长优先用 bgm.json 里的已知值：服务器不支持 Range 时 `A.duration` 是 Infinity
-     （2026-10-06 实测），拿它渲染会显示成 "Infinity:NaN"。元数据回来后若有限值再以它为准。 */
-  knownDur=t.dur||0;
-  A.src=t.url; A.play().catch(()=>{});
-  $('bar').classList.add('on'); $('cur').textContent=name(t);
-  $('t1').textContent=mmss(knownDur); document.title=name(t)+' · 音乐库';
+  idx=i;const t=view[i];
+  knownDur=t.dur||0;                        /* 服务器无 Range 时 A.duration 是 Infinity，先用手上的真值 */
+  A.src=t.url;A.play().catch(()=>{});
+  $('bar').classList.add('on');$('cur').innerHTML=esc(name(t))+(t.title_cn&&t.title!==t.title_cn?`<i>${esc(t.title)}</i>`:'');
+  $('t1').textContent=mmss(knownDur);document.title=name(t)+' · 音乐库';
   [...document.querySelectorAll('.row')].forEach(r=>r.classList.toggle('playing',+r.dataset.i===i));
+  $('hint').classList.add('off');
 }
-const total=()=>isFinite(A.duration)&&A.duration>0?A.duration:knownDur;
 A.addEventListener('play',()=>{$('ppath').setAttribute('d','M6 5h4v14H6zm8 0h4v14h-4z')});
 A.addEventListener('pause',()=>{$('ppath').setAttribute('d','M8 5v14l11-7z')});
 A.addEventListener('ended',()=>$('lp').classList.contains('on')?(A.currentTime=0,A.play()):play(idx+1));
-A.addEventListener('timeupdate',()=>{
-  $('t0').textContent=mmss(A.currentTime);
-  const d=total();
-  if(!$('sk').dataset.drag&&d)$('sk').value=Math.min(1000,A.currentTime/d*1000)});
+A.addEventListener('timeupdate',()=>{$('t0').textContent=mmss(A.currentTime)});
 A.addEventListener('loadedmetadata',()=>{if(isFinite(A.duration)&&A.duration>0)$('t1').textContent=mmss(A.duration)});
 
-$('list').onclick=e=>{const b=e.target.closest('[data-i]'); if(b)play(+b.dataset.i)};
+/* 拖动水面 = 找位。松手时甩一圈涟漪，像真的碰了一下水 */
+const tide=$('tide');
+const at=e=>{const r=tide.getBoundingClientRect();return Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))};
+function bubble(e){const r=tide.getBoundingClientRect();const f=at(e);
+  const b=$('bub');b.style.left=(f*r.width)+'px';b.style.top=(r.height*.62)+'px';
+  b.textContent=mmss(f*total())}
+tide.onpointerenter=e=>{tide.classList.add('drag');bubble(e)};
+tide.onpointerleave=()=>{if(!tide.dataset.hold)tide.classList.remove('drag')}
+tide.onpointermove=bubble;
+tide.onpointerdown=e=>{tide.dataset.hold=1;tide.classList.add('drag');tide.setPointerCapture(e.pointerId);bubble(e)};
+tide.addEventListener('pointermove',e=>{if(tide.dataset.hold){bubble(e);const f=at(e);
+  $('w1').setAttribute('d',wavePath(f,phase,2.2+amp*4.6,20,1))}});
+tide.onpointerup=e=>{const f=at(e),d=total();
+  if(d)A.currentTime=f*d;
+  delete tide.dataset.hold;tide.classList.remove('drag');
+  const rip=$('rip');rip.setAttribute('cx',(f*W).toFixed(1));
+  rip.classList.remove('go');void rip.offsetWidth;rip.classList.add('go')};
+
+$('list').onclick=e=>{const b=e.target.closest('[data-i]');if(b)play(+b.dataset.i)};
 $('q').oninput=()=>{idx=-1;render()};
 $('pp').onclick=()=>A.paused?(A.src?A.play():play(idx<0?0:idx)):A.pause();
 $('prev').onclick=()=>play(idx<=0?view.length-1:idx-1);
@@ -179,14 +413,28 @@ $('next').onclick=()=>play(idx+1>=view.length?0:idx+1);
 $('lp').onclick=()=>{$('lp').classList.toggle('on');A.loop=$('lp').classList.contains('on')};
 $('vol').value=A.volume;
 $('vol').oninput=e=>{A.volume=+e.target.value;localStorage.setItem('gallery.vol',e.target.value)};
-$('sk').onpointerdown=()=>$('sk').dataset.drag=1;
-$('sk').onpointerup=()=>{const d=total();if(d)A.currentTime=$('sk').value/1000*d;delete $('sk').dataset.drag};
-$('sk').oninput=e=>{const d=total();if(d)$('t0').textContent=mmss(e.target.value/1000*d)};
+document.querySelectorAll('.grp').forEach(g=>g.onclick=e=>{
+  const b=e.target.closest('.chip');if(!b)return;
+  const k=b.dataset.k,v=b.dataset.v;
+  const cur=k==='usage'?fU:k==='scene'?fS:fA;
+  const nv=cur===v?'':v;
+  if(k==='usage')fU=nv;else if(k==='scene')fS=nv;else fA=nv;
+  g.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.v===nv&&c.dataset.k===k));
+  idx=-1;render()});
+$('gTheme').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  document.documentElement.dataset.theme=b.dataset.t;
+  try{localStorage.setItem('gallery.theme',b.dataset.t)}catch(_){}});
 document.onkeydown=e=>{
-  if(e.target.tagName==='INPUT'&&e.target.id!=='sk')return;
+  if(e.target.tagName==='INPUT'&&e.target.id!=='vol')return;
   if(e.code==='Space'){e.preventDefault();$('pp').click()}
-  else if(e.code==='ArrowRight'&&e.ctrlKey)$('next').click();
-  else if(e.code==='ArrowLeft'&&e.ctrlKey)$('prev').click()};
+  else if(e.key==='/'){e.preventDefault();$('q').focus()}
+  else if(e.key==='Escape'){$('q').value='';idx=-1;render()}
+  else if(e.key==='ArrowUp'){e.preventDefault();$('vol').value=A.volume=Math.min(1,A.volume+.05);
+    $('vol').dispatchEvent(new Event('input'))}
+  else if(e.key==='ArrowDown'){e.preventDefault();$('vol').value=A.volume=Math.max(0,A.volume-.05);
+    $('vol').dispatchEvent(new Event('input'))}
+  else if(e.ctrlKey&&e.code==='ArrowRight')$('next').click();
+  else if(e.ctrlKey&&e.code==='ArrowLeft')$('prev').click();};
 
 boot();
 </script>
