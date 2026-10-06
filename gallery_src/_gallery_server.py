@@ -45,11 +45,22 @@ def open_browser():
 class Handler(http.server.SimpleHTTPRequestHandler):
     """静态文件（含 Range 分段）+ CG 导出落盘接口。
 
-    ⚠️ 为什么要自己实现 Range：`SimpleHTTPRequestHandler` 整条响应只有一个全量
-    `Content-Length`，Chrome 于是把音频/视频当成**不可 seek 的流** —— 实测 BGM 页
+    ⚠️ 为什么要自己实现 Range：`SimpleHTTPRequestHandler` 全量响应只发一个 `Content-Length`，
+    Chrome 于是把音频/视频当成**不可 seek 的流** —— 实测 BGM 页
     `A.duration === Infinity`（时长显示成 `Infinity:NaN`）、进度条恒 0、拖动无效。
     补上 206 + `Content-Range` 之后这三件事一起好。
     """
+
+    # ⚠️ MIME 也必须钉死：Python 的 mimetypes 把 `.flac` 判成 **`audio/x-flac`**（遗留写法），
+    # 而 Chrome 的 `Audio.canPlayType('audio/x-flac')` 返回**空串**（`audio/flac` 才给 "probably"）
+    # ⇒ 用 FLAC 做无损档时不改这里，页面可能整片播不出来（2026-10-06 实测三种类型）。
+    extensions_map = {
+        **http.server.SimpleHTTPRequestHandler.extensions_map,
+        '.flac': 'audio/flac',
+        '.ogg': 'audio/ogg',
+        '.opus': 'audio/ogg',
+        '.m4a': 'audio/mp4',
+    }
 
     def do_GET(self):  # noqa: N802
         if urlparse(self.path).path == "/cg_exists":

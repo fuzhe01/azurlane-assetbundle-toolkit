@@ -6247,6 +6247,45 @@ WF-16 六件套 `--skip hit_verify` 全绿 EXIT=0。
 相关：§112（上一轮）、WF-16 追加（新增页面级文件五道）、WF-28（有损转码这一档）、
 技能 `headless-chrome-cdp-batch-export` 第 35/36 条。
 
+### 6. 同日第三轮：用户改选 FLAC（无损），落地记录
+
+**决定**：三档实测后用户选无损 ⇒ `Output/Audio/BGM/` 现在是 **536 个 `.flac` = 6.87 GB**，
+比 wav 省 **41.5%**（比样本外推的 36.1% 更好）；opus 那 1.06 GB 一并删除（已被取代，
+`transcode_bgm.py --codec opus` 五分钟能重做）。本轮净回收 **12.81 GB**。
+
+**无损不能靠格式名字断言**：`--roundtrip` 把产物与源**都解成裸 PCM 比 md5**，
+跨尺寸抽 7 份（0.5 MB → 88.5 MB）**逐字节全同**。
+⚠️ 第一版回环是"解回 .wav 比整文件 md5"，结果 7/7 判"不同"——**判据错了不是产品错了**：
+ffmpeg 重新封装的 wav 头（chunk 顺序与长度）与源不同，样本相同而文件不同。改比裸 PCM 后全绿。
+
+**FLAC 有一档专属的坑：MIME。** Python `mimetypes` 给 `.flac` 的是遗留的 **`audio/x-flac`**，
+而 Chrome `Audio.canPlayType()` 实测 `audio/flac` → `"probably"`、**`audio/x-flac` → 空串**。
+⇒ `_gallery_server.py` 的 `Handler.extensions_map` 钉成 `audio/flac`（顺带钉 `.ogg`/`.opus`/`.m4a`），
+并加进 `gallery_server_range_test.py` 当判据（含 `fLaC` magic 的 Range 分段）。
+这条在 opus 档不会暴露（`.ogg` 类型是对的），换无损档才会踩——**换格式要重跑播放验收，不能只换文件**。
+
+**删源前的总闸**：`transcode_bgm.py --verify-only --codec flac` —— 不复编码，逐条重算
+产物 md5 对台账、并把整条解到 null（FLAC 每帧带 CRC、STREAMINFO 存整条原始 MD5，坏帧在这里露）。
+实测 536 条：缺失 0 / 不符 0 / 解码异常 0，**全绿才允许动 wav**。
+换目录的顺序是"先改名留回滚"：`BGM/`(wav) → `_BGM_wav_to_delete/`、`BGM_flac/` → `BGM/` →
+重建 `bgm.json` → 跑 `bgm_page_probe`（FLAC 端到端 24 条全绿，含拖到 0:55/1:48）→ **确认绿了才真删**。
+
+**两处防呆**：① 台账**按 codec 分文件**（`ledger/bgm_transcode.json` 与 `..._flac.json`），
+共用一份的话 FLAC 那轮会把 opus 的 536 条溯源逐条覆盖；续跑判据也必须含 codec，
+否则 FLAC 运行会因为 opus 记录存在而整批"跳过"。② 换完目录后源区里已是 `.flac`，
+工具扫到 0 个 wav 不得报"成功 0 失败 0"（假绿灯）⇒ 非零退出并说明原因。
+
+⚠️ **磁盘现状被并发会话改变了**：`Output/_OLD_bak/` 从本轮早先量到的 2.99 GB 涨到 **18.8 GB**，
+新增的是 `paintings_v2_alpha_canvas_20261006/`（16.1 GB，对应已提交的 4496 张重渲换前备份），
+`.diag/paintings_rerun_20261006/` 另有 16.5 GB。这些**不是本轮产物、一行没碰**；
+但它让 §111 第 2 节"备份目录约 3 GB"的规模结论过期——等那批跑完要重量一次再谈清理。
+
+**涉及文件（第三轮）**：`scripts/transcode_bgm.py`（`--codec` / `--roundtrip` / `--verify-only` /
+`--src` / 台账分 codec / 0 源文件防呆）、`gallery_src/_gallery_server.py`（`extensions_map` 钉 MIME）、
+`scripts/diag/gallery_server_range_test.py`（FLAC 类型与 magic 两条判据）、
+`scripts/build_bgm_index.py`（默认目录改指 `Output/Audio/BGM`、按产物扩展名自动选台账）、
+`ledger/bgm_transcode_flac.json`（536 条无损溯源，入库）。
+
 ---
 
 ## §114 静态立绘两处系统性偏差：Pillow 把 alpha 缩放两次、画布只取 max 不减 min（2026-10-06）

@@ -100,6 +100,19 @@ def main():
         st, hd, body = req(port, '/' + apath, {'Range': f'bytes={asz - 3}-'})
         say(st == 206 and body == araw[-3:], f'音频尾 3 字节：{st} / 长度 {len(body)}')
 
+        # FLAC 那一档的专属坑：Python mimetypes 给 `.flac` 的是遗留的 `audio/x-flac`，
+        # 而 Chrome `canPlayType('audio/x-flac')` 返回空串 ⇒ 类型必须钉成 `audio/flac`。
+        fdir = os.path.join(out, 'Audio', 'BGM_flac')
+        if os.path.isdir(fdir):
+            ff = next((x for x in sorted(os.listdir(fdir)) if x.endswith('.flac')), None)
+            if ff:
+                st, hd, body = req(port, '/Audio/BGM_flac/' + ff)
+                say(st == 200 and hd.get('content-type') == 'audio/flac',
+                    f'FLAC 的 Content-Type = {hd.get("content-type")!r}（必须是 audio/flac）')
+                st, hd, body = req(port, '/Audio/BGM_flac/' + ff, {'Range': 'bytes=0-3'})
+                say(st == 206 and body == open(os.path.join(fdir, ff), 'rb').read(4),
+                    f'FLAC 也走 Range：{st} / 前 4 字节 {body!r} == fLaC magic')
+
         st, hd, body = req(port, '/cg_exists?name=2b_2')
         say(st == 200 and body in (b'0', b'1'), f'既有端点 /cg_exists 仍工作：{st} / {body!r}')
         st, hd, body = req(port, '/cg_exists?name=../etc')

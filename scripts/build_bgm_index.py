@@ -2,7 +2,7 @@
 """生成画廊 BGM 页的数据 `Output/gallery_v2/bgm.json`（自包含，前端不再回头读 .diag）。
 
 三个来源，缺后两个也能跑（只是没有中文名）：
-  1. `Output/Audio/BGM*/*.ogg` —— 曲目本体（时长优先取 `transcode_bgm.py` 的台账，缺则 ffprobe）
+  1. `Output/Audio/BGM*/*.ogg` —— 曲目本体（时长优先取 `transcode_bgm.py` 的台账（按 codec 分文件），缺则 ffprobe）
   2. `.diag/sharecfg_re/lua_json/music_collect_config.json` —— 官方中文曲名（实测 54 首）
   3. `.diag/sharecfg_re/lua_json/music_album.json` —— 11 张专辑的中文名
 ⚠️ 2/3 在 `.diag/`（gitignore、可再生的解表产物），所以**名字一律烘进 bgm.json**，
@@ -22,7 +22,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths as P
 
 LUA = os.path.join(P.ROOT, '.diag', 'sharecfg_re', 'lua_json')
-TRANSCODE_MANIFEST = os.path.join(P.ROOT, 'ledger', 'bgm_transcode.json')
 
 # 「出处」= 哪张配置表引用了这首曲子。标签是**按这张表在配什么**给的，不是游戏自己的曲库分类。
 # 这 12 张表来自对 774 张 lua 表的一次全量扫描（2026-10-06）；`--rescan` 会重扫并报告新出处。
@@ -163,7 +162,8 @@ def humanize(slug):
 
 def main():
     ap = argparse.ArgumentParser(description='生成 bgm.json')
-    ap.add_argument('--dir', default=os.path.join(P.OUT, 'Audio', 'BGM_ogg'))
+    ap.add_argument('--dir', default=os.path.join(P.OUT, 'Audio', 'BGM'),
+                    help='音频目录（换完档后就是 Output/Audio/BGM，里面是 .flac）')
     ap.add_argument('--out', default=os.path.join(P.OUT, 'gallery_v2', 'bgm.json'))
     ap.add_argument('--rescan', action='store_true',
                     help='重扫全部 lua 表报告名单外的新出处（慢约 1 分钟，不自动改名单）')
@@ -172,13 +172,24 @@ def main():
         print(f'[FAIL] 目录不存在: {a.dir}')
         return 2
 
+    exts = {os.path.splitext(f)[1].lstrip('.').lower()
+            for f in os.listdir(a.dir) if os.path.splitext(f)[1]}
+    ext = next((e for e in ('flac', 'ogg', 'opus', 'mp3', 'm4a') if e in exts), '')
+    if not ext:
+        print(f'[FAIL] {a.dir} 里没有可识别的音频（找到扩展名 {sorted(exts)[:6]}）')
+        return 2
+    # 台账按 codec 分文件（跑 FLAC 不该覆盖 opus 那 536 条溯源）⇒ 跟着产物扩展名挑
+    man = (os.path.join(P.ROOT, 'ledger', 'bgm_transcode.json') if ext in ('ogg', 'opus')
+           else os.path.join(P.ROOT, 'ledger', f'bgm_transcode_{ext}.json'))
+    print(f'产物格式 .{ext}，时长台账 {os.path.relpath(man, P.ROOT)}')
+
     durs = {}
     try:
-        with open(TRANSCODE_MANIFEST, encoding='utf-8') as f:
+        with open(man, encoding='utf-8') as f:
             for w, r in (json.load(f).get('done') or {}).items():
                 durs[w] = r.get('src_dur') or r.get('dst_dur')
     except (OSError, ValueError):
-        print('! 转码台账读不到，时长改用 ffprobe（慢一些）')
+        print('! 时长台账读不到，改用 ffprobe（慢一些）')
 
     cn = {}
     rows = _lua('music_collect_config.json')
@@ -193,10 +204,7 @@ def main():
     else:
         print('! music_collect_config.json 读不到 ⇒ 中文曲名/专辑留空（bgm.json 仍自包含）')
 
-    oggs = sorted(f for f in os.listdir(a.dir) if f.lower().endswith('.ogg'))
-    if not oggs:
-        print(f'[FAIL] {a.dir} 里没有 .ogg')
-        return 2
+    oggs = sorted(f for f in os.listdir(a.dir) if f.lower().endswith('.' + ext))
     stems = {os.path.splitext(f)[0] for f in oggs}
     stems_norm = {_norm_bgm(s): s for s in stems}
     global _SHIP_BASE
