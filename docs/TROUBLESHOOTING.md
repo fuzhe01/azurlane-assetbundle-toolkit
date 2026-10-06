@@ -6246,3 +6246,89 @@ WF-16 六件套 `--skip hit_verify` 全绿 EXIT=0。
 主题切换、键盘与涟漪）、`scripts/diag/bgm_page_probe.py`（`shot(tag, sel)` 裁剪放大 + 24 条判据）。
 相关：§112（上一轮）、WF-16 追加（新增页面级文件五道）、WF-28（有损转码这一档）、
 技能 `headless-chrome-cdp-batch-export` 第 35/36 条。
+
+---
+
+## §114 静态立绘两处系统性偏差：Pillow 把 alpha 缩放两次、画布只取 max 不减 min（2026-10-06）
+
+**用户报的三条症状，其实是两个根因 + 一个展示层默认值**：伴尔维皮肤2「少了背景板」、
+贝尔原皮「少了组件看着不完整」、白雪皮肤2「拼得不够好，脖子上一条细细的空线」。
+
+### 根因 A（影响全部 4500 张）：`canvas.paste(img, box, img)` 把 alpha 通道缩放两次
+
+Pillow 文档原话 *"scaling the alpha channel twice"*：用 RGBA 图当蒙版时，它按
+`dst_b' = dst_b·(1-m) + src_b·m`（`m = src_a/255`）**逐通道**混合，alpha 也被当成普通通道，
+于是铺在空画布上时 `dst_a' = src_a²/255`。源 alpha 128 → 64，250 → 245。
+
+- **量法（不是推断）**：白雪皮肤2 只有一层、1:1 铺满画布，所以成品 alpha 应当等于源 alpha。
+  实测在盘成品 **99.81% 的半透明像素精确等于 `a²/255`**，等于原值的命中 0%。
+- **那条"细空线"就是它**：脸谱贴图最底一行 alpha 是 116 之类的半透明值，被压到 191，
+  在脖子处打出一条 420px 宽、1px 高的透明缝。改用 `Image.alpha_composite`（标准 source-over）
+  后缝为 0 条、找回 3.8 万落笔像素、**丢失 0**。
+- **它还会伪装成"脸没烤好"**：叠脸门控读 `canvas alpha >= 250` 算不透明。底图 alpha 250
+  被压成 245 → 跌破阈值 → 判成洞 → 把 `paintingface` 的另一张表情叠上去。
+  `gezi_2` 因此**正式产物一直在发闭眼脸，而底图本来是睁眼**（对照图
+  `.diag/fix_ab/gezi_2__FACECMP.png`）。这条标签已从 `face_gate_labels_check.py` 的
+  「洞」侧改判进「好脸」侧。
+- **反向也成立**：MAD 也被这个污染测量压低，`xinzexi_h` 正确测量下 MAD=33.9（旧测 13.1）。
+
+### 根因 B（约 90 张）：画布按 `max(x+w)`/`max(y+h)` 开，**从不减 min**
+
+世界框落在负侧的部件被 paste 静默裁掉。`beier_rw` 框 `(-626,-370,3056x2388)` → 该层 15% 的
+落笔直接没了（心形水花的左半边）；`jinluhao_2` **整张画的下半截**（腿/裙/触手/地面）不在产物里。
+
+- **第一版扫描严重低估**：`painting_canvas_extent_scan.py` 只按「rect 框有负坐标」筛候选，
+  得到 244 候选 → 内容级 19 张。但正方向同样在裁（mesh 顶点合法越框，§9.3 第 6 条），
+  而那条路不在负侧候选里。
+- **真实影响面靠抽样定，不靠推断**：300 张分层抽样、**只换画布不换算子**（两个改动必须能分开量，
+  见 WF-29），结果 6/300 = **2.0%** 有内容被找回 → 全库外推 ≈ 90 张；**丢内容 0/300**。
+- **新画布必须是旧画布的超集**：第一版修法为了省内存把「非 root 的容器 rect」从 max 侧剔掉，
+  结果 `baixue` 画布 2427 → **2426（变窄）**，右边缘反而新裁掉 2,771 个不透明像素。
+  回归闸门当场抓出。正确口径 = **所有节点框 ∪ 各层落笔框**。
+
+### 症状「伴尔维皮肤2 少了背景板」不是合成 bug
+
+`Paintings_v2/banerwei_2.png` 本来就有完整房间。画廊「静态立绘」对 Spine 皮肤默认给 CG
+（`gallery_src/index.html` 的 `fullOf()` 见 `cg` 就用 `cg`），而这张的 Spine 骨架里
+**只有角色 + 瑜伽球 + 小鸡，没有房间槽位**（skel 字符串清单已核）。全库 234 个 Spine 目录里
+**191 个是单层**，都是同一形态。改法属于展示层默认值，不在这轮范围内（且当时工作树有并发会话
+在改 `index.html`，未动）。
+
+### 已排除的假设（别重走）
+
+- **「把 `FACE_MAD_MAX` 从 30 抬到 40 就能同时保住 `xinzexi_h` 和 `gezi_2`」—— 否证。**
+  全库预演 `face_gate_flip_scan.py --mad-old 30 --mad-new 40` 显示它会把 `yunlong_3`
+  （MAD=32.2）从「叠」翻成「不叠」，而那张的 face 槽是 **1924x2048 的全身正面图、底图是背面**，
+  不叠等于发一张后脑勺出去。MAD 分不开「该替换」与「不该替换」，两者数值重叠；
+  要真修得拿到"游戏运行时 face 槽是否激活"的权威依据，不许靠阈值调参猜。已回退到 30。
+- **「alpha 修法会毁掉其他看着没问题的立绘」—— 否证。** 两版差异只在 `0<src_a<255` 的像素上
+  出现（纯 0 / 纯 255 逐位相同）。219 张抽样里「离半透明像素 ≥2px 且变化肉眼可见(|Δ|≥12)」
+  只有 1 张 8 个像素；300 张普查里实心区可见变化**恒为 0**。
+
+### 顺带查出 / 修掉的
+
+- `scripts/diag/face_gate_labels_check.py` **本轮之前就是红的**（43/47，exit 1；
+  `makeboluo`/`missd`/`feiteliedadi`/`dunkerke` 标「洞」但实测 op≈1.0、MAD 5~11）。
+  两个算子下判定完全相同 ⇒ 与本轮无关的既有债，需要游戏内实见才能裁，未动。
+- 我自己改出来的一个崩溃：`place()` 对加算光效层返回 `(None, None, name)`，而 `render()`
+  用 `for img, (wx0,wy0,ww,wh), name in placed` 解包 → None 拆不成四元组直接抛错。
+  抽样跑到第 55 张（`dachao`）撞上。没这道抽样闸门，全量重渲会在 18% 处崩掉。
+- `run_v2_full.py` 的静态阶段写死正式目录 + 跳过已存在产物 ⇒ 对"整批重渲"等于 todo=0 空跑。
+  已加 `--out/--redo/--limit/--manifest`。
+
+**最终验收**：4496/4496 重渲成功、失败 0、错误日志未生成；换入四道检查全绿
+（nlink 全为 1 / 4496 份备份 md5 全等 / 换入后与渲染 md5 全等 / **全目录快照清单外被动 0 个**）；
+缩略图重建 ok=4498 err=0；`index.json` 重建后**逐字节相同**、`gallery_index_diff_check` PASS；
+服务器实测 `/Paintings_v2/beier.png` 200 / 3,855,276 字节。备份
+`Output/_OLD_bak/paintings_v2_alpha_canvas_20261006/`（4496 份）。
+
+**涉及文件**：`scripts/compose_paintings_v2.py`（新增 `canvas_frame()` / `over()` /
+`LAST_CANVAS`，`render()` 拆出 `place()`，`FACE_MAD_MAX` 注释记否证）、
+`scripts/run_v2_full.py`（`--out/--redo/--limit/--manifest`）；
+探针 `scripts/diag/`：`painting_canvas_extent_scan` / `painting_offcanvas_content` /
+`painting_fix_ab` / `painting_fix_gate`（本轮承重闸门，见 WF-29）/
+`painting_alpha_blast_radius` / `face_gate_flip_scan` / `face_gate_semantics_ab` /
+`face_overlay_cmp` / `painting_fix_regression`（对齐版，已被 `painting_fix_gate` 取代）/
+`painting_three_probe` / `baixue2_seam_probe`。
+相关：**WF-29**（这类改动怎么验）、§9.3 第 6 条（mesh 越框）、§48（叠脸门控判据演进）、
+§55（激活位过滤）、§110（层序按名字猜翻车）、WF-15（备份换入）、WF-28。

@@ -44,7 +44,11 @@ _env_cache = {}      # bundle_name -> env / False
 _obj_cache = {}      # (bundle, path_id) -> UnityPy object
 _img_cache = {}      # (bundle, path_id) -> PIL RGBA (flip=False)
 FACE_APPLIED = {}    # bundle_name -> 是否触发了 paintingface 脸洞叠层（扫描用）
-FACE_GATE = {}       # bundle_name -> 门控实际读到的数（复扫/分诊用，见 diag/scan_faces.py）
+FACE_GATE = {}       # bundle_name -> 门控实际读到的数（扫描/重渲/换入工具只读它，不另算）
+# 每次 compose 的取景事实：画布原点(世界坐标, <=0)、画布尺寸、getbbox 裁掉的左上角。
+# 给「改前/改后逐像素比对」这类工具用 —— 没有它就只能拿图像包围盒去猜对齐，
+# 而 F2 会让一批 alpha 跨过阈值、猜出来的偏移能错几百像素（实测虚报 300 万实心区变化）。
+LAST_CANVAS = {}
 # 关闭层过滤的实际动作（审计用）：跳过了哪些层名 / 哪些皮肤「全层都是关闭态」
 INACTIVE_SKIPPED = {}
 INACTIVE_ALL = set()
@@ -54,6 +58,13 @@ FACE_SLOT_EXEMPT = {"face"}
 #   不透明占比低于 FACE_OPAQUE_MIN -> 透明洞（脸没烤进底图）
 #   底图与脸谱逐像素平均色差高于 FACE_MAD_MAX -> 那块画的不是这张脸（平涂灰块/缺头）
 # 二者任一成立即判洞、叠脸。见 §14 与 §48。
+#
+# ⚠ 2026-10-06 试过把本值抬到 40 来救 `xinzexi_h`（正确测量下 MAD=33.9，叠上去会在
+# 面纱上切出一个可见矩形硬边），**已被否证、不要再试**：全库预演 `diag/face_gate_flip_scan.py
+# --mad-old 30 --mad-new 40` 显示它同时会把 `yunlong_3`（MAD=32.2）从"叠"翻成"不叠"，
+# 而那张的 face 槽是 1924x2048 的**全身正面图**、底图是背面 —— 不叠等于发一张后脑勺出去。
+# 也就是说 MAD 分不开"该替换"（yunlong_3）和"不该替换"（xinzexi_h），它俩数值重叠；
+# 真要修得拿到"游戏默认是否激活 face 槽"的权威依据，不许靠阈值调参猜。
 FACE_OPAQUE_MIN = float(os.environ.get("FACE_OPAQUE_MIN", "0.5"))
 FACE_MAD_MAX = float(os.environ.get("FACE_MAD_MAX", "30"))
 
@@ -674,6 +685,55 @@ def draw_order(rects, father_map, children_map):
 LIGHTING_SKIP = True
 
 
+def canvas_frame(rects_yup):
+    """**画布口径的唯一正本**。输入一组世界坐标矩形 (x, y, w, h)（Y-up，与 layout_all 同框），
+    返回 (ox, oy, W, H)，其中世界点 (wx, wy) 落到 PIL 像素 `(wx-ox, H-(wy-oy))`。
+
+    规则只有一条：**画布必须罩住所有会落笔的地方**。旧实现只取 `max(x+w)`/`max(y+h)`、
+    从不减 min，于是世界框落在负侧的部件被 paste 静默裁掉——`beier` 的水花层丢 15%、
+    `jinluhao_2` 整张画的下半截没了、`i404` 只剩偏在一角的残片（全库 19 个皮肤，
+    判据 `scripts/diag/painting_offcanvas_content.py`）。
+
+    min 侧钳在 0：没有负内容时 `ox=oy=0`，且 `W/H` 与旧式逐字相同 ⇒ 未受影响的皮肤
+    产物**逐字节不变**（各层相对位置只随整数 H 平移，末尾 getbbox 一裁就抵消）。
+    调用方必须把**所有节点框 ∪ 各层落笔框**都传进来：少给一类框就可能让画布比旧口径
+    更窄，反而在右/上边缘新裁掉内容。
+    """
+    rs = [r for r in rects_yup if r is not None]
+    if not rs:
+        return 0, 0, 0, 0
+    x1 = max(r[0] + r[2] for r in rs)
+    y1 = max(r[1] + r[3] for r in rs)
+    # floor 而不是 int()：int() 对负数是朝零截断，会把画布开小一格又裁掉一列
+    ox = int(math.floor(min(0.0, min(r[0] for r in rs))))
+    oy = int(math.floor(min(0.0, min(r[1] for r in rs))))
+    cw, ch = int(x1 - ox), int(y1 - oy)
+    if not (256 <= cw <= 12000 and 256 <= ch <= 12000):
+        print(f"  ! 画布尺寸异常 {cw}x{ch}，截断到 12000")
+        cw, ch = min(cw, 12000), min(ch, 12000)
+    return ox, oy, cw, ch
+
+
+def over(dst, src, px, py):
+    """标准 source-over 合成（dst 原地更新）。
+
+    **不能**用 `dst.paste(src, (px,py), src)`：Pillow 对 RGBA 蒙版会「把 alpha 通道缩放
+    两次」（官方文档原话 scaling the alpha channel twice），于是铺在空画布上时
+    `a=128` 变成 `a²/255=64`。实测在盘产物 99.8% 的半透明像素命中 a²/255，表现为
+    ①所有柔边系统性偏淡 ②脸谱贴边处被打出 1px 透明缝（`baixue_2` 脖子）
+    ③叠脸门控读到的不透明度被压低、把烤好的脸误判成洞（`gezi_2` 因此发了错表情）。
+    """
+    x0 = max(0, px)
+    y0 = max(0, py)
+    x1 = min(dst.width, px + src.width)
+    y1 = min(dst.height, py + src.height)
+    if x1 <= x0 or y1 <= y0:
+        return
+    reg = dst.crop((x0, y0, x1, y1))
+    sub = src.crop((x0 - px, y0 - py, x1 - px, y1 - py))
+    dst.paste(Image.alpha_composite(reg, sub), (x0, y0))
+
+
 def is_lighting(arr):
     """可见像素 80% 近纯白 -> 游戏内加算光效层，直接贴会洗白，跳过。"""
     a = arr[..., 3]
@@ -718,68 +778,80 @@ def compose(bundle_name, out_dir, faces=None, save=True):
     face_pid = next((rp for rp in rects if go_names.get(rp) == "face"), None)
     FACE_DEFAULT = os.environ.get("FACE_DEFAULT", "1")
 
-    # 画布 = root 矩形范围
-    allb = list(boxes.values())
-    cw = int(max(b[0] + b[2] for b in allb))
-    ch = int(max(b[1] + b[3] for b in allb))
-    if not (256 <= cw <= 12000 and 256 <= ch <= 12000):
-        print(f"  ! 画布尺寸异常 {cw}x{ch}，截断到 12000")
-        cw, ch = min(cw, 12000), min(ch, 12000)
-
     # 部件按 rect 归属分组（同一 GO 多 renderer 时各自绘制）
     by_rect = {}
     for p in parts:
         by_rect.setdefault(p["rect_pid"], []).append(p)
 
+    def place(part, pid, face_override=None):
+        """把一层摆到画布上：返回 (PIL 或 None, 世界矩形 (x,y,w,h) Y-up 或 None, 名字)。
+        画布口径与真正合成**共用这一个函数算出的矩形**，避免「量偏移是一套、画出来是另一套」。"""
+        try:
+            res = build_part(dict(part), face_sprite_name=face_override)
+        except Exception as e:
+            print(f"    ! {part['name']} 渲染失败: {e}")
+            return None
+        if res is None:
+            return None
+        arr, bbox, frame = res
+        if LIGHTING_SKIP and is_lighting(arr):
+            return None, None, f"lighting-skip:{part['name']}"
+        rx, ry, rw, rh = boxes.get(pid, (0, 0, frame[0], frame[1]))
+        sx = rw / frame[0] if frame[0] else 1
+        sy = rh / frame[1] if frame[1] else 1
+        x0, y0, x1, y1 = bbox
+        mx, my = mirrors.get(pid, (False, False))
+        if mx:  # 画框内水平镜像
+            x0, x1 = frame[0] - x1, frame[0] - x0
+        if my:  # 画框内垂直镜像
+            y0, y1 = frame[1] - y1, frame[1] - y0
+        # 内容在画框坐标 -> 世界(Y-up)
+        wx0 = rx + x0 * sx
+        wy0 = ry + y0 * sy
+        ww = max(1, int(round((x1 - x0) * sx)))
+        wh = max(1, int(round((y1 - y0) * sy)))
+        img = Image.fromarray(arr.astype(np.uint8), "RGBA")
+        # arr 是 Y-up，转 PIL 需要上下翻转
+        img = img.transpose(Image.FLIP_TOP_BOTTOM)
+        if mx:
+            img = img.transpose(Image.FLIP_LEFT_RIGHT)
+        if my:
+            img = img.transpose(Image.FLIP_TOP_BOTTOM)
+        if (img.width, img.height) != (ww, wh):
+            img = img.resize((ww, wh), Image.BILINEAR)
+        return img, (wx0, wy0, ww, wh), (part["name"] or str(pid))
+
     def render(face_override=None):
-        canvas = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-        cinfo = []
+        placed = []
         for pid in order:
             for part in by_rect.get(pid, []):
-                try:
-                    res = build_part(dict(part), face_sprite_name=face_override)
-                except Exception as e:
-                    print(f"    ! {part['name']} 渲染失败: {e}")
-                    continue
-                if res is None:
-                    continue
-                arr, bbox, frame = res
-                if LIGHTING_SKIP and is_lighting(arr):
-                    cinfo.append(f"lighting-skip:{part['name']}")
-                    continue
-                rx, ry, rw, rh = boxes.get(pid, (0, 0, frame[0], frame[1]))
-                sx = rw / frame[0] if frame[0] else 1
-                sy = rh / frame[1] if frame[1] else 1
-                x0, y0, x1, y1 = bbox
-                mx, my = mirrors.get(pid, (False, False))
-                if mx:  # 画框内水平镜像
-                    x0, x1 = frame[0] - x1, frame[0] - x0
-                if my:  # 画框内垂直镜像
-                    y0, y1 = frame[1] - y1, frame[1] - y0
-                # 内容在画框坐标 -> 世界(Y-up) -> PIL(Y-down)
-                wx0 = rx + x0 * sx
-                wy0 = ry + y0 * sy
-                ww = max(1, int(round((x1 - x0) * sx)))
-                wh = max(1, int(round((y1 - y0) * sy)))
-                img = Image.fromarray(arr.astype(np.uint8), "RGBA")
-                # arr 是 Y-up，转 PIL 需要上下翻转
-                img = img.transpose(Image.FLIP_TOP_BOTTOM)
-                if mx:
-                    img = img.transpose(Image.FLIP_LEFT_RIGHT)
-                if my:
-                    img = img.transpose(Image.FLIP_TOP_BOTTOM)
-                if (img.width, img.height) != (ww, wh):
-                    img = img.resize((ww, wh), Image.BILINEAR)
-                px = int(round(wx0))
-                py = int(round(ch - (wy0 + wh)))
-                canvas.paste(img, (px, py), img)
-                cinfo.append(f"{part['name'] or pid}")
+                got = place(part, pid, face_override)
+                if got is not None:
+                    placed.append(got)
+        # 画布 = 所有节点框 ∪ 各层实际落笔框（口径唯一正本：canvas_frame）。
+        # 必须**并上全部 rect 框**而不只是 root：漏一个就会让画布比旧口径更窄，
+        # 右/上边缘反而开始裁内容（baixue 实测 2427->2426，丢 2,771 个不透明像素）。
+        # 容器框比落笔大只会多开一片空画布，末尾 getbbox 一裁就没了，不心疼。
+        frames = [p[1] for p in placed] + list(boxes.values())
+        ox, oy, cw, ch = canvas_frame(frames)
+        canvas = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+        cinfo = []
+        for item in placed:
+            img, rect, name = item
+            if img is None:                       # 加算光效层：只记账，不落笔
+                cinfo.append(name)
+                continue
+            wx0, wy0, ww, wh = rect
+            px = int(round(wx0 - ox))
+            py = int(round(ch - ((wy0 - oy) + wh)))
+            over(canvas, img, px, py)
+            cinfo.append(name)
         # ---- 叠 paintingface 默认脸（只在脸谱自身落笔处量底图：透明洞看不透明占比，
         #      「这里画的是不是这张脸」看与脸谱的逐像素色差 MAD。sat≥30 那版判据会把淡色真脸
         #      整片误判成洞——48 张带标签样本上 MAD 两侧差 5 倍，见 §14 与 §48）----
         if face_pid is not None and face_pid in boxes:
             rx, ry, rw, rh = boxes[face_pid]
-            fpx = int(round(rx)); fpy = int(round(ch - (ry + rh)))
+            fpx = int(round(rx - ox)); fpy = int(round(ch - ((ry - oy) + rh)))
             fww = max(1, int(round(rw))); fwh = max(1, int(round(rh)))
             fx = paintingface_face(bundle_name, FACE_DEFAULT if face_override is None else face_override)
             if fx is not None and fww > 8 and fwh > 8:
@@ -818,22 +890,25 @@ def compose(bundle_name, out_dir, faces=None, save=True):
                             "face_px": (fpx, fpy, fww, fwh),
                         }
                     if hole:
-                        canvas.paste(fimg, (fpx, fpy), fimg)
+                        over(canvas, fimg, fpx, fpy)
                         cinfo.append(f"face-overlay:{FACE_DEFAULT if face_override is None else face_override}")
                     else:
                         cinfo.append(f"face-skip(mad={mad:.1f})")
-        return canvas, cinfo
+        return canvas, cinfo, (ox, oy, cw, ch)
 
     os.makedirs(out_dir, exist_ok=True)
-    canvas, cinfo = render()
+    canvas, cinfo, (ox, oy, cw, ch) = render()
     face_applied = any(str(x).startswith("face-overlay") for x in cinfo)
     FACE_APPLIED[bundle_name] = face_applied
     bb = canvas.getbbox() or (0, 0, cw, ch)
     base = canvas.crop(bb)
+    LAST_CANVAS[bundle_name] = {"origin": (ox, oy), "canvas": (cw, ch), "crop": (bb[0], bb[1])}
     if bundle_name in FACE_GATE:
         # 成品 = 画布按 getbbox 裁过，落盘坐标 = 画布坐标 - 此偏移
         FACE_GATE[bundle_name]["crop_off"] = (bb[0], bb[1])
         FACE_GATE[bundle_name]["canvas"] = (cw, ch)
+        # 画布原点在世界坐标里的位置（<=0）：复核工具要按它才能把画布坐标换回世界坐标
+        FACE_GATE[bundle_name]["origin"] = (ox, oy)
     out = os.path.join(out_dir, f"{bundle_name}.png")
     if save:
         base.save(out)
@@ -853,8 +928,8 @@ def compose(bundle_name, out_dir, faces=None, save=True):
                         if n.isdigit():
                             names.append(n)
             for n in sorted(set(names), key=int):
-                canvas, _ = render(face_override=n)
-                b = canvas.crop(canvas.getbbox() or (0, 0, cw, ch))
+                canvas, _, (fo_x, fo_y, fcw, fch) = render(face_override=n)
+                b = canvas.crop(canvas.getbbox() or (0, 0, fcw, fch))
                 fp = os.path.join(out_dir, f"{bundle_name}_face{n}.png")
                 b.save(fp)
             print(f"  face 差分 x{len(set(names))}: {sorted(set(names), key=int)}")

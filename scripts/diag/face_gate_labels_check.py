@@ -14,14 +14,18 @@ import compose_paintings_v2 as C
 
 # 透明洞（旧判据一直在管的那一类）
 HOLE_TRANSPARENT = ['i168_2', 'dunkeerke_3', 'chuixue_6', 'xukufu_2', 'haerxibaoweier', 'beiqi',
-                    'botelan_2', 'qifeng', 'ajiakesi_2', 'wenqinzuojiaobeidi', 'gezi_2',
+                    'botelan_2', 'qifeng', 'ajiakesi_2', 'wenqinzuojiaobeidi',
                     'shidifenbote', 'gelunbiya', 'makeboluo', 'missd', 'feiteliedadi',
                     'haerxibaoweier_3', 'dunkeerke', 'daleike', 'ouruola_h']
 # 不透明但画的不是这张脸（§14 的 sat 判据管不住、本轮新查出的那一类）
 HOLE_BLOCK = ['moermansike_2', 'xipeier_idol', 'bangkeshan_2']
 # 底图已烤好完整脸：全部来自「当前(§14) sat 判据误判成洞」的抽样，逐张目视确认
+# gezi_2 于 2026-10-06 从「洞」侧改判进本组：旧合成算子把画布 alpha 平方，
+# 底图 alpha 250 被压成 245、跌破门控的 >=250，于是把完整的睁眼脸误判成洞、
+# 叠上 paintingface 的闭眼脸并发了出去。对照图 .diag/fix_ab/gezi_2__FACECMP.png。
 BAKED = ['antu', 'leiniya_wjz', 'moermansike', 'moermansike_3', 'hongseshanmai',
          'beierfasite_7', 'canglong_g', 'chicheng_idol', 'dafeng_h', 'dulianglai',
+         'gezi_2',
          'jialimaoxian', 'jiluofu_2', 'jiyi', 'kaxin_2', 'kewei_4', 'lieren_alter',
          'lingyangzhe1_2', 'luao_2', 'lvzuofu_h', 'mayebuleize', 'nubiyaren', 'qibolin_3',
          'ruifeng_2', 'sanli_5']

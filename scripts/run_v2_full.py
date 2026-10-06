@@ -112,20 +112,36 @@ def run_spine():
     log("Spine 阶段完成")
 
 
-def run_static():
-    log("== 阶段2：静态立绘全量合成 ==")
+def run_static(out_dir=None, redo=False, manifest=None, limit=0):
+    """静态立绘全量合成。
+
+    `out_dir` 指到临时目录、`redo=True` 不跳过已存在的产物 —— 这两个旗标是给
+    「管线改了要整批重渲再换入」用的：默认写死正式目录 + 跳过已存在，
+    对同一次修复的重渲来说等于 todo=0 直接空跑（换入流程要求先在临时目录渲染、
+    经 painting_swap_in.py 的四道检查再进正式区，所以正式目录必须是只读的）。
+    `manifest` 给路径时逐张记「新画布尺寸/原点/裁切偏移」，配合
+    diag/painting_canvas_extent_scan.py（只读、按 rect 框算旧口径尺寸）就是全库普查。
+    """
+    out_dir = out_dir or STATIC_OUT
+    log(f"== 阶段2：静态立绘全量合成 -> {out_dir}{'（redo，不跳过已存在）' if redo else ''} ==")
     targets = baseline_targets()
-    todo = [n for n in targets
-            if not os.path.isfile(os.path.join(STATIC_OUT, n + ".png"))]
+    todo = list(targets) if redo else [n for n in targets
+                                       if not os.path.isfile(os.path.join(out_dir, n + ".png"))]
+    if limit:
+        todo = todo[:limit]
     log(f"目标 {len(targets)}，待合成 {len(todo)}")
-    os.makedirs(STATIC_OUT, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
+    mf = None
+    if manifest:
+        mf = open(manifest, "w", encoding="utf-8")
+        mf.write("skin\tnew_cw\tnew_ch\torigin_x\torigin_y\tcrop_x\tcrop_y\n")
     sys.path.insert(0, HERE)
     import compose_paintings_v2 as v2
     t0 = time.time()
     ok = fail = 0
     for i, n in enumerate(todo, 1):
         try:
-            good = v2.compose(n, STATIC_OUT)
+            good = v2.compose(n, out_dir)
         except Exception as e:
             good = False
             with open(ERROR_LOG, "a", encoding="utf-8") as f:
@@ -136,22 +152,39 @@ def run_static():
             fail += 1
             with open(ERROR_LOG, "a", encoding="utf-8") as f:
                 f.write(f"[static] {n}: 失败（无异常，部件为空或渲染全跳过）\n")
+        if mf is not None:
+            f_ = v2.LAST_CANVAS.get(n)
+            if f_:
+                ox, oy = f_["origin"]
+                cw, ch = f_["canvas"]
+                cx, cy = f_["crop"]
+                mf.write(f"{n}\t{cw}\t{ch}\t{ox}\t{oy}\t{cx}\t{cy}\n")
         if i % 50 == 0 or i == len(todo):
+            if mf is not None:
+                mf.flush()
             el = time.time() - t0
             eta = el / i * (len(todo) - i)
             log(f"static 进度 {i}/{len(todo)}  ok={ok} fail={fail}  "
                 f"用时 {el:.0f}s  预计剩余 {eta:.0f}s")
+    if mf is not None:
+        mf.close()
     log(f"静态阶段完成：ok={ok} fail={fail}")
+    log("STATIC-DONE")        # 完成哨兵：崩溃/截断时这行不会出现
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=["spine", "static"])
+    ap.add_argument("--out", default=None, help="静态阶段输出目录（默认正式区）")
+    ap.add_argument("--redo", action="store_true", help="不跳过已存在的产物，整批重渲")
+    ap.add_argument("--manifest", default=None, help="逐张取景事实 TSV 的输出路径")
+    ap.add_argument("--limit", type=int, default=0, help="只跑前 N 张（样本先行用）")
     args = ap.parse_args()
     if args.only != "static":
         run_spine()
     if args.only != "spine":
-        run_static()
+        run_static(out_dir=args.out, redo=args.redo, manifest=args.manifest,
+                   limit=args.limit)
     log("== 全部完成 ==")
 
 
