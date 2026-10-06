@@ -6359,7 +6359,21 @@ Pillow 文档原话 *"scaling the alpha channel twice"*：用 RGBA 图当蒙版�
 （nlink 全为 1 / 4496 份备份 md5 全等 / 换入后与渲染 md5 全等 / **全目录快照清单外被动 0 个**）；
 缩略图重建 ok=4498 err=0；`index.json` 重建后**逐字节相同**、`gallery_index_diff_check` PASS；
 服务器实测 `/Paintings_v2/beier.png` 200 / 3,855,276 字节。备份
-`Output/_OLD_bak/paintings_v2_alpha_canvas_20261006/`（4496 份）。
+`Output/_OLD_bak/paintings_v2_alpha_canvas_20261006/`（4496 份，15.74 GiB）。
+
+**这份备份是"可再生"的，不是不可复原数据**（与 `inputs/azdata` 那一类要分清）——
+旧管线在 git 里，实测 5/5 张（含最极端的 `jinluhao_2`）用旧正本重渲与备份 **md5 全等**：
+
+```
+git show 12eb0db^:scripts/compose_paintings_v2.py > .diag/oldpipe/compose_paintings_v2.py
+# sys.path 里同时放 scripts/ 与 .diag/oldpipe/（旧正本 import paths），逐张 compose() 到临时目录
+```
+
+代价 = 一次全量重渲的机器时间（实测 4496 张 ≈ 2.2 小时，约 1.75 秒/张）。
+⚠ 复现性依赖 **Pillow / UnityPy 版本不变**（`BILINEAR` 重采样与 ASTC 解码换版本可能漂），
+所以"删备份"要发生在**用户在画廊里看过、确认不回滚之后**，而不是换入当天。
+本轮另删掉 `.diag/paintings_rerun_20261006/`（16.11 GiB 渲染中转目录）——
+删前抽验 89 张（含 6 张症状主角）与正式区 md5 全等，它已是纯重复。
 
 **涉及文件**：`scripts/compose_paintings_v2.py`（新增 `canvas_frame()` / `over()` /
 `LAST_CANVAS`，`render()` 拆出 `place()`，`FACE_MAD_MAX` 注释记否证）、
