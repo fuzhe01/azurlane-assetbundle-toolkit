@@ -91,9 +91,14 @@ def run_spine():
     log(f"spine 主包 {len(names)}，待提取 {len(todo)}")
     t0 = time.time()
     # 分批传给 extract_spine_v2（每批 25 个，避免单进程内存累积）
+    # 这批按定义全是"正式区还没有该目录"的新皮肤 ⇒ 备份会是 0 份，
+    # 但仍然要给 --bak：MANIFEST 就是"无前身可备份"的当场证据（写正式区不给 --bak 会被直接拒）。
+    spine_bak = os.path.join(ROOT, "Output", "_OLD_bak",
+                             "spine_full_" + time.strftime("%Y%m%d_%H%M"))
     for i in range(0, len(todo), 25):
         batch = todo[i:i + 25]
-        p = subprocess.run([PY, os.path.join(HERE, "extract_spine_v2.py")] + batch,
+        p = subprocess.run([PY, os.path.join(HERE, "extract_spine_v2.py")] + batch
+                           + ["--bak", spine_bak],
                            capture_output=True, text=True, encoding="utf-8",
                            errors="replace", env=_SUBPROC_ENV)
         for ln in (p.stdout or "").splitlines():

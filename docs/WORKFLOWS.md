@@ -2510,15 +2510,23 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
    `files/AssetBundles` 嫌疑 0.73 GB → 真重复 **0.00 GB（0 组）**（92,679 个包两两互不相同）。
    全仓实证重复 ≈1.3 GB / 84 GB = **1.5%** ⇒ 去重类问题基本都是"看着像"。
 
-**备份闸的判据（本轮查出缺口，⏳ 未落地，动脚本前须放行）**：
+**备份闸的判据（✅ 已落地 2026-10-06，形状可复制到任何"直写正式区"的导出脚本）**：
 换入必须**逐文件**在覆写前取走前身字节，而不是"目录里有个备份"。
 - ⚠️ **不能用"备份目录非空"当判据**：纯新增（如 4488 → 4500 那 12 张）**没有前身可备份**，
   空目录是正确行为（§80 的 `pipeline_20261001_2248/` 就是这种），拿非空当闸会把合法换入拦死。
-- 正解形状 = `painting_swap_in.py` 那四道：目标 `nlink==1` → 备份与原文件 md5 全等 →
-  换入后与临时渲染 md5 全等 → 全目录 mtime/nlink 变化集合恰好等于本次清单。
-- 缺口位置由**默认写向**决定：`extract_spine_v2.py:36 OUT_ROOT = P.SPINE_OUT`（正式区），
-  无 `--out` 即原地覆写 234 个 `parts.json` 且**不取前身字节**，而 `build_gallery_index.py:439/444`
-  的报错文案正是在引导人这么跑 ⇒ **报错文案里给的补救命令，不许指向一条没有备份的直写正式区路径**。
+- **备份范围 = 本次覆写范围**，不是"整个目录拍一份"：`extract_spine_v2.py --parts-only` 只写 `parts.json`
+  ⇒ 只取那一份（每皮肤几十 KB）；整批重提取会连 skel/atlas/png 一起重写 ⇒ 整目录现有文件全取。
+  这样"要备份多少"由脚本自己按写向决定，不留给操作者判断 ⇒ 没有例外名单。
+- 正解四道（`painting_swap_in.py` 早就这么写，新闸门照它抄）：目标 `nlink==1` →
+  **备份与原文件 md5 全等**（不等就抛错，什么都不写）→ 换入后与临时渲染 md5 全等 → 全目录快照。
+- 落点要**当场声明**：写向在 `Output/` 之下而没给 `--bak` ⇒ 直接 `exit 2`，并打印三种补救命令。
+  写临时区（`.diag/pipeline/`）不拦 —— 正式区还没动。
+- ⚠️ **拒绝路径必须真的非零退出**：`if __name__ == '__main__': main()` 会**丢掉返回值**，
+  于是 `[FAIL]` 打成乱码一样没人看、上层 judge 只看退出码就把"什么都没写"当成通过。
+  ⇒ 一律写 `sys.exit(main())`。（本项目第 N 次撞这个坑，这次撞在自己的新闸门上。）
+- ⚠️ **报错文案里给的补救命令，不许指向一条没有备份的直写正式区路径**：本轮的缺口正是
+  `build_gallery_index.py` 引导人跑 `--parts-only`（默认写向 = `Output/Spine_v2`）造成的。
+  引导文案属于闸门的一部分，改脚本时要一起改。
 
 **踩坑记录**：
 - "同尺寸就是重复"是错的，且**错的数量级足以误导决策**（见第 4 步两个实测值）。
@@ -2530,9 +2538,25 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 - `PROJECT_STATUS.md` 里的历史体量数字会过期（本轮就有一条 26.6 GB / 86,890 文件停在 09 月），
   盘点时**就地改数字**，不要再追加一条新口径。
 
-**涉及文件**：新增 `scripts/diag/check_disk_footprint.py`；
-`scripts/asset_ledger.py` + `ledger/{sources,artifacts,pruned}.json`；
+**按类目清源包（`prune-category`）的四条硬要求**：
+1. **删除与登记同一次落**：`mumu_sync` 比的是"设备路径+大小 vs 本地目录树"，删了不写
+   `ledger/pruned.json` ⇒ 下次 diff 把整批报成**新增**、白下一遍（§78 立台账就是为了这一条）。
+2. **删前先过已还原产物的传递依赖闭包**（`dependency_manifest.json`，从有产物的类目根 BFS）。
+   ⚠️ 只看第一层 deps 会漏：立绘根常只挂 `_tex`，公共图集/材质在第二三层。
+   闸门必须**自证是活的**——拿一个承重类目跑对照（`--cat painting` 应全拦、`artresource` 应拦下带深链的若干）。
+3. **每个类目的"待删数"要和递归文件数对账**：`dorm3d` 第一层 0 个文件、5,989 个包全埋在子目录里，
+   第一版按 `os.listdir` 只扫一层 ⇒ 报"待删 0 个"却一声不响，3.5 GB 静默放过。
+4. **两套相对路径口径别混**：依赖表用 `painting/xxx`（AB 相对），`pruned.json`/`mumu_sync` 用
+   `AssetBundles/dorm3d/a/b`（同步根是 `files/`）。登记键写错前缀 = **看起来登记成功但永不生效**。
+   验证登记真的生效（不连设备）：进程内 `import mumu_sync`，喂合成 `r_files` 做三分对照——
+   同尺寸 ⇒ 归档；大小 +1 ⇒ 真新版本要重拉；未登记的承重包 ⇒ 仍要拉（阴性对照）。
+   ⚠️ 已知缺口：没有 `--revive`，想拉回被删类目**必须先撤销 `pruned.json` 里的对应条目**，
+   否则 `--only ui --apply` 会把它们全判成"已归档"而静默跳过（撤销命令见 §111 第 5 节）。
+
+**涉及文件**：新增 `scripts/diag/check_disk_footprint.py`；`scripts/asset_ledger.py`
+（`prune-category` / `dep_closure()` / `pruned.json` 登记）、`scripts/mumu_sync.py:247-270`（`load_pruned` / `split_archived`）；
 `scripts/export_assets.py`（Raw 的写方）、`scripts/organize.py`（Raw 的唯一读者，已写未跑）；
 `scripts/pipeline_panel.py:2418`、`scripts/update_pipeline.py` `STAGES`（拉取落点原文）；
-`scripts/extract_spine_v2.py`、`scripts/diag/painting_swap_in.py`（备份闸正反两例）。取证全过程 **§111**。
+`scripts/extract_spine_v2.py`、`scripts/diag/painting_swap_in.py`（备份闸正反两例）、
+`scripts/build_gallery_index.py`、`scripts/run_v2_full.py`（引导文案与批调用）。取证全过程 **§111**。
 相关：WF-15（第 9 步备份换入）、WF-16（回归六件套）、§78（台账）、§46（备份瘦身先例）、§110。

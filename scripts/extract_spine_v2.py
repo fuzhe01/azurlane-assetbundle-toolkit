@@ -16,11 +16,20 @@ atlas 页纹理若不在以上两包内，按 dependencies 官方依赖表去外
   python extract_spine_v2.py               # 全部
   python extract_spine_v2.py aersasi 2b_2  # 指定
   python extract_spine_v2.py --parts-only  # 只给已导出的目录补 parts.json（不重解码贴图）
+
+  ⚠️ **写向是 `Output/Spine_v2`（正式区）时必须给 `--bak <目录>`**，否则一个文件都不写。
+     `Output/` 不进 git ⇒ 被覆写的旧字节只有这一份备份能捞回来。
+     只补 parts.json 时给 `--bak Output/_OLD_bak/spine_parts_<日期>/` 就够（每皮肤几十 KB）；
+     整目录重提取会连 skel/atlas/png 一起重写，备份量 ≈ 该批现有产物大小。
+     写临时区（`--out .diag/pipeline/Spine_v2`）不需要备份 —— 正式区还没动。
 """
+import hashlib
 import json
 import os
 import re
+import shutil
 import sys
+import time
 
 import UnityPy
 from UnityPy import config
@@ -92,6 +101,57 @@ def to_bytes(script):
     if isinstance(script, (bytes, bytearray)):
         return bytes(script)
     return str(script).encode("utf-8", "surrogateescape")
+
+
+def _md5(p):
+    h = hashlib.md5()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def is_production(out_root):
+    """写向是否落在正式产物区（`Output/` 之下）。临时区 `.diag/pipeline/` 不算。"""
+    a = os.path.abspath(out_root)
+    b = os.path.abspath(P.OUT)
+    return a == b or a.startswith(b + os.sep)
+
+
+def snapshot_prior(out_dir, name, bak_root, only, rec):
+    """覆写前把**这次真的会被写到的**现有文件逐份取走前身字节，并当场核对 md5 全等。
+
+    `only` 传文件名列表时只备份这些（`--parts-only` 只写 parts.json）；
+    传 None 表示整目录都要重写 ⇒ 整目录都取。
+    备份不是"装个样子"：md5 与原件不等就直接抛错停下，宁可什么都不写。
+    """
+    if not os.path.isdir(out_dir):
+        return
+    targets = []
+    if only is None:
+        for dp, _dn, fs in os.walk(out_dir):
+            for f in sorted(fs):
+                targets.append(os.path.join(dp, f))
+    else:
+        targets = [os.path.join(out_dir, f) for f in only
+                   if os.path.isfile(os.path.join(out_dir, f))]
+    for src in targets:
+        rel = os.path.relpath(src, out_dir).replace(os.sep, "/")
+        dst = os.path.join(bak_root, *f"{name}/{rel}".split("/"))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copyfile(src, dst)
+        prior = _md5(src)
+        if _md5(dst) != prior:
+            raise RuntimeError(f"换前备份与原件 md5 不等，拒绝覆写: {src}")
+        rec.append({"target": f"{name}/{rel}", "md5": prior, "size": os.path.getsize(src)})
+
+
+def refuse_without_backup(out_root):
+    print(f"[FAIL] 写向是正式区 {out_root}，但没给 --bak —— 拒绝覆写。\n"
+          f"       Output/ 不进 git，被盖掉的旧字节只有备份这一份能捞回来（§111 第 4 节）。\n"
+          f"       只补 parts.json： --bak Output/_OLD_bak/spine_parts_<日期>/\n"
+          f"       整批重提取：     先 --out .diag/pipeline/Spine_v2 写临时区，审完再走 painting_swap_in 换入")
+    return 2
 
 
 def write_parts(name, out_dir):
@@ -224,6 +284,16 @@ def main():
         i = argv.index("--out")
         OUT_ROOT = argv[i + 1]
         argv = argv[:i] + argv[i + 2:]
+    bak_root = None
+    if "--bak" in argv:
+        i = argv.index("--bak")
+        bak_root = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
+    if is_production(OUT_ROOT) and bak_root is None:
+        return refuse_without_backup(OUT_ROOT)
+    if bak_root:
+        os.makedirs(bak_root, exist_ok=True)
+    rec = []
     if argv:
         names = [a.strip() for a in argv if a.strip()]
     else:
@@ -234,6 +304,11 @@ def main():
     for n in names:
         out_dir = os.path.join(OUT_ROOT, n)
         try:
+            if bak_root:
+                # `--parts-only` 只写 parts.json ⇒ 只取那一份；整批重提取会连
+                # skel/atlas/png 一起重写 ⇒ 现有文件全取。备份范围必须等于覆写范围。
+                snapshot_prior(out_dir, n, bak_root,
+                               ["parts.json"] if parts_only else None, rec)
             if parts_only:
                 # 只补分层的权威列表，不重新解码贴图 —— 免得为了写一个小 json
                 # 去碰 234 个目录里已经正确的 PNG/atlas/skel
@@ -256,8 +331,31 @@ def main():
         else:
             miss += 1
             print(f"✗ {n}: {msg}")
+    if bak_root:
+        mpath = os.path.join(bak_root, "MANIFEST.json")
+        files = rec
+        at = time.strftime("%Y-%m-%d %H:%M:%S")
+        if os.path.isfile(mpath):
+            # 同一批备份目录可能被分多次写满（`run_v2_full` 每 25 个一批）
+            # ⇒ 合并而不是覆盖，否则只有最后一批的 md5 留得下来
+            try:
+                with open(mpath, encoding="utf-8") as f:
+                    old = json.load(f)
+                files = old.get("files", []) + rec
+                at = f'{old.get("at", "?")} ~ {at}'
+            except (OSError, ValueError):
+                pass
+        with open(mpath, "w", encoding="utf-8") as f:
+            json.dump({"out_root": OUT_ROOT, "parts_only": parts_only, "at": at,
+                       "skins": len(names), "files": files}, f, ensure_ascii=False, indent=1)
+        print(f"换前备份 {len(rec)} 份（本批）/ 共 {len(files)} 份 "
+              f"{sum(x['size'] for x in files) / 1048576:.1f} MB -> {bak_root}（MANIFEST.json 逐份记 md5）")
     print(f"\n成功 {ok}，失败 {miss} -> {OUT_ROOT}")
 
 
 if __name__ == "__main__":
-    main()
+    # 手工直跑时 Windows 默认 cp936，会把这段拒绝覆写的提示打成乱码 —— 判据文案读不懂等于没有。
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    # 必须 sys.exit(main())：以前 `main()` 丢掉返回值 ⇒ 拒绝覆写也报 exit 0，
+    # 上层 judge 只看退出码就会把"什么都没写"当成通过（本项目第 N 次撞这个坑）。
+    sys.exit(main())

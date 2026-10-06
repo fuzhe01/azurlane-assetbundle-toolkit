@@ -6059,8 +6059,35 @@ gain 均 ≤1.02x，几乎无视觉变化，且逐一核对 T 层都是特效不
 对照 `painting_swap_in.py` 的四道硬检查（`nlink==1` / 备份与原文件 md5 全等 / 换入后与临时渲染 md5 全等 / 全目录快照），缺口只在这一条路径上。
 ⇒ 修法见 WF-28（备份闸必须逐文件、落在写那一刻，且要放过"纯新增无前身"这种正确情况）。
 
+**✅ 同日已落地（2026-10-06 12:00，用户放行）**：
+- `extract_spine_v2.py` 新增 `is_production()` / `snapshot_prior()` / `refuse_without_backup()`：写向落在 `Output/` 之下而没给 `--bak` ⇒ **一个文件都不写**；给了则**备份范围 = 本次覆写范围**（`--parts-only` 只取 `parts.json`，整批重提取取整目录现有文件），逐份 `md5` 与原件全等才继续，收尾写 `MANIFEST.json`（`target/md5/size`，同目录多批**合并**不覆盖）。
+- 引导文案同步改：`build_gallery_index.py` 那两条"先跑 `--parts-only`"现在带 `--bak`，并写明"纯新增时备份会是 0 份，但覆写范围必须当场声明"。
+- `run_v2_full.py` 的 spine 批调用补 `--bak Output/_OLD_bak/spine_full_<时间>/`（它按定义只提"正式区还没有的目录"= 纯新增，备份会是 0 份 —— 那份 0 条的 MANIFEST 就是"无前身可备份"的当场证据）。
+- **顺带修掉一个更普遍的坑**：`if __name__ == '__main__': main()` **丢掉返回值** ⇒ 负例打出 `[FAIL]` 却仍 `exit 0`。改成 `sys.exit(main())`。这正是 `update_pipeline.py` 开头列的"9 个脚本失败照样 exit 0"那一类，本轮在我自己的新闸门上又撞了一次。
+  ⚠️ **未一并改的**：`extract_spine_v2` 在 `失败 N>0`（提取本身失败）时**仍然 exit 0**（`main()` 无返回值），`st_spine` 靠数 `✗` 行判红才没漏 —— 这条留着，改它会影响既有 judge，需另行放行。
+- 验证（三条 + 两条对照，全在 1 个皮肤样本上跑）：负例 `--parts-only tianjinfeng_2` ⇒ **exit 2**、`parts.json` md5 与基线 `e6125e29…` 逐字节未变；正例带 `--bak` ⇒ exit 0、备份件 md5 == 基线、且重生成后线上 md5 **仍等于基线**（⇒ 重生成幂等，这次测试没动过生产字节）；暂存区 `--out .diag/pipeline/Spine_v2` 无 `--bak` **不拦**；`test_pipeline_gating.py` 签字门与增量范围闸门全绿。
+
+### 5. 按类目清源包：删除与登记必须同一次落（同日执行记录）
+
+`asset_ledger.py` 的 `prune` 只肯删"有产物依据"的包，而 `dorm3d/island/char/ui` 从没导出过产物 ⇒ 永远进不了那份计划。但**手删会踩 §78 立台账专门防的那个坑**：`mumu_sync` 比的是"设备路径+大小 vs 本地目录树"，删掉的包下次全被报成**新增**，于是白下一遍。⇒ 新增 `prune-category` 子命令：删前先过**已还原产物的传递依赖闭包**，删成功的当场写 `pruned.json`。
+
+- 执行：**21,286 个源包 / 7.53 GB**（`dorm3d` 5,989 + `island` 7,755 + `char` 3,264 + `ui` 4,278），源包侧 29.42 GB → **21.89 GB**，196 类目；D 盘余量 259 → 267 GB。
+- **闸门是活的，不是摆设**（0 命中必须先自证）：`--cat painting` ⇒ 拦下 10,767 / 待删 0（它们本身就是产物根）；`--cat artresource` ⇒ 拦下 105，理由带真实传递链（`artresource/effect/bayuewaiguan/yanhua06` ← 根 `spinepainting/huben_2`、`.../chicheng_ui/fliud07` ← 根 `painting/chicheng_heihua`）。
+- **用户的领域记忆比闸门准**：裁定里说"留 `ui/commonui_atlas`，别给 2 个已还原皮肤埋缺依赖的坑" —— 闸门独立算出的正是这一个（`spinepainting/a2_2` + `painting/a2_2` + `2b_2` 两个皮肤 4 个根直接依赖它）。两处一致 ⇒ 这条保留不是保守，是必要。
+- ⚠️ **只看第一层会静默放过 3.5 GB**：`dorm3d` 第一层 **0 个文件**、5,989 个包全埋在 4 个子目录里，`island` 第一层 7 个 / 递归 7,755 个 —— 第一版实现按 `os.listdir` 只扫一层，报出"待删 0 个"却完全没报错。判据：**每个类目的"待删数"要和递归文件数对账**，对不上就是扫描漏层。
+- ⚠️ **登记键有两套口径**：依赖表用 `painting/xxx`（AB 相对），`pruned.json`/`mumu_sync` 用 `AssetBundles/dorm3d/a/b`（同步根是 `files/`）。写错前缀的话登记**看起来成功但永不生效** —— 已按两种口径分别匹配（闭包比 `mrel`、登记存 `pkey`）。
+- **联动确认过**：依赖表由 `files/AssetBundles/dependencies` 这个 MonoBehaviour 生成、**不扫盘** ⇒ 删类目不会让 `deps` 档的"新表须为旧表超集"判红；即便真丢条目，`deps_classify` 也只对"本管线消费的"判 fatal。
+- **验证登记真的生效**（不连设备，进程内喂合成数据）：同尺寸的已归档包 ⇒ 判"不重拉" ✓；把设备侧大小 +1 ⇒ 判"真新版本，要重拉" ✓；未登记的 `AssetBundles/painting/2b_2` ⇒ 仍判"要拉"（对照组）✓。
+- ⚠️ **已知缺口（下次要用先补）**：没有 `--revive`/`--include-archived`。想拉回被删的类目，**必须先撤销 `pruned.json` 里的对应条目**，否则 `mumu_sync --only ui --apply` 会把它们全判成"已归档"而静默跳过。手工撤销形如
+  `py -3 -c "import json;p='ledger/pruned.json';d=json.load(open(p,encoding='utf-8'));d['pruned']={k:v for k,v in d['pruned'].items() if not k.startswith('AssetBundles/ui/')};json.dump(d,open(p,'w',encoding='utf-8'),ensure_ascii=False)"`。
+  受影响待办：§2.7「UI/图标批量导出」与待办 5「3D 宿舍资源」现在都要先重拉才能开工。
+
 **已排除的假设**：① "`Raw` 是 `files` 的解压副本、删一个就行" —— 两者格式/数量级都不同（blob vs png），且 Raw 零引用、可重导，删它不影响 `files`；② "`_OLD_bak` 是硬链接堆，删了不省空间" —— 只有 174/16,033 是硬链，删了真能回收；③ "`_OLD_bak` 堆了 1.5 万文件所以是冗余" —— 逐份 md5 实证 271 个与线上相同，**恰恰相反，它是唯一副本的存放地**；④ "Audio 有 2 GB 重复可去重" —— 同尺寸嫌疑，实证 0.09 GB；⑤ "空备份目录 = 备份失败" —— 那批是纯新增，空是正确行为，所以判据不能是"目录非空"。
 
-**涉及文件**：新增 `scripts/diag/check_disk_footprint.py`（体量/嫌疑/实证/唯一副本四件事，`--confirm` 走两级哈希、`--bak-uniqueness` 走逐份比对）；`PROJECT_STATUS.md` §1 / §2.3 / §2.4 就地更新；§80 那条"备份在 pipeline_20261001_2248"已就地订正（见上）。**本轮删除动作**：`Output/_OLD_bak/pipeline_20261001_2248/`（空目录）、`Output/_OLD_bak/darkfix_20261004/`（单文件，删前复核 md5 与线上一致）。
+**涉及文件**：新增 `scripts/diag/check_disk_footprint.py`（体量/嫌疑/实证/唯一副本四件事，`--confirm` 走两级哈希、`--bak-uniqueness` 走逐份比对）；
+`scripts/asset_ledger.py`（新增 `prune-category` + `dep_closure()`）、`scripts/extract_spine_v2.py`（`is_production` / `snapshot_prior` / `refuse_without_backup` / `sys.exit(main())`）、
+`scripts/build_gallery_index.py`（两条引导文案带 `--bak`）、`scripts/run_v2_full.py`（spine 批调用补 `--bak`）、`ledger/pruned.json`（21,286 条归档登记，**唯一副本、已入库**）；
+`scripts/export_assets.py`（Raw 的写方）、`scripts/organize.py`（Raw 的唯一读者，已写未跑）；
+`PROJECT_STATUS.md` §1 / §2.3 / §2.4 / §2.7 / 待办 5、8 就地更新；§80 那条"备份在 pipeline_20261001_2248"已就地订正（见上）。**本轮删除动作**：`Output/_OLD_bak/pipeline_20261001_2248/`（空目录）、`Output/_OLD_bak/darkfix_20261004/`（单文件，删前复核 md5 与线上一致）、源包 `dorm3d`+`island`+`char`+`ui`（除 `commonui_atlas`）21,286 个 / 7.53 GB。
 
 相关：§46（CG 备份瘦身先例）、§78 / WF-15 第 9 步（台账与备份换入）、§80（纯新增的空备份）、§110（本轮查出缺口的换入）、WF-28。

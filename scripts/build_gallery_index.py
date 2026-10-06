@@ -436,12 +436,16 @@ for d in glob.glob(os.path.join(OUT, 'Spine_v2', '*')):
     ship_of(base)['spineSkins'].append(stem)
 if SPINE_NO_PARTS:
     print(f"! {len(SPINE_NO_PARTS)} 个 Spine 目录有 .skel 但没有 parts.json —— "
-          f"分层的权威清单缺失，拒绝猜。先跑 `py -3 scripts/extract_spine_v2.py --parts-only`。"
+          f"分层的权威清单缺失，拒绝猜。先跑 "
+          f"`py -3 scripts/extract_spine_v2.py --parts-only --bak Output/_OLD_bak/spine_parts_<日期>/ <目录...>`"
+          f"（写正式区必须带 --bak：这批是纯新增时备份会是 0 份，但覆写范围必须当场声明）。"
           f"\n  清单: {SPINE_NO_PARTS[:20]}")
     sys.exit(1)
 if SPINE_ORDER_FALLBACK:
     print(f"! {len(SPINE_ORDER_FALLBACK)} 个 Spine 目录的 parts.json 没有 order 字段（老文件）—— "
-          f"绘制序只能按层名后缀启发式排，重跑 `py -3 scripts/extract_spine_v2.py --parts-only` 补齐。"
+          f"绘制序只能按层名后缀启发式排，重跑 "
+          f"`py -3 scripts/extract_spine_v2.py --parts-only --bak Output/_OLD_bak/spine_parts_<日期>/ <目录...>` 补齐"
+          f"（这些是**覆写**，前身字节会落到 --bak 里）。"
           f"\n  清单: {SPINE_ORDER_FALLBACK[:20]}")
 
 # Spine setup-pose 全屏 CG（cg_export.html 导出到 CG_v2/，目录名=皮肤 stem）

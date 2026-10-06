@@ -30,7 +30,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 ## 1. 项目概览
 
 - 对碧蓝航线 Unity AssetBundle 解包、分类、导出、还原。
-- 源路径 `D:\Azur Lane Assets\files\AssetBundles`，240 子目录 / **92,679 文件 / 31.6 GB**（94.6% 无后缀二进制 blob）；产物侧 `Output/` **52 GB**，全仓约 **84 GB**（2026-10-06 实量，口径 `scripts/diag/check_disk_footprint.py`，见 §111）。
+- 源路径 `D:\Azur Lane Assets\files\AssetBundles`，**196 类目 / 71,393 文件 / 21.89 GB**（2026-10-06 按类目清理：删 dorm3d/island/char/ui 共 **21,286 个源包 / 7.53 GB**，删除与登记同时落 `ledger/pruned.json` ⇒ `mumu_sync` 不再把它们报成"新增"；清理前 240 类 / 92,679 文件 / 29.42 GB。判据与过程 **§111 / WF-28**）；产物侧 `Output/` 48.5 GB，全仓约 **70 GB**（口径统一 = `scripts/diag/check_disk_footprint.py`，GiB）。
 - **当前主线 = v2 数据驱动管线**（见 §9）：零猜测、零手调，已全量收官。
 
 ### 仓库治理 ✅
@@ -84,6 +84,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 
 ### 2.7 UI/图标导出 ⏳ 未处理
 `ui/` 4,059 文件 + 各 icon 目录数万，可复用 `export_assets.py`。优先级最低。
+> ⚠️ **前置条件已变（2026-10-06）**：`ui/` 的 4,278 个源包按用户裁定删除，**只留 `ui/commonui_atlas`**（它是 `a2_2` / `2b_2` 两个已还原皮肤的 atlas 页依赖，删了重提取会缺页）⇒ 这条待办现在**必须先 `mumu_sync` 重拉 `ui` 类目**才能开工（`pruned.json` 已登记，diff 会把它们列成"归档"而不是"新增"，重拉要显式点名）。
 
 ### 2.8 资源分类整理 ⏳ 未处理
 `scripts/organize.py` 已写未跑，需所有导出完成后进行。
@@ -171,7 +172,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 ### 既有待办
 
 **优先级低**
-5. UI/图标批量导出（~2 万）、3D 宿舍资源、资源分类整理 `organize.py`。
+5. UI/图标批量导出（~2 万）、3D 宿舍资源、资源分类整理 `organize.py`。⚠️ 前两项的源包（`ui/` 除 `commonui_atlas`、`dorm3d`、`island`、`char`）已于 2026-10-06 按裁定删除 ⇒ 开工前要先重拉，且**必须先撤销 `pruned.json` 里的对应登记**（否则 `mumu_sync` 会按"已归档"跳过它们，`--only ui` 也拉不回来；工具还没有 `--revive`，见 WF-28 已知缺口）。
 6. ✅→⏳ **声优中文姓名补全（答案表已到手，回填待放行；2026-09-25）**：用新解析出的 `voice_actor_cn` 已拿到 **525 条 `code → 中文声优`**（`.diag/sharecfg_re/voice_actor_cn.json`）；对 `ship_skin_template` 实际用到的 499 个 `voice_actor` 值，**只缺哨兵 `-1`/`0`，真实 id 覆盖率 100%** ⇒ "CV 姓名表未缓存"这个前提作废。**已完成并写盘（2026-09-25 E1）**：`Output/ship_meta.json` 重写，逐字段比对 **既有值变化 0 / 字段消失 0**，**4041/4495 条带 `voice_actor_name`**（库尔斯克→衣川里佳、泛用型布里→下田麻美）；无名 454 = 427 剧情角色 + 27 个 voice_actor 为 0/-1。备份 `Output/_OLD_bak/ship_meta_pre_25.json`。见 §36。
 7. ✅ **阵营「晶环联盟」= nationality 12 已定（2026-09-25）**；`12/99/101/104/117` 五个码已定名并写进 NATIONALITY。
    顺带把 `sharecfgdata` 整条线打通：**容器 = 记录帧 `ULEB(len)` + 假 LuaJIT BC 头 + 平铺 kgc 常量流；
@@ -180,8 +181,8 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
    ⏭️ **剩余缺口 = 21 个容器字段**（`smoke`/`bound_bone`/`couple_encourage`）的装配关系在假 BC 指令区，二选一：
    **(a)** 解那套 4 字节栈码（一次通吃 21 个）或 **(b)** 只给要用的表人写字段表（便宜够用，参考实现走的正是 (b)）。
    攻关全过程（含 5 次改判、每条否证都配了对照）见归档 A6 段 + `TROUBLESHOOTING.md` §30~§37 + **WF-19 / WF-20**。
-8. ⏳ **磁盘优化等拍板（2026-10-06 盘点，全仓 84 GB）**：两个零消费方大头 —— `Output/Audio/BGM/` 12.6 GB wav（源包 `cue` 在本地，随时可重导 ⇒ 转码/归档/按台账 prune 三选一）、`Output/Raw/` 2.02 GB（补完 `organize.py` 或承认它没用）。
-   ⚠️ 两者都**不是"重复"**：实证逐字节重复全仓仅 **1.3 GB = 1.5%**，而 `_OLD_bak` 剩 29 项**每项都含独一无二的换入前旧字节**（`Output/` 不进 git，删了就是永久丢回滚）。另**换入备份闸未落地**：`extract_spine_v2.py` 默认写向就是正式区且覆写前不取前身字节，10-06 那 234 个 `parts.json` 换入因此零备份（§111 第 4 节），动脚本需另行放行。判据 **WF-28** / 取证 **§111**。
+8. ⏳ **磁盘优化剩余两项等拍板（2026-10-06 盘点，全仓 70 GB）**：`Output/Audio/BGM/` 12.6 GB wav（零消费方、源包 `cue` 在本地 ⇒ 转码 / 归档 / 删后重导 三选一）、`Output/Raw/` 2.02 GB（补完 `organize.py` 或承认它没用）。
+   ✅ 本轮已做：① 按类目删 `dorm3d/island/char/ui` 共 **21,286 个源包 / 7.53 GB**，删除与登记同时落 `ledger/pruned.json`（依赖闭包闸门独立拦下 `ui/commonui_atlas`，与用户裁定一致；阴性对照 `--cat painting` 全拦、`artresource` 按深层传递依赖拦 105 个）；② **换入备份闸落地**：`extract_spine_v2.py` 写正式区必须带 `--bak`（覆写前逐份取前身字节 + md5 全等 + `MANIFEST.json`），顺带修掉 `main()` 丢返回值造成的"拒绝覆写也 exit 0"。判据 **WF-28** / 取证 **§111**。
 8. ✅ **ship_meta `{namecode:XX}` 占位符名（已于 2026-09-20 随 B 根因修复关闭）**：根因=`build_ship_meta.py` 舰名取 `ship_skin_template.name`（皮肤名，含占位符）——**改取 `ship_data_statistics.name`（0 占位符）**后，237 个 ship 级占位符全归零、名称与阵营自洽（`weizhang`→尾张、`xinzexi`→新泽西 等）。残余 ~52 占位符全为 `story` 类（NPC/剧情/2b 联动变体，本就无 stats 舰名，非缺漏）。**2026-09-25 追加**：`name_code` 表已可读（456 行）**且 `{namecode:NNN}` ↔ `name_code.id` 已证成**（自称率 2.13% vs 随机重分配零假设 0.03% = 80×；1760/1760 码可查；替换后语义自洽：拉菲→[比叡]、布里→[明石]）⇒ 需要真名时可直接解占位符，不必再靠 stats 绕。见 §36。详见 §6 第 5 条 B 已完成。
 9. ✅ **Live2D 动作数据全量重导已落到 269 个模型（2026-09-24）**：`clips 8154 / shell 7（=资产层真为空的 7 条）/ misassign 0 / PartOpacity 79 模型`、曲线总数 **944,136→2,662,615**、`l2d_sweep` 全量 **269/269 失败 0**；`hit_verify` 全库基线已重标定（269 模型 / 3309 部位，**判据 = WIRING 必须为 0**，旧「806/807」口径作废，见 §27）。⚠️ **数据源天花板（别再攻）**：约 **7% 的贝塞尔段无法从 Unity 数据还原**（四种切线候选最高只拟合 16.7%，且那是平凡情形）→ 只能用线性弦近似。过程含一次原地覆写事故与三道闸门加装 → **§25** 与 WF-16；已完成 runbook 与旧基线讨论见归档 **A7 段**，本轮流水 **A21 段**。
 10. ✅ **Live2D 动作语音：全量导出 + 出声验收 + 技能沉淀（2026-09-23）**

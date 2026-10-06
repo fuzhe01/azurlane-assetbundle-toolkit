@@ -13,6 +13,8 @@
   1. 「已还原」= 产物存在 **且** 台账记录的源包大小/哈希与盘上现状对得上。只"产物存在"不算。
   2. prune 默认 dry-run；`--apply` 还要 `--yes`。只删台账里**有产物依据**的包，
      不在台账里的一律当未知保留；`inputs/`、`dependencies`、`hashes*.csv` 永不删。
+     「从没导出过产物的类目」（dorm3d/island/char/ui…）走 `prune-category`：
+     它不看产物依据，改看**已还原产物的传递依赖闭包**，同样默认 dry-run、同样当场登记。
   3. 台账可导出/导入（换设备、重装系统后不必重拉）：`export` 出一个自包含 JSON，
      `import` 按"同路径取更新的记录"合并，并拒绝 schema 版本不明的文件。
 
@@ -20,6 +22,8 @@
     py -3 scripts/asset_ledger.py record --stems a,b --type painting
     py -3 scripts/asset_ledger.py status
     py -3 scripts/asset_ledger.py prune [--apply --yes]
+    py -3 scripts/asset_ledger.py prune-category --cat dorm3d,island --keep ui/commonui_atlas \
+            --why '从未导出，且不在已还原产物的依赖闭包内' [--apply --yes]
     py -3 scripts/asset_ledger.py export --out x.json ; import --in x.json
 """
 import argparse
@@ -296,6 +300,130 @@ def cmd_prune(a):
     return 0
 
 
+# ────────────────────────────────────────────────────── prune-category
+# 「从没导出过产物的类目」走的不是 prune：prune 只肯删"有产物依据且哈希对得上"的包，
+# dorm3d / island / char / ui 这类从未处理过的类目永远进不了那份计划。
+# 但**更不许手删** —— 删了不登记，下次 `mumu_sync` 按"设备路径+大小 vs 本地目录树"比，
+# 会把它们整批报成全部新增，于是白下一遍（§78 立台账就是为了这一条）。
+# 所以这里把两件事焊在一起：先过依赖闸门，再删，删成功的当场写 pruned.json。
+PRODUCT_ROOT_TYPES = {'painting', 'paintingface', 'spinepainting', 'live2d'}
+
+
+def dep_closure(roots):
+    """dependency_manifest.json → 从「已还原产物」的源包根出发的**传递**依赖闭包。
+
+    为什么必须是传递闭包而不是第一层 deps：立绘/骨骼的根包常只挂一个 `_tex`，
+    真正的公共图集、材质在第二三层（实测 `painting/shengwang_2_n` → `..._tex`，
+    `ui/senrankaguratrainui` → 8 个 activitypainting + font）。只看第一层会漏删出坑。
+    → {AB 相对包名: 最先把它拉进闭包的那个根}；根自身也在里面。
+    """
+    if not os.path.isfile(P.MANIFEST_PATH):
+        raise SystemExit(f'缺 {P.MANIFEST_PATH}：没有依赖表就不许按类目删 —— 闸门无法判"谁还缺依赖"')
+    with open(P.MANIFEST_PATH, encoding='utf-8') as f:
+        m = json.load(f)
+    seen = {}
+    queue = []
+    for k in m:
+        if k.split('/')[0] in roots:
+            seen[k] = k
+            queue.append(k)
+    i = 0
+    while i < len(queue):
+        node = queue[i]
+        i += 1
+        for dp in (m.get(node, {}).get('deps') or []):
+            if dp == 'custom_builtin' or dp in seen:
+                continue
+            seen[dp] = seen[node]
+            if dp in m:
+                queue.append(dp)
+    return seen
+
+
+def cmd_prune_category(a):
+    cats = [c.strip() for c in a.cat.split(',') if c.strip()]
+    keep = {k.strip().replace('\\', '/').lstrip('/') for k in a.keep.split(',') if k.strip()}
+    for c in cats:
+        if c in NEVER_DELETE_TOPS:
+            log(f'[FAIL] 类目 {c} 在永不删名单里（dependencies / AB 根下散包），拒绝')
+            return 2
+    closure = dep_closure(PRODUCT_ROOT_TYPES)
+    log(f'依赖闭包：已还原产物（{"/".join(sorted(PRODUCT_ROOT_TYPES))}）传递可达 '
+        f'{len(closure)} 个包 —— 这些一律不删')
+
+    plan = []
+    blocked = []
+    for c in cats:
+        d = os.path.join(P.AB, c)
+        if not os.path.isdir(d):
+            log(f'[!] 类目不存在，跳过: {c}')
+            continue
+        n_cat = 0
+        # 必须递归：dorm3d 第一层 0 个文件、全埋在 4 个子目录里（5,989 个包），
+        # 只看第一层会把它报成「待删 0 个」而静默放过 3.5 GB。
+        for dp, _dn, fs in os.walk(d):
+            for name in sorted(fs):
+                fp = os.path.join(dp, name)
+                # mrel = 依赖表口径（`painting/xxx`，无 AssetBundles 前缀）
+                mrel = (f'{c}/' + os.path.relpath(fp, d).replace(os.sep, '/'))
+                # pkey = pruned.json / mumu_sync 口径（`AssetBundles/dorm3d/a/b`，同步根是 files/）
+                pkey = f'AssetBundles/{mrel}'
+                if name in NEVER_DELETE_NAMES:
+                    blocked.append((mrel, '永不删名单'))
+                    continue
+                if mrel in keep or pkey in keep:
+                    blocked.append((mrel, '--keep 指定保留'))
+                    continue
+                if mrel in closure:
+                    blocked.append((mrel, f'已还原产物传递依赖（根 {closure[mrel]}）'))
+                    continue
+                try:
+                    plan.append((pkey, os.path.getsize(fp)))
+                except OSError:
+                    continue
+                n_cat += 1
+        bl = sum(1 for r, _w in blocked if r.startswith(c + '/'))
+        log(f'  {c}: 待删 {n_cat} 个 / 拦下 {bl} 个')
+
+    gb = sum(s for _r, s in plan) / 2 ** 30
+    by_reason = {}
+    for _r, why in blocked:
+        by_reason[why.split('（')[0]] = by_reason.get(why.split('（')[0], 0) + 1
+    log(f'\n合计可删 {len(plan)} 个源包 / {gb:.2f} GB；拦下 {len(blocked)} 个：'
+        + '，'.join(f'{k} {v} 个' for k, v in sorted(by_reason.items(), key=lambda x: -x[1])))
+    for r, why in blocked[:10]:
+        log(f'    ✋ {r}  ← {why}')
+    if len(blocked) > 10:
+        log(f'    …另 {len(blocked) - 10} 个')
+    if not a.apply:
+        log('\n[dry-run] 未删任何文件。加 --apply --yes 才会真删，且删除当场写 ledger/pruned.json。')
+        return 0
+    if not a.yes:
+        log('[FAIL] --apply 必须同时给 --yes（不可逆动作，不接半句话）')
+        return 2
+    why = a.why or '按类目清理（无产物依赖）'
+    done = 0
+    freed = 0
+    rec = _load(PRUNED, 'pruned')['pruned']
+    for rel, size in plan:
+        # rel 带 `AssetBundles/` 前缀（= mumu_sync 的键口径），所以从 P.FILES 拼
+        fp = os.path.normpath(os.path.join(P.FILES, *rel.split('/')))
+        if not fp.startswith(os.path.normpath(P.AB) + os.sep):
+            log(f'  ✗ 拒绝删除：解析出的路径不在源包根内 {fp}')
+            continue
+        try:
+            os.remove(fp)
+        except OSError as e:
+            log(f'  ✗ 删不掉 {rel}: {e}')
+            continue
+        rec[rel] = [size, why, _now()]
+        done += 1
+        freed += size
+    _save(PRUNED, 'pruned', rec)
+    log(f'[OK] 已删 {done} 个 / {freed / 2 ** 30:.2f} GB，pruned.json 现共 {len(rec)} 条归档记录')
+    return 0
+
+
 def cmd_pruned_list(_a):
     d = _load(PRUNED, 'pruned')['pruned']
     print(json.dumps(d, ensure_ascii=False))
@@ -372,6 +500,12 @@ def main():
     r.set_defaults(func=cmd_record)
     pr = sub.add_parser('prune'); pr.add_argument('--apply', action='store_true'); pr.add_argument('--yes', action='store_true')
     pr.set_defaults(func=cmd_prune)
+    pc = sub.add_parser('prune-category', help='删「从没导出过产物的类目」，删前先过已还原产物的传递依赖闭包，删完当场登记')
+    pc.add_argument('--cat', required=True, help='逗号分隔的 AB 下类目，如 dorm3d,island,char,ui')
+    pc.add_argument('--keep', default='', help='逗号分隔的例外（相对 AB），如 ui/commonui_atlas')
+    pc.add_argument('--why', default='', help='写进 pruned.json 的处置依据')
+    pc.add_argument('--apply', action='store_true'); pc.add_argument('--yes', action='store_true')
+    pc.set_defaults(func=cmd_prune_category)
     sub.add_parser('status').set_defaults(func=cmd_status)
     sub.add_parser('pruned-list').set_defaults(func=cmd_pruned_list)
     e = sub.add_parser('export'); e.add_argument('--out', default=os.path.join(P.WORK, 'ledger-export.json'))
