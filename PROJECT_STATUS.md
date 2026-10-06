@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-06 00:08
+> **生成时间**: 2026-10-06 11:16
 > 历轮会话流水（2026-09-20 ~ 09-27）已**逐字**外迁 `docs/archive/2026-09-26_PROJECT_STATUS_外迁归档.md`（A1~A15 段），§6 里已闭环的待办条目（★块第 1/2/3/4/6 条 + 既有待办第 9/11/16/17/18/19 条）于 2026-10-02 逐字外迁 **A21 段**（原位各留一行桩，编号不动）；2026-10-05 又把头部执行快照与 §6 第 13/14/22/25/26 条逐字外迁 **A22 / A22b 段**（`docs/archive/PROJECT_STATUS_条目13-26_逐字外迁_2026-10-05.md`），本文回到 400 行红线以内；
 > 结论性知识在 `docs/TROUBLESHOOTING.md` §25~§67 与 `docs/WORKFLOWS.md` WF-14~WF-23。本文只留当前状态。
 > **最近三轮**：**META 补桥表**（48 号发布，立绘取剧情行的 `prefab`）让灵敏·META 拿到**自己**的 22 条语音（**§108**，方法见 WF-26 追加）｜`normal` 动画后段是**角色消散演出**、用户先拍板保持原样（**§109**）｜**天津风皮肤2「少了空中那份」的真根因 = 层绘制序按名字后缀猜 ⇒ 本体被不透明房间层盖住**（**§110**，§109 的"自动跳过消散段"随之撤销、方法见 **WF-27**）。逐轮流水已逐字外迁 A22 / A22b 段。
@@ -30,7 +30,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 ## 1. 项目概览
 
 - 对碧蓝航线 Unity AssetBundle 解包、分类、导出、还原。
-- 源路径 `D:\Azur Lane Assets\files\AssetBundles`，196 子目录 / ~86,890 文件 / ~26.6 GB（94.6% 无后缀二进制 blob）。
+- 源路径 `D:\Azur Lane Assets\files\AssetBundles`，240 子目录 / **92,679 文件 / 31.6 GB**（94.6% 无后缀二进制 blob）；产物侧 `Output/` **52 GB**，全仓约 **84 GB**（2026-10-06 实量，口径 `scripts/diag/check_disk_footprint.py`，见 §111）。
 - **当前主线 = v2 数据驱动管线**（见 §9）：零猜测、零手调，已全量收官。
 
 ### 仓库治理 ✅
@@ -49,10 +49,10 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 
 ### 2.3 背景导出 ✅
 1,897 张（bg 1,302 + helpbg 364 + commonbg 111 + loadingbg 50 + loadingbg_hx 13 + newshipbg 14 + worldhelpbg 29 + lotterybg 12 + backyardbg 2）。输出 `Output/Raw/{bg,commonbg,loadingbg,helpbg,...}/`。
-> 2026-09-16 随源包更新全量重导 1897/1897；修复 `export_assets.py` 漏设 `FALLBACK_UNITY_VERSION` 导致较新包加载失败的问题。
+> 2026-09-16 随源包更新全量重导 1897/1897；修复 `export_assets.py` 漏设 `FALLBACK_UNITY_VERSION` 导致较新包加载失败的问题。⚠️ **`Output/Raw/`（2.02 GB，1,964 png）不是 `files/` 的副本，是 09-16 那轮的冻结导出层**：当前 5 档管线不写不读它、前端索引引用 0 处、唯一读者 `organize.py` 至今未跑（§2.8），可由源包确定性重导。取证 **§111**。
 
 ### 2.4 音频导出 ✅
-4,370 WAV / 0 失败 / ~14GB。`.b` 是 CRIWARE ACB，vgmstream 解码。分类 BGM 536 / CV 2,696 / Other 1,136 / SE 2。脚本 `scripts/export_cue_audio.py`。
+4,370 WAV / 0 失败 / ~14GB。`.b` 是 CRIWARE ACB，vgmstream 解码。分类 BGM 536 / CV 2,696 / Other 1,136 / SE 2。脚本 `scripts/export_cue_audio.py`。⚠️ 2026-10-06 实测 `Output/Audio` = **16.7 GB**，其中 **`BGM/` 536 个 wav 独占 12.6 GB 且全库零消费方**（`index.json` grep `bgm` 0 命中、`gallery_src/` 无引用）——全仓最大单一占用，处置选项待拍板，取证 **§111**。
 
 ### 2.5 Live2D 模型还原 ✅（2026-09-21 动作层重建；2026-09-22 补齐 9 个 bundle → 269 模型；2026-09-26 修 5 个贴图索引错绑）
 269/269 还原、纹理拼接正确、HitAreas 已全库补登真判定区。输出 `Output/Live2D/{舰名}/`，**4.7GB**（2026-09-24 实测，曲线补齐后从 ~3.9GB 涨上来）。脚本 `reconstruct_live2d.py` / `fix_model3.py` / `extract_motions.py`。
@@ -180,6 +180,8 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
    ⏭️ **剩余缺口 = 21 个容器字段**（`smoke`/`bound_bone`/`couple_encourage`）的装配关系在假 BC 指令区，二选一：
    **(a)** 解那套 4 字节栈码（一次通吃 21 个）或 **(b)** 只给要用的表人写字段表（便宜够用，参考实现走的正是 (b)）。
    攻关全过程（含 5 次改判、每条否证都配了对照）见归档 A6 段 + `TROUBLESHOOTING.md` §30~§37 + **WF-19 / WF-20**。
+8. ⏳ **磁盘优化等拍板（2026-10-06 盘点，全仓 84 GB）**：两个零消费方大头 —— `Output/Audio/BGM/` 12.6 GB wav（源包 `cue` 在本地，随时可重导 ⇒ 转码/归档/按台账 prune 三选一）、`Output/Raw/` 2.02 GB（补完 `organize.py` 或承认它没用）。
+   ⚠️ 两者都**不是"重复"**：实证逐字节重复全仓仅 **1.3 GB = 1.5%**，而 `_OLD_bak` 剩 29 项**每项都含独一无二的换入前旧字节**（`Output/` 不进 git，删了就是永久丢回滚）。另**换入备份闸未落地**：`extract_spine_v2.py` 默认写向就是正式区且覆写前不取前身字节，10-06 那 234 个 `parts.json` 换入因此零备份（§111 第 4 节），动脚本需另行放行。判据 **WF-28** / 取证 **§111**。
 8. ✅ **ship_meta `{namecode:XX}` 占位符名（已于 2026-09-20 随 B 根因修复关闭）**：根因=`build_ship_meta.py` 舰名取 `ship_skin_template.name`（皮肤名，含占位符）——**改取 `ship_data_statistics.name`（0 占位符）**后，237 个 ship 级占位符全归零、名称与阵营自洽（`weizhang`→尾张、`xinzexi`→新泽西 等）。残余 ~52 占位符全为 `story` 类（NPC/剧情/2b 联动变体，本就无 stats 舰名，非缺漏）。**2026-09-25 追加**：`name_code` 表已可读（456 行）**且 `{namecode:NNN}` ↔ `name_code.id` 已证成**（自称率 2.13% vs 随机重分配零假设 0.03% = 80×；1760/1760 码可查；替换后语义自洽：拉菲→[比叡]、布里→[明石]）⇒ 需要真名时可直接解占位符，不必再靠 stats 绕。见 §36。详见 §6 第 5 条 B 已完成。
 9. ✅ **Live2D 动作数据全量重导已落到 269 个模型（2026-09-24）**：`clips 8154 / shell 7（=资产层真为空的 7 条）/ misassign 0 / PartOpacity 79 模型`、曲线总数 **944,136→2,662,615**、`l2d_sweep` 全量 **269/269 失败 0**；`hit_verify` 全库基线已重标定（269 模型 / 3309 部位，**判据 = WIRING 必须为 0**，旧「806/807」口径作废，见 §27）。⚠️ **数据源天花板（别再攻）**：约 **7% 的贝塞尔段无法从 Unity 数据还原**（四种切线候选最高只拟合 16.7%，且那是平凡情形）→ 只能用线性弦近似。过程含一次原地覆写事故与三道闸门加装 → **§25** 与 WF-16；已完成 runbook 与旧基线讨论见归档 **A7 段**，本轮流水 **A21 段**。
 10. ✅ **Live2D 动作语音：全量导出 + 出声验收 + 技能沉淀（2026-09-23）**

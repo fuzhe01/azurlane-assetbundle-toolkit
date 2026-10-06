@@ -2480,3 +2480,59 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 `scripts/build_gallery_index.py`、`gallery_src/index.html`；
 `scripts/diag/spine_render_order_scan.py`、`spine_index_parts_diff.py`、`spine_dialog_fingerprint.py`。
 相关：§110、§109、§105、§58、WF-15（换入闸门）、WF-16（前端回归）。
+
+### WF-28: 磁盘「能不能删」必须三段分问，去重上限不许当结论报（2026-10-06）
+
+**适用**：仓库膨胀到几十 GB 后被问"这两个文件夹是不是重复了 / 这个备份目录能不能清 / 还有没有优化空间"；
+或要给"删某批资产"找证据。也适用于换入前的**备份闸**设计。
+
+**四步（谁也不替谁，缺一段就得不出"能删"）**：
+
+1. **体量**：逐顶层目录数文件数与字节，别用目录名推断角色。
+   `py -3 scripts/diag/check_disk_footprint.py`（纯 stat，分钟级）。
+   判据：能一句话答出"全仓多少 GB、被哪 3 个目录吃掉多少"，且数字带口径（GiB/GB 差 7%）。
+2. **角色（谁写它、谁读它）**：grep 管线与前端，不猜。
+   - 写向：`grep -n "writes=" scripts/update_pipeline.py` + `STAGES` 全表搜目标目录名 —— **0 命中就是不在当前管线里**。
+   - 消费方：`grep -o "Audio/[A-Za-z0-9_]*" Output/gallery_v2/index.js`、`grep -c -i bgm Output/gallery_v2/index.json`、`grep -rn "Raw/" gallery_src/`。
+   - 拉取落点看 UI/脚本原文的 `writes`，不是看哪个目录"像源"。
+   判据：**零引用**要说"引用 0 处"并给出被 grep 的文件，不能说"应该没人用"。
+3. **可再生性**：产物能否由「git 里的脚本 + 盘上源包」重跑出来。
+   ⚠️ **`Output/` 整个在 `.gitignore` 里** ⇒ git 只兜得住脚本，兜不住产物字节。
+   所以换入前的那一版旧字节**只存在于 `Output/_OLD_bak/`**，删了就没了；
+   "重跑旧脚本能再生"是有条件的（源包会被后续 pull 覆盖），不得当成无条件安全。
+   现成机制是 `asset_ledger.py`（§78）：`已还原 = 产物存在 且 台账源包大小/md5 与盘上一致`。
+   判据：`asset_ledger.py status` 打印的「当前可安全删除 X 个 / Y GB」——
+   **产物溯源记录数**（本项目曾长期停在 14 条 ⇒ 只能删 0.02 GB）才是真闸门，没记账就没得删。
+4. **重复实证（两级）**：先按 `(size, nlink)` 分组算**嫌疑上限**（纯 stat），
+   再对嫌疑组走 **前 1 MB 采样哈希 → 全文件 md5** 两级确认，`--confirm` 一条旗标。
+   判据：**只有第二级的数字能写进结论**。本项目实测虚高两个极端：
+   `Output/Audio` 嫌疑 1.90 GB → 真重复 **0.09 GB**（21 倍）；
+   `files/AssetBundles` 嫌疑 0.73 GB → 真重复 **0.00 GB（0 组）**（92,679 个包两两互不相同）。
+   全仓实证重复 ≈1.3 GB / 84 GB = **1.5%** ⇒ 去重类问题基本都是"看着像"。
+
+**备份闸的判据（本轮查出缺口，⏳ 未落地，动脚本前须放行）**：
+换入必须**逐文件**在覆写前取走前身字节，而不是"目录里有个备份"。
+- ⚠️ **不能用"备份目录非空"当判据**：纯新增（如 4488 → 4500 那 12 张）**没有前身可备份**，
+  空目录是正确行为（§80 的 `pipeline_20261001_2248/` 就是这种），拿非空当闸会把合法换入拦死。
+- 正解形状 = `painting_swap_in.py` 那四道：目标 `nlink==1` → 备份与原文件 md5 全等 →
+  换入后与临时渲染 md5 全等 → 全目录 mtime/nlink 变化集合恰好等于本次清单。
+- 缺口位置由**默认写向**决定：`extract_spine_v2.py:36 OUT_ROOT = P.SPINE_OUT`（正式区），
+  无 `--out` 即原地覆写 234 个 `parts.json` 且**不取前身字节**，而 `build_gallery_index.py:439/444`
+  的报错文案正是在引导人这么跑 ⇒ **报错文案里给的补救命令，不许指向一条没有备份的直写正式区路径**。
+
+**踩坑记录**：
+- "同尺寸就是重复"是错的，且**错的数量级足以误导决策**（见第 4 步两个实测值）。
+- 按**文件名**配对备份↔线上也是错的：`l2d_motion_pre_swap` 里 268 个"与线上相同"全是跨模型同名假配对。
+  要判"能不能删这一份"，得比**完整相对路径**；只能按名字时，结论写成"待按路径重证"。
+- 省空间的大头往往不是重复，而是**没人读的大产物导出**：本项目 `Output/Audio/BGM/` 536 个 wav 独占 12.6 GB、
+  全库零引用（前端/index.json 均 0 命中）；另有 ~9 GB 源包类目（dorm3d/island/ui/originsource/char）从未被任何环节处理。
+  这类处置要的是"转格式 / 归档 / 删了重导"的**决策**，不是去重。
+- `PROJECT_STATUS.md` 里的历史体量数字会过期（本轮就有一条 26.6 GB / 86,890 文件停在 09 月），
+  盘点时**就地改数字**，不要再追加一条新口径。
+
+**涉及文件**：新增 `scripts/diag/check_disk_footprint.py`；
+`scripts/asset_ledger.py` + `ledger/{sources,artifacts,pruned}.json`；
+`scripts/export_assets.py`（Raw 的写方）、`scripts/organize.py`（Raw 的唯一读者，已写未跑）；
+`scripts/pipeline_panel.py:2418`、`scripts/update_pipeline.py` `STAGES`（拉取落点原文）；
+`scripts/extract_spine_v2.py`、`scripts/diag/painting_swap_in.py`（备份闸正反两例）。取证全过程 **§111**。
+相关：WF-15（第 9 步备份换入）、WF-16（回归六件套）、§78（台账）、§46（备份瘦身先例）、§110。

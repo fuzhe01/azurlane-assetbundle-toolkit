@@ -4008,7 +4008,7 @@ prune 边界按保守方案。
 防的是"表画出来了但内容是空的"和"前端把缺元数据的行糊成正常"）。
 
 **本轮落地事实**：12 张新皮肤已在 `Output/Paintings_v2`（4488 → **4500**），
-溯源台账 14 条，备份在 `Output/_OLD_bak/pipeline_20261001_2248/`，WF-16 六件套真跑全绿。
+溯源台账 14 条，备份在 `Output/_OLD_bak/pipeline_20261001_2248/`（**2026-10-06 订正**：该目录实测一直是空的、已删除。空是对的 —— 这 12 张是**纯新增**，没有"前身字节"可备份；由此定下备份闸的判据必须是**逐文件"被覆盖 ⇒ 有副本"**，而不是"备份目录非空"，见 §111），WF-16 六件套真跑全绿。
 
 **涉及文件**: `scripts/diag/painting_swap_in.py`、`scripts/update_pipeline.py`（`Stage.check`、
 缓存条件、regress 标记）、`scripts/pipeline_panel.py`（`newsafe()`、抽屉新增板块、`.newt` 样式）、
@@ -6000,3 +6000,67 @@ gain 均 ≤1.02x，几乎无视觉变化，且逐一核对 T 层都是特效不
 机位记忆 `fv` 版本闸）、新增 `scripts/diag/spine_render_order_scan.py`、
 `spine_dialog_fingerprint.py`、`spine_index_parts_diff.py`。
 相关：§105（取景）、§109（被本条撤销的截段）、§58（分层权威清单）、WF-27。
+
+---
+
+## §111. 磁盘占用盘点：`files/` 与 `Output/Raw` 不是重复、`_OLD_bak` 基本不是冗余，真正的大头是零引用的 BGM wav（2026-10-06 用户问「能不能清理」）
+
+**问题**：三个附件目录被问"是不是重复了 / 拉取写到哪 / `_OLD_bak` 能不能删"，顺带问"整个仓膨胀到这么大，真的没有优化空间吗"。三条都不能靠目录名回答，全部落到实测。
+
+**口径统一**：新增 `scripts/diag/check_disk_footprint.py`（体量 → 可再生性 → 消费方 三段式；去重先算同尺寸**嫌疑上限**、再两级 md5 实证）。以下数字除注明外都出自它。
+
+### 1. `files/` 与 `Output/Raw/` 是上下游，不是两份重复
+
+| | `files/AssetBundles/` | `Output/Raw/` |
+|---|---|---|
+| 角色 | **源包本体**（adb pull 落点） | **导出中间层**（`export_assets.py` 用 UnityPy 解出来的图） |
+| 内容 | 92,679 个无后缀 blob / 30 GB，240 类；`painting/22` 头 8 字节 = `UnityFS` + `2022.3.51f1` | 1,984 文件 = 1,964 `.png` + 20 `.obj` / 2.0 GB |
+| 对应关系 | — | 子目录与源包一一对应：`Raw/bg` 1,302 文件 ↔ `AssetBundles/bg` 1,304 包 |
+
+**拉取只写 `files/AssetBundles/`**：`pipeline_panel.py:2418` 原文「adb pull 写进 `files/AssetBundles`（只补缺的和变了的）——源包一旦覆盖，旧版本本地就没了，所以这一步要签字」；`update_pipeline.py` 第 1 档 `writes='签字 files/AssetBundles'`。**Raw 不在当前管线里**：`STAGES` 全表 grep `Raw` **0 命中**，5 档管线既不写也不读它。
+
+**Raw 是 09-16 那轮的冻结层且零消费方**：全部文件 mtime = 2026-09-16，而源包侧在 09-24 / 09-25 还在更新；`organize.py`（Raw 的唯一读者）状态是「已写未跑」；`gallery_v2/index.{js,json}` 与 `gallery_src/` 里 `Raw/` 引用 **0 处**；抽查 `Raw/bg/` 前 3 个文件名在 `Output/` 其他位置**没有副本**。⇒ 它是"重导一次就能再生、但目前没人读"的悬空项，处置要么补完 `organize.py`、要么承认它没用（**未执行，等拍板**）。
+
+### 2. `_OLD_bak` 的目录必须留着，里面的东西基本删不得
+
+- **它是活的写入目标**：`apply_live2d_motions.py:57`、`update_pipeline.py:956` 每次换入往里写 `<主题>_<日期>/`。删目录 = 删掉备份落点。
+- **不是硬链接堆**：16,033 个文件只有 174 个 `nlink>1`，所以删了能真回收 3.0 GB —— 也正因为如此，它没有"反正链着同一份数据"的安全垫。
+- **唯一副本审计**（`--bak-uniqueness`，逐份和线上同名同尺寸文件比 md5）：29 项里只有 **271** 个文件与线上逐字节相同，其中 **268 个**是 `l2d_motion_pre_swap_20260924` 里**跨模型同名**造成的假配对。⇒ 其余约 1.5 万个是"换入前那一版字节"的**唯一副本**（`Output/` 整个在 `.gitignore` 里，git 只有脚本）。删掉即永久失去回滚点，除非用 git 里的旧脚本 + 未变的源包重生成 —— 而源包会被后续 pull 覆盖，这条路不保证一直走得通。
+  删完那两条之后重跑审计：**剩余 29 项每项都至少含 1 份独一无二**，即"整项可删"的判据在这一目录里已经不存在了；单项里可删的只有 `l2d_motion_pre_swap` 那 268 份假配对（1.05 GB 中的跨模型同名件，要删也得按完整相对路径重证，不能按文件名）。
+- **真正零损失的只有两条，已删（2026-10-06）**：`pipeline_20261001_2248/`（空目录，0 文件；空是**正确**的，那批 12 张是纯新增、没有前身可备份）和 `darkfix_20261004/tianjinfeng_2.png`（3.6 MB，与线上 `Output/CG_v2/tianjinfeng_2.png` md5 全等 `6bc20a88…`，那次换入等于没改）。条目 31 → 29。
+- **先例**：`CG_v2_pre_inkframing_20260926` 早就这么瘦过一次（删 170 张与现网逐字节相同者，释放 659 MB，回滚能力未减，见 §46）。同尺寸嫌疑 → md5 实证 → 只删相同者，是本目录唯一安全的清理法。
+
+### 3. 全仓 84 GB 的构成，以及"重复"为什么不是杠杆
+
+| 目录 | 体量 | 同尺寸嫌疑上限 | md5 实证可回收 |
+|---|---|---|---|
+| `Output/Audio` | 16.74 GB | 1.90 GB | **0.09 GB**（13 组） |
+| `Output/Paintings_v2` | 15.75 GB | 0.19 GB | 0.21 GB（40 组，历史已硬链 84 个 / 0.37 GB） |
+| `Output/Live2D` | 4.96 GB | 0.52 GB | 0.52 GB（791 组，已硬链 1,003 个 / 0.53 GB） |
+| `Output/Spine_v2` | 3.63 GB | 0.45 GB | 0.48 GB（136 组） |
+| `Output/_OLD_bak` | 2.99 GB | 0.27 GB | 见上：几乎全是唯一副本 |
+| `Output/Raw` | 2.02 GB | 0.04 GB | 整目录可重导 |
+| `files/AssetBundles` | 29.42 GB | 0.73 GB | **0.00 GB（0 组）** —— 源包侧逐字节重复为零 |
+
+**判据：同尺寸上限会严重虚高，必须实证。** `Output/Audio` 嫌疑 1.90 GB → 真重复 **0.09 GB**（虚高 21 倍）；`files/AssetBundles` 嫌疑 0.73 GB → 真重复 **0**（92,679 个包两两互不相同，一个都链不动）。全仓逐字节重复实证合计 **≈1.3 GB**，占 84 GB 的 1.5% ⇒ **去重不是省空间的路**，别再用"看着像重复"论证该删什么。
+
+**真正的大头是两个"没人读的大产物导出"**：
+1. **`Output/Audio/BGM/` = 12.6 GB**，536 个 wav（平均 23.5 MB，最大 `bgm-doa-song-day05.wav` 92.8 MB），**全库零消费方**：`gallery_v2/index.json` grep `bgm` **0 命中**、`gallery_src/` 无引用，只有 `generate_audio_doc.py:407` 列文件名进文档。它由 `export_cue_audio.py` 按 `bgm-`/`bgm_` 前缀从 `files/AssetBundles/cue`（4.45 GB 源包仍在本地）确定性导出。
+2. **从未被任何环节处理的源包类目 ≈ 9 GB**：`dorm3d` 3.5 + `island` 2.2 + `ui` 1.6 + `originsource` 1.2 + `char` 0.5 GB（源包侧 top10：painting 7.75 / cue 4.45 / dorm3d 3.53 / live2d 2.89 / spinepainting 2.44 / island 2.17 / ui 1.58 / originsource 1.21 / paintingface 0.71 / bg 0.53）。
+
+**已设计好但没喂饱的机制**：`asset_ledger.py`（§78）就是为"源包想上云后清本地"造的，硬规矩是"「已还原」= 产物存在 **且** 台账记录的源包大小/哈希与盘上现状对得上"。实测 `status`：**产物溯源只有 14 条** → 当前可安全删除仅 **22 个源包 / 0.02 GB**。把 `record` 补全（painting / spinepainting / live2d / cue / paintingface 这几类约 18 GB 源包的产物依据），`prune` 才有的可删；代价是**要重渲就必须重新拉包**。
+
+### 4. 本轮顺带查出的结构性缺口（比清理更值得管）
+
+**2026-10-06 那次「234 个 `parts.json` 全量换入」在 `_OLD_bak` 里没有任何备份**，而 9 月的旧备份一直堆着 —— 方向正好反了。根因不是忘了备份，是**默认写向就是正式区**：
+`extract_spine_v2.py:36` `OUT_ROOT = P.SPINE_OUT`（= `Output/Spine_v2`），无 `--out` 时直写正式产物；
+`build_gallery_index.py:439/444` 的报错文案正是让人这么跑（「先跑 `py -3 scripts/extract_spine_v2.py --parts-only`」），`run_v2_full.py:96` 同样不带 `--out`。
+`write_parts()`（`extract_spine_v2.py:144`）打开 `parts.json` 覆写前**不取任何前身字节**。
+对照 `painting_swap_in.py` 的四道硬检查（`nlink==1` / 备份与原文件 md5 全等 / 换入后与临时渲染 md5 全等 / 全目录快照），缺口只在这一条路径上。
+⇒ 修法见 WF-28（备份闸必须逐文件、落在写那一刻，且要放过"纯新增无前身"这种正确情况）。
+
+**已排除的假设**：① "`Raw` 是 `files` 的解压副本、删一个就行" —— 两者格式/数量级都不同（blob vs png），且 Raw 零引用、可重导，删它不影响 `files`；② "`_OLD_bak` 是硬链接堆，删了不省空间" —— 只有 174/16,033 是硬链，删了真能回收；③ "`_OLD_bak` 堆了 1.5 万文件所以是冗余" —— 逐份 md5 实证 271 个与线上相同，**恰恰相反，它是唯一副本的存放地**；④ "Audio 有 2 GB 重复可去重" —— 同尺寸嫌疑，实证 0.09 GB；⑤ "空备份目录 = 备份失败" —— 那批是纯新增，空是正确行为，所以判据不能是"目录非空"。
+
+**涉及文件**：新增 `scripts/diag/check_disk_footprint.py`（体量/嫌疑/实证/唯一副本四件事，`--confirm` 走两级哈希、`--bak-uniqueness` 走逐份比对）；`PROJECT_STATUS.md` §1 / §2.3 / §2.4 就地更新；§80 那条"备份在 pipeline_20261001_2248"已就地订正（见上）。**本轮删除动作**：`Output/_OLD_bak/pipeline_20261001_2248/`（空目录）、`Output/_OLD_bak/darkfix_20261004/`（单文件，删前复核 md5 与线上一致）。
+
+相关：§46（CG 备份瘦身先例）、§78 / WF-15 第 9 步（台账与备份换入）、§80（纯新增的空备份）、§110（本轮查出缺口的换入）、WF-28。
