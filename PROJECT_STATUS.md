@@ -271,17 +271,29 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
      - 顺带修掉：`run_v2_full.py` 静态阶段写死正式目录 + 跳过已存在 ⇒ 整批重渲会 todo=0 空跑，
        已加 `--out/--redo/--limit/--manifest`。
 
-33. ⏳ **三条与本轮改动无关、但本轮查出来的待办**：
-     ① **画廊「静态立绘」对 Spine 皮肤的默认图**：191/234 个 Spine 目录是单层骨架（只有角色、
-       没有背景），默认给 CG 就等于默认给一张缺背景的图。可用**权威**判据改默认（`sk.spine.parts`
-       的层数是 prefab 落的、不是猜名字），但 `gallery_src/index.html` 本轮有并发会话在改，未动。
-     ② **`face_gate_labels_check.py` 本轮之前就是红的**（43/47，exit 1）：`makeboluo`/`missd`/
-       `feiteliedadi`/`dunkerke` 标「洞」但实测 op≈1.0、MAD 5~11。两个算子下判定相同 ⇒ 既有债。
-       抽查两张结论还不一样（`missd` 叠了会切出矩形硬边 ⇒ 不叠对；`dunkerke` 叠得干净 ⇒ 可能游戏
-       默认就是叠）。**要判的是"游戏里默认显示哪一张"，只有进游戏看一眼能定死**，没有权威依据不猜。
-     ③ **叠脸门控的判据本身有天花板**：MAD 量的是"底图这张脸是不是脸谱那张"，而正确动作要判的是
-       "游戏在这里要不要换掉底图"——`yunlong_3`(该换) 与 `xinzexi_h`(不该换) MAD 都是 32~34，
-       这个量在原理上分不开。要真修得去找 face 槽激活态的权威字段（`sharecfg` 侧？）。
+33. ⏳ **本轮查出来、与本轮改动无关的待办**：
+     ① ~~`face_gate_labels_check.py` 那 4 条既有标签债~~ **已结案（2026-10-06 用户实见）**：
+       `makeboluo`/`missd`/`feiteliedadi`/`dunkeerke` 四张对照图用户看过后判"没什么问题"
+       ⇒ 维持现状（不叠），标签集不动、判据不动。
+     ② **叠脸门控的判据本身有天花板**：MAD 量的是"底图这张脸是不是脸谱那张"，而正确动作要判的是
+       "游戏在这里要不要换掉底图"——`yunlong_3`(该换，face 槽是 1924×2048 全身正面图、底图是背面)
+       与 `xinzexi_h`(不该换，叠了切出矩形硬边) MAD 都是 32~34，这个量在原理上分不开，
+       **抬阈值已否证**。要真修得去找 face 槽激活态的权威字段（`sharecfg` 侧？）。
+     ③ **`gezi_2` Live2D 里几片花瓣不动**：已排除是本轮改动（立绘三层全 active、零层被过滤；
+       motion3 里 Part 曲线 0 条 / Parameter 532 条，全库有 79 个模型带 Part 曲线 ⇒ 导出器不丢）。
+       ⚠ 未验"游戏里动不动"；若实见会动，回头查 moc3 的 art-mesh/part 绑定表（§6.9 那 7% 天花板）。
+
+34. ⏳ **Spine 提取丢了 `MeshImage` 背景层 —— 14 个皮肤的 Spine 场景与 CG 缺背景（2026-10-06 查出，§114）**：
+     `extract_spine_v2.py` 的 `skel_layers()` 只收 `SkeletonGraphic`，而游戏运行时这张 Spine 场景
+     = `MeshImage` 背景 + `SkeletonGraphic` 角色。受影响 14 个：`aisaikesi_7` `banerwei_2`
+     `bisimaiz` `gaoxiong_6`(BG1+BG2 两层) `haerbin_3` `haixiao_3_doa` `huanchang_2` `huben_2`
+     `kaiersheng_2` `kalangshitade` `lundun_3` `luyisiweier_2` `masaiqu_2` `ougen_7`。
+     另 12 个包的非骨架节点是 `*_shophx` 遮挡条，**本来就不该画**（§55），不要一起放过。
+     ⚠ 别再用「依赖表名字含 `bg_tex`」筛——只捞出 3/14，其余 11 个背景住在 `_res` 包里、
+     CAB 名不带 `bg`。权威信号 = 逐个 prefab 枚举 MonoBehaviour 类名 + `m_Sprite` 是否非空。
+     修法：`skel_layers()` 一并输出这类节点（类名/CAB→bundle/世界框/绘制序），`parts.json`
+     加一类 `image` 层，viewer 与 `cg_export.html` 在其上渲染骨架（复用 §110 的 DFS 先序绘制序）。
+     做完这条之后，§6.33① 那个"画廊默认给 CG 还是给立绘"的取舍才不再是权衡问题。
 
 
 ---

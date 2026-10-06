@@ -6290,7 +6290,7 @@ ffmpeg 重新封装的 wav 头（chunk 顺序与长度）与源不同，样本�
 
 ## §114 静态立绘两处系统性偏差：Pillow 把 alpha 缩放两次、画布只取 max 不减 min（2026-10-06）
 
-**用户报的三条症状，其实是两个根因 + 一个展示层默认值**：伴尔维皮肤2「少了背景板」、
+**用户报的三条症状 = 两个全库性根因 + 一个提取缺口**：伴尔维皮肤2「少了背景板」（→ 末节已翻案，是 Spine 提取丢了 MeshImage 背景）、
 贝尔原皮「少了组件看着不完整」、白雪皮肤2「拼得不够好，脖子上一条细细的空线」。
 
 ### 根因 A（影响全部 4500 张）：`canvas.paste(img, box, img)` 把 alpha 通道缩放两次
@@ -6325,13 +6325,39 @@ Pillow 文档原话 *"scaling the alpha channel twice"*：用 RGBA 图当蒙版�
   结果 `baixue` 画布 2427 → **2426（变窄）**，右边缘反而新裁掉 2,771 个不透明像素。
   回归闸门当场抓出。正确口径 = **所有节点框 ∪ 各层落笔框**。
 
-### 症状「伴尔维皮肤2 少了背景板」不是合成 bug
+### 症状「伴尔维皮肤2 少了背景板」：不是合成 bug，**但是提取 bug**（上一版结论已更正）
 
-`Paintings_v2/banerwei_2.png` 本来就有完整房间。画廊「静态立绘」对 Spine 皮肤默认给 CG
-（`gallery_src/index.html` 的 `fullOf()` 见 `cg` 就用 `cg`），而这张的 Spine 骨架里
-**只有角色 + 瑜伽球 + 小鸡，没有房间槽位**（skel 字符串清单已核）。全库 234 个 Spine 目录里
-**191 个是单层**，都是同一形态。改法属于展示层默认值，不在这轮范围内（且当时工作树有并发会话
-在改 `index.html`，未动）。
+`Paintings_v2/banerwei_2.png` 本来就有完整房间；画廊「静态立绘」对 Spine 皮肤默认给 CG
+（`gallery_src/index.html` 的 `fullOf()` 见 `cg` 就用 `cg`）。
+
+⚠ **本节上一版写的"该 Spine 骨架里没有房间槽位、背景只存在于立绘 prefab"是错的**，
+被用户一句"spine 怎么没背景"问回去重查后翻案：`spinepainting/banerwei_2` 这个 prefab 里
+**有一个叫 `bg` 的 `MeshImage` 节点**，`m_Sprite` 指向 `painting/banerwei_2bg_tex`。
+游戏运行时这张 Spine 场景 = `MeshImage` 背景 + `SkeletonGraphic` 角色；
+而 `extract_spine_v2.py` 的 `skel_layers()` **只收 `SkeletonGraphic`**，于是背景整层被丢。
+
+**全库实测**（扫 456 个 spinepainting 主包的 MonoBehaviour，取"非 SkeletonGraphic 且
+`m_Sprite` 非空"的节点）：26 个包有这类节点，其中 **14 个是真背景**（节点名 `bg`/`BG`/`BG1`+`BG2`）：
+`aisaikesi_7` `banerwei_2` `bisimaiz` `gaoxiong_6`(两层) `haerbin_3` `haixiao_3_doa`
+`huanchang_2` `huben_2` `kaiersheng_2` `kalangshitade` `lundun_3` `luyisiweier_2`
+`masaiqu_2` `ougen_7`；其余 12 个是 `*_shophx` / `shop_hx_ch25` 遮挡条（§55 那类，**本来就不该画**）。
+
+**别再走的路**：用「依赖表名字里有没有 `bg_tex`」筛候选，只捞出 3 个（伴尔维/凯尔生/伦敦），
+**漏掉 11 个**——那些背景住在 `_res` 包里、CAB 名不带 `bg`。要权威信号就得**逐个 prefab
+枚举 MonoBehaviour 类名 + `m_Sprite` 是否非空**。这与 §110「层名后缀启发式必翻车」是同一类错的复发。
+
+修法（未做，见 §6.34）：`skel_layers()` 一并输出非 SkeletonGraphic 的落笔节点（类名 / sprite 的
+CAB→bundle / 世界框 / 绘制序），`parts.json` 加一类 `image` 层，viewer 与 `cg_export.html`
+在其上渲染骨架——与 §110 已建立的「绘制序取 prefab 层级 DFS 先序」是同一套机制。
+
+### 顺带排除的一条：`gezi_2`「立绘没有的花瓣在 Live2D 里不动」不是本轮改动造成的
+
+`gezi_2` 立绘三层（`gezi_2` / `gezi_2_bj` / `gezi_2_rw`）**全部 `active=True`、零层被激活位过滤**，
+三层都画了；Live2D 是另一份资产（`live2d/gezi_2`），花瓣集合与立绘不同属正常。
+其 57 条 motion3 里 **Part 目标曲线 0 条、Parameter 532 条**（全走参数驱动），
+而全库审计记录"PartOpacity 换装曲线 79 个模型"（§2.5）⇒ 导出器不会系统性丢 Part 曲线。
+⚠ 未验的是"游戏里这几片到底动不动"——若实见它们会动，则要回头查 moc3 的 art-mesh/part 绑定表
+（已知天花板：约 7% 贝塞尔段无法从 Unity 数据还原，§6.9）。
 
 ### 已排除的假设（别重走）
 
