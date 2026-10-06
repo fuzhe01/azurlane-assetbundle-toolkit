@@ -1,0 +1,5366 @@
+{
+ "codec": "libopus",
+ "bitrate": "128k",
+ "done": {
+  "bgm-airraidalarm.wav": {
+   "src_md5": "b10c875bf970494a6afe95b949f88660",
+   "src_size": 520044,
+   "src_dur": 11.791383,
+   "dst": "Output/Audio/BGM_ogg/bgm-airraidalarm.ogg",
+   "dst_size": 199637,
+   "dst_dur": 11.798,
+   "dst_md5": "0dc25532ce3ee356d51aae7bd25f1c7e",
+   "at": "2026-10-06 12:28:38"
+  },
+  "bgm-aoi hougeki-full.wav": {
+   "src_md5": "2ef232dfe527106fa72d43bb9c9e0835",
+   "src_size": 83035332,
+   "src_dur": 470.721587,
+   "dst": "Output/Audio/BGM_ogg/bgm-aoi hougeki-full.ogg",
+   "dst_size": 7302560,
+   "dst_dur": 470.728,
+   "dst_md5": "bc4da1a9a92ed39b8bf5e735ae29b343",
+   "at": "2026-10-06 12:28:42"
+  },
+  "bgm-aoi hougeki-inst-short.wav": {
+   "src_md5": "c549c1e97c45ffef0196e1999b3404ff",
+   "src_size": 36918036,
+   "src_dur": 209.285669,
+   "dst": "Output/Audio/BGM_ogg/bgm-aoi hougeki-inst-short.ogg",
+   "dst_size": 3192779,
+   "dst_dur": 209.292,
+   "dst_md5": "f6ab1ee906466152e3531dbae38b1f7d",
+   "at": "2026-10-06 12:28:44"
+  },
+  "bgm-aoi hougeki-short.wav": {
+   "src_md5": "0122728856fd763bcc8f0cc688c98433",
+   "src_size": 36918036,
+   "src_dur": 209.285669,
+   "dst": "Output/Audio/BGM_ogg/bgm-aoi hougeki-short.ogg",
+   "dst_size": 3218239,
+   "dst_dur": 209.292,
+   "dst_md5": "eb4576208e733f5e31c4a972ea6b30aa",
+   "at": "2026-10-06 12:28:46"
+  },
+  "bgm-azumaster-ins.wav": {
+   "src_md5": "1618e9db54bbd4f96981f48e88eb5452",
+   "src_size": 48286000,
+   "src_dur": 251.489354,
+   "dst": "Output/Audio/BGM_ogg/bgm-azumaster-ins.ogg",
+   "dst_size": 3989012,
+   "dst_dur": 251.496,
+   "dst_md5": "c18a4c2426f6cf8001c22f810e43ea08",
+   "at": "2026-10-06 12:28:49"
+  },
+  "bgm-azumaster.wav": {
+   "src_md5": "115cdb25fd9405dc64d8b5531c398629",
+   "src_size": 48286000,
+   "src_dur": 251.489354,
+   "dst": "Output/Audio/BGM_ogg/bgm-azumaster.ogg",
+   "dst_size": 3975148,
+   "dst_dur": 251.496,
+   "dst_md5": "cd7b88bf4fbb2c41ce0ff769f018e918",
+   "at": "2026-10-06 12:28:52"
+  },
+  "bgm-bar-soft.wav": {
+   "src_md5": "79454b665528e697a4094cce5fe99ac6",
+   "src_size": 12383324,
+   "src_dur": 70.2,
+   "dst": "Output/Audio/BGM_ogg/bgm-bar-soft.ogg",
+   "dst_size": 1124150,
+   "dst_dur": 70.207,
+   "dst_md5": "a95aec53437b11ed973ef0fb0e327614",
+   "at": "2026-10-06 12:28:53"
+  },
+  "bgm-battle-af.wav": {
+   "src_md5": "a58752d3ec822a9b9781868fd280295e",
+   "src_size": 22145032,
+   "src_dur": 125.538481,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-af.ogg",
+   "dst_size": 1963509,
+   "dst_dur": 125.545,
+   "dst_md5": "fc152572f44dbbede07e7dfc80631bbd",
+   "at": "2026-10-06 12:28:54"
+  },
+  "bgm-battle-againstfate.wav": {
+   "src_md5": "6746e2e48af6e5226e7a3e9cdf2a7437",
+   "src_size": 18188848,
+   "src_dur": 103.111134,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-againstfate.ogg",
+   "dst_size": 1733647,
+   "dst_dur": 103.118,
+   "dst_md5": "d2d0ecbe6276bc4c8b10a8af22680fe9",
+   "at": "2026-10-06 12:28:55"
+  },
+  "bgm-battle-arbitrator-type1.wav": {
+   "src_md5": "313fa1f675be18ce9f5971581b6121a5",
+   "src_size": 17753852,
+   "src_dur": 100.64517,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-arbitrator-type1.ogg",
+   "dst_size": 1615024,
+   "dst_dur": 100.652,
+   "dst_md5": "7fc8698852c19f8c0ef58da1e050a6b0",
+   "at": "2026-10-06 12:28:57"
+  },
+  "bgm-battle-arcticocean.wav": {
+   "src_md5": "448f2820fe3bdb07c537134c4a30d9e9",
+   "src_size": 17352884,
+   "src_dur": 98.372109,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-arcticocean.ogg",
+   "dst_size": 1524132,
+   "dst_dur": 98.379,
+   "dst_md5": "fac679c902afe65fe4d15f4545125a43",
+   "at": "2026-10-06 12:28:58"
+  },
+  "bgm-battle-ash-strong.wav": {
+   "src_md5": "78300ce7de0db2c2a037eb1de37da164",
+   "src_size": 18432044,
+   "src_dur": 96.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-ash-strong.ogg",
+   "dst_size": 1535641,
+   "dst_dur": 96.007,
+   "dst_md5": "630832002a7967bfb9a2e1b1fd2fa895",
+   "at": "2026-10-06 12:28:59"
+  },
+  "bgm-battle-ashes-theme.wav": {
+   "src_md5": "0cda348b652d71d0ac483c92c248f839",
+   "src_size": 20506548,
+   "src_dur": 116.250023,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-ashes-theme.ogg",
+   "dst_size": 1791617,
+   "dst_dur": 116.257,
+   "dst_md5": "fb3d71866d505d4d163eeb2f1ec4b610",
+   "at": "2026-10-06 12:29:00"
+  },
+  "bgm-battle-boss-3.wav": {
+   "src_md5": "7953dee03e41d82e77ec5b8e5ccfa2e8",
+   "src_size": 36116124,
+   "src_dur": 204.739683,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-3.ogg",
+   "dst_size": 3294035,
+   "dst_dur": 204.746,
+   "dst_md5": "1bc7f3013eaa55dea8227f9ec6112df8",
+   "at": "2026-10-06 12:29:03"
+  },
+  "bgm-battle-boss-4.wav": {
+   "src_md5": "ea33ffd970b90ebb3e19df72c2b7673b",
+   "src_size": 10342444,
+   "src_dur": 58.630385,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-4.ogg",
+   "dst_size": 892360,
+   "dst_dur": 58.637,
+   "dst_md5": "62197f2960a91dd4812e9a7452643d62",
+   "at": "2026-10-06 12:29:03"
+  },
+  "bgm-battle-boss-5.wav": {
+   "src_md5": "6e9891ea19d1bcf9606d1191eddc0f02",
+   "src_size": 24192044,
+   "src_dur": 137.142857,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-5.ogg",
+   "dst_size": 2236113,
+   "dst_dur": 137.149,
+   "dst_md5": "ff69563dae47caa3417fb264f665ace3",
+   "at": "2026-10-06 12:29:05"
+  },
+  "bgm-battle-boss-6.wav": {
+   "src_md5": "b3de641b9120d901f64ceae1d42ea873",
+   "src_size": 15624048,
+   "src_dur": 88.571451,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-6.ogg",
+   "dst_size": 1391140,
+   "dst_dur": 88.578,
+   "dst_md5": "c66c1aa82a90799a35b78e5f6d9f9b67",
+   "at": "2026-10-06 12:29:06"
+  },
+  "bgm-battle-boss-camelot.wav": {
+   "src_md5": "7ed3c4c806f926cff772b3273b1d8638",
+   "src_size": 21026924,
+   "src_dur": 119.2,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-camelot.ogg",
+   "dst_size": 1834624,
+   "dst_dur": 119.207,
+   "dst_md5": "d4b43596ec65c11d8ad8f0834b029e3c",
+   "at": "2026-10-06 12:29:07"
+  },
+  "bgm-battle-boss-deepecho.wav": {
+   "src_md5": "aceb7e55737ebcb8213a2c195eb5fae5",
+   "src_size": 21168048,
+   "src_dur": 120.000023,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-deepecho.ogg",
+   "dst_size": 1901046,
+   "dst_dur": 120.007,
+   "dst_md5": "2f1447375be61abaf731f41e723dbe1e",
+   "at": "2026-10-06 12:29:09"
+  },
+  "bgm-battle-boss-italy.wav": {
+   "src_md5": "ff3a8f910df06a945ad55a8b0357a439",
+   "src_size": 8643644,
+   "src_dur": 98.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-italy.ogg",
+   "dst_size": 1589034,
+   "dst_dur": 98.007,
+   "dst_md5": "7f265b79d76111cb3be17fd7e93ace2e",
+   "at": "2026-10-06 12:29:10"
+  },
+  "bgm-battle-boss-longgong.wav": {
+   "src_md5": "6d32b62ddf278df51080dfe791b4e161",
+   "src_size": 17363524,
+   "src_dur": 90.434792,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-longgong.ogg",
+   "dst_size": 1409966,
+   "dst_dur": 90.441,
+   "dst_md5": "b47b0f38ba1fc8eb8a2e6a80f4e4740f",
+   "at": "2026-10-06 12:29:11"
+  },
+  "bgm-battle-boss-nep1.wav": {
+   "src_md5": "c250d95b110efb126b436745fd312ded",
+   "src_size": 31257460,
+   "src_dur": 177.196236,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-nep1.ogg",
+   "dst_size": 2877296,
+   "dst_dur": 177.203,
+   "dst_md5": "91f1b5393b528a9f05a062d08a13151e",
+   "at": "2026-10-06 12:29:13"
+  },
+  "bgm-battle-boss-nep2.wav": {
+   "src_md5": "408d764467edd4403413719e3fc1dd3e",
+   "src_size": 49296592,
+   "src_dur": 256.752854,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-nep2.ogg",
+   "dst_size": 4175447,
+   "dst_dur": 256.759,
+   "dst_md5": "da04a4d4e5243e74791802d353fb3b6e",
+   "at": "2026-10-06 12:29:16"
+  },
+  "bgm-battle-boss-nep3.wav": {
+   "src_md5": "22859161742f80b5695d90341783d337",
+   "src_size": 27342044,
+   "src_dur": 155.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-nep3.ogg",
+   "dst_size": 2333720,
+   "dst_dur": 155.006,
+   "dst_md5": "842ad65551ebbca243c0c3ca66a2ce0d",
+   "at": "2026-10-06 12:29:17"
+  },
+  "bgm-battle-boss-temepest-1.wav": {
+   "src_md5": "4f4c28352dc6ccb101062545dcfd05c5",
+   "src_size": 17049644,
+   "src_dur": 88.8,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-temepest-1.ogg",
+   "dst_size": 1443139,
+   "dst_dur": 88.806,
+   "dst_md5": "9b8af7d227833a33165adbf91b439dc9",
+   "at": "2026-10-06 12:29:18"
+  },
+  "bgm-battle-boss-tiancheng.wav": {
+   "src_md5": "019377b855cc45474e9815485163e2c8",
+   "src_size": 15987764,
+   "src_dur": 90.633333,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-tiancheng.ogg",
+   "dst_size": 1490797,
+   "dst_dur": 90.64,
+   "dst_md5": "8e26e822438a7d506be74c5fae910894",
+   "at": "2026-10-06 12:29:20"
+  },
+  "bgm-battle-boss-ucnf.wav": {
+   "src_md5": "3ab0a68e35335b36e60e902fde4ab191",
+   "src_size": 14817880,
+   "src_dur": 84.001338,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-ucnf.ogg",
+   "dst_size": 1258410,
+   "dst_dur": 84.008,
+   "dst_md5": "46c9534b3709220675dcead6942b9cdd",
+   "at": "2026-10-06 12:29:21"
+  },
+  "bgm-battle-boss-uta.wav": {
+   "src_md5": "64ea031b83ebd2733fe5bdd98d431a8f",
+   "src_size": 53261084,
+   "src_dur": 301.933333,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-boss-uta.ogg",
+   "dst_size": 4800045,
+   "dst_dur": 301.94,
+   "dst_md5": "66389948e89517d5b51703369f7d91b1",
+   "at": "2026-10-06 12:29:23"
+  },
+  "bgm-battle-camelot.wav": {
+   "src_md5": "511b7867cca9c699cd7776539178aac2",
+   "src_size": 19343204,
+   "src_dur": 109.655102,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-camelot.ogg",
+   "dst_size": 1737074,
+   "dst_dur": 109.662,
+   "dst_md5": "ac191f6d2292413216fb8a96004271f6",
+   "at": "2026-10-06 12:29:25"
+  },
+  "bgm-battle-crosstheline-elegant.wav": {
+   "src_md5": "78d06f15755298c641d72c8070da2ce0",
+   "src_size": 18911560,
+   "src_dur": 107.208141,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-crosstheline-elegant.ogg",
+   "dst_size": 1732598,
+   "dst_dur": 107.215,
+   "dst_md5": "c60cc4cd32d69f6a92d558490c7c90d4",
+   "at": "2026-10-06 12:29:26"
+  },
+  "bgm-battle-deepecho.wav": {
+   "src_md5": "c2a8dbbfcbfe32e705bb311b42436d90",
+   "src_size": 17043388,
+   "src_dur": 96.617596,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-deepecho.ogg",
+   "dst_size": 1539857,
+   "dst_dur": 96.624,
+   "dst_md5": "55e34703e7c5a1a98135e1511bc63dc3",
+   "at": "2026-10-06 12:29:27"
+  },
+  "bgm-battle-deepecho2.wav": {
+   "src_md5": "6a1349885079fb12dfd17c3b5bbc0908",
+   "src_size": 13695960,
+   "src_dur": 77.641247,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-deepecho2.ogg",
+   "dst_size": 1271381,
+   "dst_dur": 77.648,
+   "dst_md5": "05d27c5fd511a0525a8c901e33df52ca",
+   "at": "2026-10-06 12:29:28"
+  },
+  "bgm-battle-donghuang-static.wav": {
+   "src_md5": "2b6aee706e06057d33e2df4d7bab658c",
+   "src_size": 16234220,
+   "src_dur": 92.030476,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-donghuang-static.ogg",
+   "dst_size": 1477842,
+   "dst_dur": 92.037,
+   "dst_md5": "f7f542e79fa4f95d5235d5637db56956",
+   "at": "2026-10-06 12:29:30"
+  },
+  "bgm-battle-dos-onstage.wav": {
+   "src_md5": "1b5410562cfdf7d121eaddd471268994",
+   "src_size": 14714228,
+   "src_dur": 76.636375,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-dos-onstage.ogg",
+   "dst_size": 1367345,
+   "dst_dur": 76.643,
+   "dst_md5": "24b49cf508d80f749949ab229caf6425",
+   "at": "2026-10-06 12:29:31"
+  },
+  "bgm-battle-eagleunion.wav": {
+   "src_md5": "5a0b6283aecd916319ce9440ddbae95c",
+   "src_size": 19658336,
+   "src_dur": 111.441565,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-eagleunion.ogg",
+   "dst_size": 1782902,
+   "dst_dur": 111.448,
+   "dst_md5": "4fb671f0f9a5843ef78bca2c399c96eb",
+   "at": "2026-10-06 12:29:32"
+  },
+  "bgm-battle-executor-type1.wav": {
+   "src_md5": "c8791b1af00cdbff32fe28d9e0b11f8a",
+   "src_size": 23207232,
+   "src_dur": 131.560023,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-executor-type1.ogg",
+   "dst_size": 2059019,
+   "dst_dur": 131.567,
+   "dst_md5": "74bec6a83bbbee9ab847ac132fb4e856",
+   "at": "2026-10-06 12:29:33"
+  },
+  "bgm-battle-heroines-image.wav": {
+   "src_md5": "143511b9f50fc262d4bc87a96353667c",
+   "src_size": 36326444,
+   "src_dur": 189.2,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-heroines-image.ogg",
+   "dst_size": 2869303,
+   "dst_dur": 189.207,
+   "dst_md5": "e6049a307c394ba242a94ec4fbc6535d",
+   "at": "2026-10-06 12:29:35"
+  },
+  "bgm-battle-highseasfleet-reborn.wav": {
+   "src_md5": "7a2dfc8689d5a248e447eadf840481e6",
+   "src_size": 24300396,
+   "src_dur": 137.757098,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-highseasfleet-reborn.ogg",
+   "dst_size": 2191626,
+   "dst_dur": 137.764,
+   "dst_md5": "a576e48e73931925faa06d2d83b1b7ed",
+   "at": "2026-10-06 12:29:37"
+  },
+  "bgm-battle-hightech.wav": {
+   "src_md5": "102b06f29af6a1dd6646f538489835fc",
+   "src_size": 20526592,
+   "src_dur": 116.363651,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-hightech.ogg",
+   "dst_size": 1831120,
+   "dst_dur": 116.37,
+   "dst_md5": "404d126cecfdf312a8af65ed81185aed",
+   "at": "2026-10-06 12:29:38"
+  },
+  "bgm-battle-hrr.wav": {
+   "src_md5": "e7203d512701d63ca5805ac7e9c1feae",
+   "src_size": 17889928,
+   "src_dur": 93.176479,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-hrr.ogg",
+   "dst_size": 1452440,
+   "dst_dur": 93.183,
+   "dst_md5": "4816fc84cdbb474327eea788d084ae68",
+   "at": "2026-10-06 12:29:39"
+  },
+  "bgm-battle-inthememory.wav": {
+   "src_md5": "d74bfa99d2594c0e237831afd330be92",
+   "src_size": 17280044,
+   "src_dur": 90.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-inthememory.ogg",
+   "dst_size": 1437079,
+   "dst_dur": 90.007,
+   "dst_md5": "39b99ea4d84d4c78a183b86a7b25a20c",
+   "at": "2026-10-06 12:29:40"
+  },
+  "bgm-battle-ironblood-brisk.wav": {
+   "src_md5": "da6a51d1eebbdf449d01e39c247927a3",
+   "src_size": 19020572,
+   "src_dur": 107.826122,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-ironblood-brisk.ogg",
+   "dst_size": 1665343,
+   "dst_dur": 107.833,
+   "dst_md5": "df2f76da4d505279ab2e40c5d11f0b58",
+   "at": "2026-10-06 12:29:42"
+  },
+  "bgm-battle-ironblood-defence.wav": {
+   "src_md5": "7277e590ea5e8d72a443128ab3619de6",
+   "src_size": 9623256,
+   "src_dur": 50.120896,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-ironblood-defence.ogg",
+   "dst_size": 763883,
+   "dst_dur": 50.127,
+   "dst_md5": "50e9f140b8bf7750664efcef8c652db1",
+   "at": "2026-10-06 12:29:43"
+  },
+  "bgm-battle-italy.wav": {
+   "src_md5": "f09ff74c74a5daf25d42ec30b27a5159",
+   "src_size": 8082104,
+   "src_dur": 91.633333,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-italy.ogg",
+   "dst_size": 1477044,
+   "dst_dur": 91.64,
+   "dst_md5": "c3cbd0caf2fa9492ecf491b327d59581",
+   "at": "2026-10-06 12:29:43"
+  },
+  "bgm-battle-longgong.wav": {
+   "src_md5": "885649b09a7d3c992e3521319142b756",
+   "src_size": 17363524,
+   "src_dur": 90.434792,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-longgong.ogg",
+   "dst_size": 1440369,
+   "dst_dur": 90.441,
+   "dst_md5": "3e5af78cdc4a108aef903b31ea7fa83e",
+   "at": "2026-10-06 12:29:45"
+  },
+  "bgm-battle-maid.wav": {
+   "src_md5": "1b90bee62507c644bdab90d3bcf1e1a0",
+   "src_size": 20526592,
+   "src_dur": 116.363651,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-maid.ogg",
+   "dst_size": 1872687,
+   "dst_dur": 116.37,
+   "dst_md5": "69db24f547719bf391908f55805ee91a",
+   "at": "2026-10-06 12:29:46"
+  },
+  "bgm-battle-midgard-hunting.wav": {
+   "src_md5": "68975d941793f9676aabacb85366475a",
+   "src_size": 15680052,
+   "src_dur": 88.888934,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-midgard-hunting.ogg",
+   "dst_size": 1368839,
+   "dst_dur": 88.895,
+   "dst_md5": "d85b8c79881fec6609e8f2f892e36854",
+   "at": "2026-10-06 12:29:47"
+  },
+  "bgm-battle-midgard-up.wav": {
+   "src_md5": "757f3a5425d388d710a93f849d26f1da",
+   "src_size": 16976888,
+   "src_dur": 88.421063,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-midgard-up.ogg",
+   "dst_size": 1398181,
+   "dst_dur": 88.428,
+   "dst_md5": "8c24f3c4f5277bb840b7b1053d8c62f0",
+   "at": "2026-10-06 12:29:48"
+  },
+  "bgm-battle-midgard.wav": {
+   "src_md5": "1479ceab5777dd4726a61dc6dde2337a",
+   "src_size": 17238604,
+   "src_dur": 89.784167,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-midgard.ogg",
+   "dst_size": 1360251,
+   "dst_dur": 89.791,
+   "dst_md5": "ed8bb425bd928fa0045877a77e354f8f",
+   "at": "2026-10-06 12:29:49"
+  },
+  "bgm-battle-nep.wav": {
+   "src_md5": "dc8b3348a81feaf0a6b9035681515412",
+   "src_size": 58922456,
+   "src_dur": 306.887563,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-nep.ogg",
+   "dst_size": 5234830,
+   "dst_dur": 306.894,
+   "dst_md5": "1158e69e84045604cdf81e4f3b222ff0",
+   "at": "2026-10-06 12:29:53"
+  },
+  "bgm-battle-nep2.wav": {
+   "src_md5": "aa46c37a45159c904a1a58ab24e3fdc6",
+   "src_size": 41684716,
+   "src_dur": 236.307664,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-nep2.ogg",
+   "dst_size": 3571981,
+   "dst_dur": 236.314,
+   "dst_md5": "8c190b70e6827e69d88f1690e6544b27",
+   "at": "2026-10-06 12:29:55"
+  },
+  "bgm-battle-newwind.wav": {
+   "src_md5": "5323c2738c2b85cc65e5b84eba481349",
+   "src_size": 22408360,
+   "src_dur": 127.03127,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-newwind.ogg",
+   "dst_size": 2020142,
+   "dst_dur": 127.038,
+   "dst_md5": "09088d444169856a60ebf8831bf91f69",
+   "at": "2026-10-06 12:29:56"
+  },
+  "bgm-battle-nightmare-theme.wav": {
+   "src_md5": "712c7023e4412b319da3c1f5a0acfdfd",
+   "src_size": 19057648,
+   "src_dur": 108.036304,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-nightmare-theme.ogg",
+   "dst_size": 1756815,
+   "dst_dur": 108.043,
+   "dst_md5": "a1ae5a0f9c50af5ea640ac75044c4dc4",
+   "at": "2026-10-06 12:29:58"
+  },
+  "bgm-battle-pacific.wav": {
+   "src_md5": "07fb6f04bc5722ae414e495603623cb6",
+   "src_size": 22579244,
+   "src_dur": 128.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-pacific.ogg",
+   "dst_size": 2161587,
+   "dst_dur": 128.006,
+   "dst_md5": "ff036dcef8e4f658b39cf621f66664ce",
+   "at": "2026-10-06 12:29:59"
+  },
+  "bgm-battle-roma-image.wav": {
+   "src_md5": "d2f9f9b2545e84d552687613898a88a5",
+   "src_size": 17216748,
+   "src_dur": 89.670333,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-roma-image.ogg",
+   "dst_size": 1468080,
+   "dst_dur": 89.677,
+   "dst_md5": "3bbacf489313cd572d121f6b4d657403",
+   "at": "2026-10-06 12:30:00"
+  },
+  "bgm-battle-roma-sky.wav": {
+   "src_md5": "6e5eb577edf9525332f91c4321f85f31",
+   "src_size": 16756408,
+   "src_dur": 87.272729,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-roma-sky.ogg",
+   "dst_size": 1422267,
+   "dst_dur": 87.279,
+   "dst_md5": "df3815869d1988b4f5f74e01152ca983",
+   "at": "2026-10-06 12:30:01"
+  },
+  "bgm-battle-seiren-theme.wav": {
+   "src_md5": "e62c9d52c842536346d3541f161d81a1",
+   "src_size": 37028620,
+   "src_dur": 192.857167,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-seiren-theme.ogg",
+   "dst_size": 2962761,
+   "dst_dur": 192.864,
+   "dst_md5": "3288c6bb4608d70eb64fc2eda2f51263",
+   "at": "2026-10-06 12:30:03"
+  },
+  "bgm-battle-seirenbasicsystam-theme.wav": {
+   "src_md5": "bfee6c4e33d803ecc673740dcfb20627",
+   "src_size": 19656048,
+   "src_dur": 111.428594,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-seirenbasicsystam-theme.ogg",
+   "dst_size": 1870636,
+   "dst_dur": 111.435,
+   "dst_md5": "6e8645dd213d9c6fdd8ae64e6db9cb84",
+   "at": "2026-10-06 12:30:05"
+  },
+  "bgm-battle-seirencleaner-theme.wav": {
+   "src_md5": "08522934b62b4f7c186a975dfde8d4f2",
+   "src_size": 17922288,
+   "src_dur": 101.600023,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-seirencleaner-theme.ogg",
+   "dst_size": 1691473,
+   "dst_dur": 101.607,
+   "dst_md5": "1b7f282c42ebe9df1810eb9fe3fa9506",
+   "at": "2026-10-06 12:30:06"
+  },
+  "bgm-battle-shenguang-freely.wav": {
+   "src_md5": "83013c4eb2c35a376b3c2b8514537281",
+   "src_size": 19530644,
+   "src_dur": 101.721875,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-shenguang-freely.ogg",
+   "dst_size": 1680829,
+   "dst_dur": 101.728,
+   "dst_md5": "ff6a5ecb288547ffdcdf9aafa63950aa",
+   "at": "2026-10-06 12:30:07"
+  },
+  "bgm-battle-shenguang-holy.wav": {
+   "src_md5": "51f49e82f09c537a7467fb55c039e442",
+   "src_size": 17152048,
+   "src_dur": 89.333354,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-shenguang-holy.ogg",
+   "dst_size": 1659190,
+   "dst_dur": 89.34,
+   "dst_md5": "f84b4a1b9c4283ff0907034b0f79fea2",
+   "at": "2026-10-06 12:30:09"
+  },
+  "bgm-battle-siren-centraltower.wav": {
+   "src_md5": "0a16e1d2ba939cd9b52b82f260aa0d63",
+   "src_size": 17280044,
+   "src_dur": 90.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-siren-centraltower.ogg",
+   "dst_size": 1411027,
+   "dst_dur": 90.007,
+   "dst_md5": "557fc309bdda2b2a93a0d33226eaefa4",
+   "at": "2026-10-06 12:30:10"
+  },
+  "bgm-battle-starsea-elec.wav": {
+   "src_md5": "207164277a6982a2ad38c47f36a951b8",
+   "src_size": 17408044,
+   "src_dur": 90.666667,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-starsea-elec.ogg",
+   "dst_size": 1358204,
+   "dst_dur": 90.673,
+   "dst_md5": "5e191336e222f75c48dc6f6a49d3e58b",
+   "at": "2026-10-06 12:30:11"
+  },
+  "bgm-battle-temepest-1.wav": {
+   "src_md5": "5fe05f3900edff4c87eaa2ae6a922bc1",
+   "src_size": 17674568,
+   "src_dur": 92.054813,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-temepest-1.ogg",
+   "dst_size": 1471109,
+   "dst_dur": 92.061,
+   "dst_md5": "1d7906f7a77f3d0ded6585ebfaf888b2",
+   "at": "2026-10-06 12:30:12"
+  },
+  "bgm-battle-temepest-2.wav": {
+   "src_md5": "65b0c1ea269907d14b9bc5aa931b88d3",
+   "src_size": 17920044,
+   "src_dur": 93.333333,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-temepest-2.ogg",
+   "dst_size": 1476601,
+   "dst_dur": 93.34,
+   "dst_md5": "234c4362081e02f21319d8914184ba17",
+   "at": "2026-10-06 12:30:13"
+  },
+  "bgm-battle-thechariotvii.wav": {
+   "src_md5": "5259ace2e36553bccb8abf92dad83561",
+   "src_size": 22148172,
+   "src_dur": 115.354833,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-thechariotvii.ogg",
+   "dst_size": 1785376,
+   "dst_dur": 115.361,
+   "dst_md5": "fc418e4e9393c7ef4dd944293f43041c",
+   "at": "2026-10-06 12:30:14"
+  },
+  "bgm-battle-thedevilxv-control.wav": {
+   "src_md5": "2c74f9df716e72fb6e704f15eff1f300",
+   "src_size": 17554332,
+   "src_dur": 91.428583,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-thedevilxv-control.ogg",
+   "dst_size": 1330075,
+   "dst_dur": 91.435,
+   "dst_md5": "ce244b489d17e703e1c6177dde29a7a2",
+   "at": "2026-10-06 12:30:16"
+  },
+  "bgm-battle-theemperoriv-question.wav": {
+   "src_md5": "1b670b2b3794035cb2e1ecddeaaf3858",
+   "src_size": 17856044,
+   "src_dur": 93.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-theemperoriv-question.ogg",
+   "dst_size": 1458649,
+   "dst_dur": 93.007,
+   "dst_md5": "e7cd3d17511c3e2cade3af8634146d0a",
+   "at": "2026-10-06 12:30:17"
+  },
+  "bgm-battle-thehierophantv.wav": {
+   "src_md5": "059a323f7366133e3950082df8178329",
+   "src_size": 21850888,
+   "src_dur": 123.870998,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-thehierophantv.ogg",
+   "dst_size": 1954919,
+   "dst_dur": 123.877,
+   "dst_md5": "c3034a92e18cff0bcea494d00dacd647",
+   "at": "2026-10-06 12:30:18"
+  },
+  "bgm-battle-torch-theme.wav": {
+   "src_md5": "4b0b5e464e1c0c5e0422a7bf8b801a86",
+   "src_size": 16814348,
+   "src_dur": 95.319184,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-torch-theme.ogg",
+   "dst_size": 1467338,
+   "dst_dur": 95.326,
+   "dst_md5": "007aef8268e9984962e49603435f07ed",
+   "at": "2026-10-06 12:30:19"
+  },
+  "bgm-battle-tulipa.wav": {
+   "src_md5": "25e5e0903ba51835774aca0738f10093",
+   "src_size": 17873500,
+   "src_dur": 93.090917,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-tulipa.ogg",
+   "dst_size": 1565344,
+   "dst_dur": 93.097,
+   "dst_md5": "14fe4d5e7721e88ee2d48d9da4813ad2",
+   "at": "2026-10-06 12:30:21"
+  },
+  "bgm-battle-ucnf.wav": {
+   "src_md5": "0957e069e1ab236f032ef5e6fa8b5fa6",
+   "src_size": 16552468,
+   "src_dur": 93.834603,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-ucnf.ogg",
+   "dst_size": 1447023,
+   "dst_dur": 93.841,
+   "dst_md5": "060cf4571b8fbb767f9c23a047360388",
+   "at": "2026-10-06 12:30:22"
+  },
+  "bgm-battle-underholyflag.wav": {
+   "src_md5": "f7676a78203a23bbe6511e19ce600c82",
+   "src_size": 19780368,
+   "src_dur": 112.133356,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-underholyflag.ogg",
+   "dst_size": 1735215,
+   "dst_dur": 112.14,
+   "dst_md5": "687155c2a9c90efd7b2a637f0a4fb093",
+   "at": "2026-10-06 12:30:23"
+  },
+  "bgm-battle-undermoon.wav": {
+   "src_md5": "a8d2ce67f63044577b301a7bcaaa55f5",
+   "src_size": 21011248,
+   "src_dur": 119.111134,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-undermoon.ogg",
+   "dst_size": 1915220,
+   "dst_dur": 119.118,
+   "dst_md5": "620668abcf10d7f8ec13aac6d9417107",
+   "at": "2026-10-06 12:30:24"
+  },
+  "bgm-battle-unknown-approaching.wav": {
+   "src_md5": "3a62606bd3a62cb15d60ac8c220e7141",
+   "src_size": 21168912,
+   "src_dur": 120.004921,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-unknown-approaching.ogg",
+   "dst_size": 1872393,
+   "dst_dur": 120.011,
+   "dst_md5": "add1247fbdf608a6e817d9bdb5098d08",
+   "at": "2026-10-06 12:30:26"
+  },
+  "bgm-battle-unzen-1.wav": {
+   "src_md5": "6a157cf0f3fb24eb3d1e1408ad050459",
+   "src_size": 17363524,
+   "src_dur": 90.434792,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-unzen-1.ogg",
+   "dst_size": 1439862,
+   "dst_dur": 90.441,
+   "dst_md5": "c8d50a87ae220c02872c4bb3caa5dd8c",
+   "at": "2026-10-06 12:30:27"
+  },
+  "bgm-battle-unzen-2.wav": {
+   "src_md5": "d0ded6558e9d67b2be9eeed8a6b7ebe3",
+   "src_size": 17363520,
+   "src_dur": 90.434771,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-unzen-2.ogg",
+   "dst_size": 1547070,
+   "dst_dur": 90.441,
+   "dst_md5": "2fef513918e2e9605dfb556d99eb1ea4",
+   "at": "2026-10-06 12:30:28"
+  },
+  "bgm-battle-uta.wav": {
+   "src_md5": "d8ab77164f1af783313b9353e0529a88",
+   "src_size": 28311068,
+   "src_dur": 160.493333,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-uta.ogg",
+   "dst_size": 2602766,
+   "dst_dur": 160.5,
+   "dst_md5": "47e7748fbc592917dbbf4090e77b96b6",
+   "at": "2026-10-06 12:30:30"
+  },
+  "bgm-battle-warprotocol.wav": {
+   "src_md5": "3d64a1c4e0c33a22905c93e9ca8c6a64",
+   "src_size": 36480044,
+   "src_dur": 190.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-warprotocol.ogg",
+   "dst_size": 2885617,
+   "dst_dur": 190.006,
+   "dst_md5": "a8f7cf07b81015bea16c132efd6ae732",
+   "at": "2026-10-06 12:30:32"
+  },
+  "bgm-battle-whaling-normal.wav": {
+   "src_md5": "8c08f19da4914f079c0303c09958f090",
+   "src_size": 26645084,
+   "src_dur": 151.04898,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-whaling-normal.ogg",
+   "dst_size": 2384862,
+   "dst_dur": 151.055,
+   "dst_md5": "0d8513d52b455c77cc1d98f523a12a73",
+   "at": "2026-10-06 12:30:34"
+  },
+  "bgm-battle-xinnong-image.wav": {
+   "src_md5": "76223500d8554f33635613885e60fe06",
+   "src_size": 29968160,
+   "src_dur": 156.083938,
+   "dst": "Output/Audio/BGM_ogg/bgm-battle-xinnong-image.ogg",
+   "dst_size": 2529879,
+   "dst_dur": 156.09,
+   "dst_md5": "cb2120fecaba8ca8d6b125fca97de251",
+   "at": "2026-10-06 12:30:35"
+  },
+  "bgm-beverly_short_eng.wav": {
+   "src_md5": "76449a5938956435fe8297136088c936",
+   "src_size": 20160044,
+   "src_dur": 105.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-beverly_short_eng.ogg",
+   "dst_size": 1795861,
+   "dst_dur": 105.007,
+   "dst_md5": "21b818d3571f909eb85695dd7b66abc2",
+   "at": "2026-10-06 12:30:37"
+  },
+  "bgm-beverly_short_inst.wav": {
+   "src_md5": "ccfc98b67db49a3b18a38c3ac3a5494b",
+   "src_size": 20160044,
+   "src_dur": 105.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-beverly_short_inst.ogg",
+   "dst_size": 1809873,
+   "dst_dur": 105.007,
+   "dst_md5": "c580cef1c7324aed10ec6eda81240f70",
+   "at": "2026-10-06 12:30:38"
+  },
+  "bgm-beverly_short_jp.wav": {
+   "src_md5": "63d833515f11a320cb9854e854a6b4c0",
+   "src_size": 20160044,
+   "src_dur": 105.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-beverly_short_jp.ogg",
+   "dst_size": 1807317,
+   "dst_dur": 105.007,
+   "dst_md5": "fb86ec37ec961c5692684f77dc2df12c",
+   "at": "2026-10-06 12:30:40"
+  },
+  "bgm-bgm-cccp.wav": {
+   "src_md5": "758cb09c1fad3b7a088b91af0eebc72a",
+   "src_size": 21850884,
+   "src_dur": 123.870975,
+   "dst": "Output/Audio/BGM_ogg/bgm-bgm-cccp.ogg",
+   "dst_size": 1974064,
+   "dst_dur": 123.877,
+   "dst_md5": "ca690c1f07c1aeec9312798de3d92636",
+   "at": "2026-10-06 12:30:41"
+  },
+  "bgm-bgm-cccp2.wav": {
+   "src_md5": "19956ea26ea93b02deb3c3dcc6f0ba6a",
+   "src_size": 22491048,
+   "src_dur": 127.500023,
+   "dst": "Output/Audio/BGM_ogg/bgm-bgm-cccp2.ogg",
+   "dst_size": 2000538,
+   "dst_dur": 127.507,
+   "dst_md5": "d855e926c71aac4e767557ca78dad309",
+   "at": "2026-10-06 12:30:43"
+  },
+  "bgm-bgm-cccp3.wav": {
+   "src_md5": "febe7249dfc6f0eff0c2c3b8fc53c54d",
+   "src_size": 21868976,
+   "src_dur": 123.973537,
+   "dst": "Output/Audio/BGM_ogg/bgm-bgm-cccp3.ogg",
+   "dst_size": 1876788,
+   "dst_dur": 123.98,
+   "dst_md5": "b2ad384ba98eea2c950a41a111dbde3a",
+   "at": "2026-10-06 12:30:44"
+  },
+  "bgm-bgm-royalnavy.wav": {
+   "src_md5": "f5b02cfc70306d58ba4d2b7b4df132a8",
+   "src_size": 36829132,
+   "src_dur": 191.818167,
+   "dst": "Output/Audio/BGM_ogg/bgm-bgm-royalnavy.ogg",
+   "dst_size": 3059469,
+   "dst_dur": 191.825,
+   "dst_md5": "71d4210ded14df52994dc5b5c71ce555",
+   "at": "2026-10-06 12:30:46"
+  },
+  "bgm-bgm-waterwave.wav": {
+   "src_md5": "4470eb3848fee62bcc32254f721ce956",
+   "src_size": 3678764,
+   "src_dur": 19.16,
+   "dst": "Output/Audio/BGM_ogg/bgm-bgm-waterwave.ogg",
+   "dst_size": 215134,
+   "dst_dur": 19.166,
+   "dst_md5": "270e77c0b05fde06996b1533b5ed78f0",
+   "at": "2026-10-06 12:30:46"
+  },
+  "bgm-blueocean-image.wav": {
+   "src_md5": "b4a2056917fdac92ee07568b59aa70f0",
+   "src_size": 16031276,
+   "src_dur": 90.88,
+   "dst": "Output/Audio/BGM_ogg/bgm-blueocean-image.ogg",
+   "dst_size": 1475554,
+   "dst_dur": 90.886,
+   "dst_md5": "8fb119f9c169f25f88cbcecb9d803da4",
+   "at": "2026-10-06 12:30:47"
+  },
+  "bgm-brs-1-inst.wav": {
+   "src_md5": "9e141dd28ce33917b593843846297a0a",
+   "src_size": 58545584,
+   "src_dur": 304.924688,
+   "dst": "Output/Audio/BGM_ogg/bgm-brs-1-inst.ogg",
+   "dst_size": 4734282,
+   "dst_dur": 304.931,
+   "dst_md5": "6554bed3603635cc0d32f5998d4ba3e8",
+   "at": "2026-10-06 12:30:50"
+  },
+  "bgm-brs-1.wav": {
+   "src_md5": "632dc3be49a87d4c1010ea6ca2ab8f59",
+   "src_size": 51682892,
+   "src_dur": 292.986667,
+   "dst": "Output/Audio/BGM_ogg/bgm-brs-1.ogg",
+   "dst_size": 4714263,
+   "dst_dur": 292.993,
+   "dst_md5": "b283e4ee8821076bb84353bceda329e0",
+   "at": "2026-10-06 12:30:53"
+  },
+  "bgm-bsm-1.wav": {
+   "src_md5": "48d6860bb10618547c3d96a7877cf3a8",
+   "src_size": 9549164,
+   "src_dur": 108.266667,
+   "dst": "Output/Audio/BGM_ogg/bgm-bsm-1.ogg",
+   "dst_size": 1785617,
+   "dst_dur": 108.273,
+   "dst_md5": "18abd3235a2ab6b3a1a124a0bcb3613a",
+   "at": "2026-10-06 12:30:54"
+  },
+  "bgm-bsm-10.wav": {
+   "src_md5": "df55ee40df3b5bfe1a9c29b39306ce92",
+   "src_size": 9764720,
+   "src_dur": 55.355306,
+   "dst": "Output/Audio/BGM_ogg/bgm-bsm-10.ogg",
+   "dst_size": 858518,
+   "dst_dur": 55.362,
+   "dst_md5": "a038fda16641d058cffb50a2ec9a606d",
+   "at": "2026-10-06 12:30:55"
+  },
+  "bgm-bsm-2.wav": {
+   "src_md5": "97624807e9a769d214341687e7293b73",
+   "src_size": 11127944,
+   "src_dur": 126.166667,
+   "dst": "Output/Audio/BGM_ogg/bgm-bsm-2.ogg",
+   "dst_size": 2085397,
+   "dst_dur": 126.173,
+   "dst_md5": "d7a114a3898b9752d19ba958dc832683",
+   "at": "2026-10-06 12:30:56"
+  },
+  "bgm-bsm-3.wav": {
+   "src_md5": "a907023e2620b9f4b3b04ef6eae051fb",
+   "src_size": 10760444,
+   "src_dur": 122.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-bsm-3.ogg",
+   "dst_size": 1945499,
+   "dst_dur": 122.007,
+   "dst_md5": "35e2e6219efe3815dc0b917014561c22",
+   "at": "2026-10-06 12:30:57"
+  },
+  "bgm-bsm-4.wav": {
+   "src_md5": "60a0147307bcb01242e9d9fd433af8a1",
+   "src_size": 5830064,
+   "src_dur": 66.1,
+   "dst": "Output/Audio/BGM_ogg/bgm-bsm-4.ogg",
+   "dst_size": 1124070,
+   "dst_dur": 66.106,
+   "dst_md5": "bccdaf5778923f7b617f7f26e350e2a5",
+   "at": "2026-10-06 12:30:58"
+  },
+  "bgm-bsm-5.wav": {
+   "src_md5": "ef062adfee0f5571890979b8e10d5db6",
+   "src_size": 5974124,
+   "src_dur": 67.733333,
+   "dst": "Output/Audio/BGM_ogg/bgm-bsm-5.ogg",
+   "dst_size": 1149435,
+   "dst_dur": 67.74,
+   "dst_md5": "85a86382966b2798882601dab9dd1059",
+   "at": "2026-10-06 12:30:58"
+  },
+  "bgm-bsm-6.wav": {
+   "src_md5": "e88504733988d95d8f356fc9511d81e6",
+   "src_size": 5953544,
+   "src_dur": 67.5,
+   "dst": "Output/Audio/BGM_ogg/bgm-bsm-6.ogg",
+   "dst_size": 1219878,
+   "dst_dur": 67.507,
+   "dst_md5": "3dcac947039af9719c786ab78a9c8f95",
+   "at": "2026-10-06 12:30:59"
+  },
+  "bgm-bsm-7.wav": {
+   "src_md5": "25eea1da292af6f5a7f79b5eab95ccbe",
+   "src_size": 9807884,
+   "src_dur": 111.2,
+   "dst": "Output/Audio/BGM_ogg/bgm-bsm-7.ogg",
+   "dst_size": 1761015,
+   "dst_dur": 111.207,
+   "dst_md5": "33b0ed28870c57aaca8324bd4f2e86ca",
+   "at": "2026-10-06 12:31:00"
+  },
+  "bgm-bsm-8.wav": {
+   "src_md5": "9b34efd226267376915bae980d38d8ca",
+   "src_size": 10838608,
+   "src_dur": 61.443107,
+   "dst": "Output/Audio/BGM_ogg/bgm-bsm-8.ogg",
+   "dst_size": 969982,
+   "dst_dur": 61.45,
+   "dst_md5": "e486e87a7c0e4cfd839369095f0afb99",
+   "at": "2026-10-06 12:31:01"
+  },
+  "bgm-bsm-9.wav": {
+   "src_md5": "4f5c688578ccb4677e463700a0e8763b",
+   "src_size": 11583644,
+   "src_dur": 65.666667,
+   "dst": "Output/Audio/BGM_ogg/bgm-bsm-9.ogg",
+   "dst_size": 1068081,
+   "dst_dur": 65.673,
+   "dst_md5": "b6ed587a32013472377c923b96717717",
+   "at": "2026-10-06 12:31:02"
+  },
+  "bgm-china-party.wav": {
+   "src_md5": "1c0912aee2cd0e3e14fa8b585e668fcb",
+   "src_size": 19119528,
+   "src_dur": 108.387098,
+   "dst": "Output/Audio/BGM_ogg/bgm-china-party.ogg",
+   "dst_size": 1792030,
+   "dst_dur": 108.394,
+   "dst_md5": "918736e29a47c59a9925b230fd268603",
+   "at": "2026-10-06 12:31:03"
+  },
+  "bgm-cw-battle-boss.wav": {
+   "src_md5": "05055752ad043bea14ff92b746fc45fa",
+   "src_size": 40132724,
+   "src_dur": 209.024375,
+   "dst": "Output/Audio/BGM_ogg/bgm-cw-battle-boss.ogg",
+   "dst_size": 3258408,
+   "dst_dur": 209.031,
+   "dst_md5": "e830762325e53e1fe7a160e3d5284b91",
+   "at": "2026-10-06 12:31:05"
+  },
+  "bgm-cw-level.wav": {
+   "src_md5": "ffdbd7c7e9c4fbf7764a8d2d5a6c6798",
+   "src_size": 81665888,
+   "src_dur": 425.342938,
+   "dst": "Output/Audio/BGM_ogg/bgm-cw-level.ogg",
+   "dst_size": 7424759,
+   "dst_dur": 425.349,
+   "dst_md5": "336e3d2c4a6dde8730f5c24053e143ca",
+   "at": "2026-10-06 12:31:09"
+  },
+  "bgm-cw-story.wav": {
+   "src_md5": "8dccb836141cc3cedc0048a4ce20140e",
+   "src_size": 64845416,
+   "src_dur": 337.736313,
+   "dst": "Output/Audio/BGM_ogg/bgm-cw-story.ogg",
+   "dst_size": 6238229,
+   "dst_dur": 337.743,
+   "dst_md5": "4947dff7c2760b26d20c9c01a7344ed0",
+   "at": "2026-10-06 12:31:13"
+  },
+  "bgm-dal-az-battle.wav": {
+   "src_md5": "f5bf9bfe84dfdd0336b3505bc6501a57",
+   "src_size": 10052560,
+   "src_dur": 52.356854,
+   "dst": "Output/Audio/BGM_ogg/bgm-dal-az-battle.ogg",
+   "dst_size": 829821,
+   "dst_dur": 52.363,
+   "dst_md5": "95dacd0da7fda9a76e10daba2cb9898a",
+   "at": "2026-10-06 12:31:14"
+  },
+  "bgm-dal-az-story-up.wav": {
+   "src_md5": "0805f9ca9e508176e1ec252297917927",
+   "src_size": 12595132,
+   "src_dur": 65.599417,
+   "dst": "Output/Audio/BGM_ogg/bgm-dal-az-story-up.ogg",
+   "dst_size": 1047550,
+   "dst_dur": 65.606,
+   "dst_md5": "a6f9914e065174d7dde2cf919a45746d",
+   "at": "2026-10-06 12:31:14"
+  },
+  "bgm-dal-az-theme.wav": {
+   "src_md5": "608c7efac857a6db3920170f11250b51",
+   "src_size": 17105500,
+   "src_dur": 89.090917,
+   "dst": "Output/Audio/BGM_ogg/bgm-dal-az-theme.ogg",
+   "dst_size": 1623215,
+   "dst_dur": 89.097,
+   "dst_md5": "17fd81e50bdcff4fc3ec4d3d2d0b6c0a",
+   "at": "2026-10-06 12:31:16"
+  },
+  "bgm-danmachi-1.wav": {
+   "src_md5": "94e21585b2c03fb0e5e413878d57d9f2",
+   "src_size": 19213532,
+   "src_dur": 108.92,
+   "dst": "Output/Audio/BGM_ogg/bgm-danmachi-1.ogg",
+   "dst_size": 1743834,
+   "dst_dur": 108.927,
+   "dst_md5": "74d2c9844b90946fabbc6952009a192e",
+   "at": "2026-10-06 12:31:17"
+  },
+  "bgm-danmachi-2.wav": {
+   "src_md5": "ec27d340268b239df5a521f06b6907b0",
+   "src_size": 30288584,
+   "src_dur": 157.752813,
+   "dst": "Output/Audio/BGM_ogg/bgm-danmachi-2.ogg",
+   "dst_size": 2639783,
+   "dst_dur": 157.759,
+   "dst_md5": "657b25e899f4d3a6211832fc4b856aa0",
+   "at": "2026-10-06 12:31:18"
+  },
+  "bgm-danmachi-3.wav": {
+   "src_md5": "707746ea7bad2e49798641944ae5acfc",
+   "src_size": 34622888,
+   "src_dur": 180.327313,
+   "dst": "Output/Audio/BGM_ogg/bgm-danmachi-3.ogg",
+   "dst_size": 3057521,
+   "dst_dur": 180.334,
+   "dst_md5": "9d48a04617bf7fee37812ee8e5b7d057",
+   "at": "2026-10-06 12:31:20"
+  },
+  "bgm-danmachi-az-story.wav": {
+   "src_md5": "d2a6322ef90eeb60a50ca042cc527ac3",
+   "src_size": 17723124,
+   "src_dur": 92.307708,
+   "dst": "Output/Audio/BGM_ogg/bgm-danmachi-az-story.ogg",
+   "dst_size": 1674032,
+   "dst_dur": 92.314,
+   "dst_md5": "1c7fa3c347259b1f506695e3ab3c95ee",
+   "at": "2026-10-06 12:31:21"
+  },
+  "bgm-deepblue-image.wav": {
+   "src_md5": "92410ac85136ecacc8455502a5658a27",
+   "src_size": 17280048,
+   "src_dur": 97.959206,
+   "dst": "Output/Audio/BGM_ogg/bgm-deepblue-image.ogg",
+   "dst_size": 1525445,
+   "dst_dur": 97.966,
+   "dst_md5": "bd900010962a795e8a4a459b94509020",
+   "at": "2026-10-06 12:31:22"
+  },
+  "bgm-diego.wav": {
+   "src_md5": "8b7ec1f1cd1adf1326861405857f6eaf",
+   "src_size": 6432764,
+   "src_dur": 72.933333,
+   "dst": "Output/Audio/BGM_ogg/bgm-diego.ogg",
+   "dst_size": 1131632,
+   "dst_dur": 72.94,
+   "dst_md5": "c1af001a0e42cccc118fbb557d09dfcb",
+   "at": "2026-10-06 12:31:23"
+  },
+  "bgm-doa-az-pv-1.wav": {
+   "src_md5": "ae13e89725f6a3715ab65a5a71c2eb8c",
+   "src_size": 11284532,
+   "src_dur": 58.773375,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa-az-pv-1.ogg",
+   "dst_size": 909036,
+   "dst_dur": 58.78,
+   "dst_md5": "ad9b162c75f97c849e02bf92a5a60dd2",
+   "at": "2026-10-06 12:31:24"
+  },
+  "bgm-doa-az-story-1.wav": {
+   "src_md5": "68485599cc05b43f2dbf5d295bbaa2af",
+   "src_size": 18013140,
+   "src_dur": 93.818208,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa-az-story-1.ogg",
+   "dst_size": 1589652,
+   "dst_dur": 93.825,
+   "dst_md5": "ddd414c7b5c7f96dac1cccfb85166066",
+   "at": "2026-10-06 12:31:25"
+  },
+  "bgm-doa-song-day03.wav": {
+   "src_md5": "87e4b1aa9faaec1b5ec65f9f9499c528",
+   "src_size": 73600044,
+   "src_dur": 383.333333,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa-song-day03.ogg",
+   "dst_size": 6377674,
+   "dst_dur": 383.34,
+   "dst_md5": "fcafc78c7637df788c4959868b42f9b5",
+   "at": "2026-10-06 12:31:29"
+  },
+  "bgm-doa-song-day05.wav": {
+   "src_md5": "ae26db640243b19159e8f3cc54369787",
+   "src_size": 92823316,
+   "src_dur": 483.454542,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa-song-day05.ogg",
+   "dst_size": 8086988,
+   "dst_dur": 483.461,
+   "dst_md5": "5a38414733ba064191b1ddf7bfc10dbc",
+   "at": "2026-10-06 12:31:34"
+  },
+  "bgm-doa-song-night03.wav": {
+   "src_md5": "3bc0061860ab577782c3d67e8b20adf3",
+   "src_size": 80486452,
+   "src_dur": 419.200042,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa-song-night03.ogg",
+   "dst_size": 6803067,
+   "dst_dur": 419.207,
+   "dst_md5": "3980eaa92d9a8d1fdf3a4b12ae21ab0e",
+   "at": "2026-10-06 12:31:38"
+  },
+  "bgm-doa-song-night06.wav": {
+   "src_md5": "80ad5f719d142deac95a71026bd0d0d3",
+   "src_size": 37541692,
+   "src_dur": 195.529417,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa-song-night06.ogg",
+   "dst_size": 3336721,
+   "dst_dur": 195.536,
+   "dst_md5": "5bceeb772c5c344310a995e7c382a078",
+   "at": "2026-10-06 12:31:40"
+  },
+  "bgm-doa_boss.wav": {
+   "src_md5": "473c1bfecebc45ccd2fed01880d0d0aa",
+   "src_size": 79192668,
+   "src_dur": 412.461583,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa_boss.ogg",
+   "dst_size": 6871344,
+   "dst_dur": 412.468,
+   "dst_md5": "db2e7cba60f7b2496ac3e07170fc865a",
+   "at": "2026-10-06 12:31:44"
+  },
+  "bgm-doa_daozhong.wav": {
+   "src_md5": "098cfa33347aee1c92ae59b53a807f3b",
+   "src_size": 19392052,
+   "src_dur": 101.000042,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa_daozhong.ogg",
+   "dst_size": 1637951,
+   "dst_dur": 101.007,
+   "dst_md5": "219bb7df373a9696451ebc0bb33e6779",
+   "at": "2026-10-06 12:31:45"
+  },
+  "bgm-doa_guanqia.wav": {
+   "src_md5": "fccaca1a6c625b29b8de10afe88240f5",
+   "src_size": 52765144,
+   "src_dur": 274.818229,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa_guanqia.ogg",
+   "dst_size": 4778018,
+   "dst_dur": 274.825,
+   "dst_md5": "71627c95e860d0c3618ec20a5c2abef6",
+   "at": "2026-10-06 12:31:48"
+  },
+  "bgm-doa_huanzhuang.wav": {
+   "src_md5": "03aa3c7bfe4d46638f1170703a2d3c79",
+   "src_size": 44362160,
+   "src_dur": 231.052688,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa_huanzhuang.ogg",
+   "dst_size": 4151885,
+   "dst_dur": 231.059,
+   "dst_md5": "16c52043a0bf42a3b28544f07567deae",
+   "at": "2026-10-06 12:31:51"
+  },
+  "bgm-doa_main_day.wav": {
+   "src_md5": "f2f679328af25ab604ea0133d80b9272",
+   "src_size": 76608052,
+   "src_dur": 399.000042,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa_main_day.ogg",
+   "dst_size": 6425803,
+   "dst_dur": 399.007,
+   "dst_md5": "d7a47e1ccffeb766445f8d732ce8faff",
+   "at": "2026-10-06 12:31:55"
+  },
+  "bgm-doa_main_night.wav": {
+   "src_md5": "b795a1d7637322c47f5d244a32ef543c",
+   "src_size": 55076624,
+   "src_dur": 286.857188,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa_main_night.ogg",
+   "dst_size": 5019081,
+   "dst_dur": 286.864,
+   "dst_md5": "f5a29f4b4b210ed3688faa07a0140126",
+   "at": "2026-10-06 12:31:58"
+  },
+  "bgm-doa_minigame.wav": {
+   "src_md5": "bcecc90a4d0437b217bcb8c02e64cb43",
+   "src_size": 72041792,
+   "src_dur": 375.217438,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa_minigame.ogg",
+   "dst_size": 6327847,
+   "dst_dur": 375.224,
+   "dst_md5": "019159d3d8f924b37889125b8c0d1ca4",
+   "at": "2026-10-06 12:32:03"
+  },
+  "bgm-doa_story1.wav": {
+   "src_md5": "8f45a5cbf7d3cc9888b8e57733d4fa9c",
+   "src_size": 39616052,
+   "src_dur": 206.333375,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa_story1.ogg",
+   "dst_size": 3773233,
+   "dst_dur": 206.34,
+   "dst_md5": "9c01be0f4581591f07ecfe8df3e827dd",
+   "at": "2026-10-06 12:32:05"
+  },
+  "bgm-doa_story3.wav": {
+   "src_md5": "81d39dcde1554bcab8bbb52319ba5ef4",
+   "src_size": 73447552,
+   "src_dur": 382.539104,
+   "dst": "Output/Audio/BGM_ogg/bgm-doa_story3.ogg",
+   "dst_size": 6403458,
+   "dst_dur": 382.546,
+   "dst_md5": "75821b8ba10f379d80ad000dab47ef5a",
+   "at": "2026-10-06 12:32:09"
+  },
+  "bgm-echo-loop.wav": {
+   "src_md5": "ea405aaba159b13fcf331f837095dd8c",
+   "src_size": 2822444,
+   "src_dur": 32.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-echo-loop.ogg",
+   "dst_size": 558457,
+   "dst_dur": 32.007,
+   "dst_md5": "910a2512a377762433c0004fe6eaaaa2",
+   "at": "2026-10-06 12:32:10"
+  },
+  "bgm-guangbo.wav": {
+   "src_md5": "d84dad3625ee649d30e48e1c608ada7d",
+   "src_size": 1830956,
+   "src_dur": 9.536,
+   "dst": "Output/Audio/BGM_ogg/bgm-guangbo.ogg",
+   "dst_size": 134689,
+   "dst_dur": 9.543,
+   "dst_md5": "12f776a0e2d3781208efd6c58b99820a",
+   "at": "2026-10-06 12:32:10"
+  },
+  "bgm-holo-aqua.wav": {
+   "src_md5": "383528878015759f1e1b025189e42a49",
+   "src_size": 17463644,
+   "src_dur": 99.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-aqua.ogg",
+   "dst_size": 1892441,
+   "dst_dur": 99.007,
+   "dst_md5": "ef1dc7a3423e16d9e0a86296786fe9ee",
+   "at": "2026-10-06 12:32:12"
+  },
+  "bgm-holo-ayame.wav": {
+   "src_md5": "e4c1d42b7c005d5dfa8b127ca83f1119",
+   "src_size": 37011500,
+   "src_dur": 209.81551,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-ayame.ogg",
+   "dst_size": 3615394,
+   "dst_dur": 209.822,
+   "dst_md5": "d607b7eb38150090dd93612d3cb884e5",
+   "at": "2026-10-06 12:32:14"
+  },
+  "bgm-holo-control-inst.wav": {
+   "src_md5": "8ac9c66be444d76c3a9f00b26fb016d4",
+   "src_size": 36103836,
+   "src_dur": 204.670023,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-control-inst.ogg",
+   "dst_size": 3194030,
+   "dst_dur": 204.677,
+   "dst_md5": "7d38a5b5fa8ee23d55bc00cc6b2b8b0b",
+   "at": "2026-10-06 12:32:16"
+  },
+  "bgm-holo-control.wav": {
+   "src_md5": "a9e5c492b2650aea9e222efcbd7c2be8",
+   "src_size": 36103844,
+   "src_dur": 204.670068,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-control.ogg",
+   "dst_size": 3205578,
+   "dst_dur": 204.677,
+   "dst_md5": "8a04acc059af11ac2a15a3864024667c",
+   "at": "2026-10-06 12:32:19"
+  },
+  "bgm-holo-fbk.wav": {
+   "src_md5": "59b8249367cc802521ec40c6c4470ddc",
+   "src_size": 23948108,
+   "src_dur": 135.76,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-fbk.ogg",
+   "dst_size": 2386432,
+   "dst_dur": 135.767,
+   "dst_md5": "0c64f436e040808dab720b0117e4c73c",
+   "at": "2026-10-06 12:32:20"
+  },
+  "bgm-holo-fff-inst.wav": {
+   "src_md5": "0ead393f7c3f7b5689fb5a1292ae6fe7",
+   "src_size": 40675812,
+   "src_dur": 230.588254,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-fff-inst.ogg",
+   "dst_size": 3584547,
+   "dst_dur": 230.595,
+   "dst_md5": "8bc60427d188a8f0cd0f3a07d9b63128",
+   "at": "2026-10-06 12:32:23"
+  },
+  "bgm-holo-fff.wav": {
+   "src_md5": "87716d6cfae1bb7fd6588329b5a96834",
+   "src_size": 40675812,
+   "src_dur": 230.588254,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-fff.ogg",
+   "dst_size": 3579389,
+   "dst_dur": 230.595,
+   "dst_md5": "6bcfd4313913ea5f2367648e8ef4b128",
+   "at": "2026-10-06 12:32:25"
+  },
+  "bgm-holo-inochi-inst.wav": {
+   "src_md5": "18837a8b0213af8339c1c0e458953689",
+   "src_size": 47918796,
+   "src_dur": 271.648254,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-inochi-inst.ogg",
+   "dst_size": 4376645,
+   "dst_dur": 271.655,
+   "dst_md5": "a9c5574048a6fdb73a01e25e61a2b94e",
+   "at": "2026-10-06 12:32:28"
+  },
+  "bgm-holo-inochi.wav": {
+   "src_md5": "890160cd3c455d3cfa5d56da1c2e875b",
+   "src_size": 47918796,
+   "src_dur": 271.648254,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-inochi.ogg",
+   "dst_size": 4336238,
+   "dst_dur": 271.655,
+   "dst_md5": "0e9b6f6149579433ed7992110cb67216",
+   "at": "2026-10-06 12:32:31"
+  },
+  "bgm-holo-matsuri.wav": {
+   "src_md5": "ee6bc681b9b34ed117b1a274276a350a",
+   "src_size": 23533100,
+   "src_dur": 133.407347,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-matsuri.ogg",
+   "dst_size": 2305059,
+   "dst_dur": 133.414,
+   "dst_md5": "4f4487766b0d91d7053861c864a2ad42",
+   "at": "2026-10-06 12:32:32"
+  },
+  "bgm-holo-mio.wav": {
+   "src_md5": "d4031f2b09d2c9cf6764ed19546b626f",
+   "src_size": 15404588,
+   "src_dur": 87.327347,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-mio.ogg",
+   "dst_size": 1530394,
+   "dst_dur": 87.334,
+   "dst_md5": "9b71148979937bcfd000d515790f682a",
+   "at": "2026-10-06 12:32:33"
+  },
+  "bgm-holo-shion.wav": {
+   "src_md5": "96b1925e4840fe4b92b986ea6b32224c",
+   "src_size": 18404396,
+   "src_dur": 104.333061,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-shion.ogg",
+   "dst_size": 1958907,
+   "dst_dur": 104.34,
+   "dst_md5": "ea8162814e57f0362611a570027ce45a",
+   "at": "2026-10-06 12:32:35"
+  },
+  "bgm-holo-sora.wav": {
+   "src_md5": "6934ee13b1e1c1b563881706de523b4a",
+   "src_size": 27408428,
+   "src_dur": 142.752,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-sora.ogg",
+   "dst_size": 2315550,
+   "dst_dur": 142.758,
+   "dst_md5": "599fe401f3c805ee38d2612144b608e6",
+   "at": "2026-10-06 12:32:36"
+  },
+  "bgm-holo-sss-inst.wav": {
+   "src_md5": "db4fa8d21f70e99a5f367aef4d178edf",
+   "src_size": 49097188,
+   "src_dur": 255.714292,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-sss-inst.ogg",
+   "dst_size": 4070292,
+   "dst_dur": 255.721,
+   "dst_md5": "535fd2eb81aedf95aee0c041808efafc",
+   "at": "2026-10-06 12:32:39"
+  },
+  "bgm-holo-sss.wav": {
+   "src_md5": "0dc3f6a3fef365f729c6be3b7b50395d",
+   "src_size": 49097188,
+   "src_dur": 255.714292,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-sss.ogg",
+   "dst_size": 3978094,
+   "dst_dur": 255.721,
+   "dst_md5": "e1f430193ed4b7197865a5aebad17e82",
+   "at": "2026-10-06 12:32:42"
+  },
+  "bgm-holo-tokiwa.wav": {
+   "src_md5": "6772b5c18a69caba1d637b728fdffbd6",
+   "src_size": 20939900,
+   "src_dur": 118.706667,
+   "dst": "Output/Audio/BGM_ogg/bgm-holo-tokiwa.ogg",
+   "dst_size": 1964295,
+   "dst_dur": 118.713,
+   "dst_md5": "8715a3a1c7e716d60339b9d17490a3d3",
+   "at": "2026-10-06 12:32:43"
+  },
+  "bgm-hunhe-battle.wav": {
+   "src_md5": "5ba967050c288ac5ebee8a327d395119",
+   "src_size": 20881996,
+   "src_dur": 118.378413,
+   "dst": "Output/Audio/BGM_ogg/bgm-hunhe-battle.ogg",
+   "dst_size": 1867390,
+   "dst_dur": 118.385,
+   "dst_md5": "e3398fa85c68299034a6712eee7169e5",
+   "at": "2026-10-06 12:32:44"
+  },
+  "bgm-hunhe-boss.wav": {
+   "src_md5": "bd1416b3e8f82dffb50bb47d4b3c5273",
+   "src_size": 21168048,
+   "src_dur": 120.000023,
+   "dst": "Output/Audio/BGM_ogg/bgm-hunhe-boss.ogg",
+   "dst_size": 1907314,
+   "dst_dur": 120.007,
+   "dst_md5": "b0399e73d7b6067abcb87a7bf7d91799",
+   "at": "2026-10-06 12:32:46"
+  },
+  "bgm-hunhe-eagle.wav": {
+   "src_md5": "e1556be55acebd9c9a98ecf2f7712501",
+   "src_size": 41417188,
+   "src_dur": 215.714292,
+   "dst": "Output/Audio/BGM_ogg/bgm-hunhe-eagle.ogg",
+   "dst_size": 3388369,
+   "dst_dur": 215.721,
+   "dst_md5": "8ffba14db66a5b0b8a5e426f251e5894",
+   "at": "2026-10-06 12:32:48"
+  },
+  "bgm-hunhe-level.wav": {
+   "src_md5": "e7186baaa68f52bcc2b1c2fd632b67bc",
+   "src_size": 22533724,
+   "src_dur": 127.74195,
+   "dst": "Output/Audio/BGM_ogg/bgm-hunhe-level.ogg",
+   "dst_size": 1986381,
+   "dst_dur": 127.748,
+   "dst_md5": "a7f92d7aea4d716a98931fbae35fdf57",
+   "at": "2026-10-06 12:32:50"
+  },
+  "bgm-hunhe-story.wav": {
+   "src_md5": "eb9ad5f8ca6e79d8052d5694dcda4a82",
+   "src_size": 36788908,
+   "src_dur": 191.608667,
+   "dst": "Output/Audio/BGM_ogg/bgm-hunhe-story.ogg",
+   "dst_size": 3026804,
+   "dst_dur": 191.615,
+   "dst_md5": "190a983ccdaad6c703eff38d9ddf5e0b",
+   "at": "2026-10-06 12:32:52"
+  },
+  "bgm-idol-bluespirit-inst.wav": {
+   "src_md5": "d145bd01cd9c199fb3e5f4bbcd029f5c",
+   "src_size": 20664044,
+   "src_dur": 107.625,
+   "dst": "Output/Audio/BGM_ogg/bgm-idol-bluespirit-inst.ogg",
+   "dst_size": 1742115,
+   "dst_dur": 107.632,
+   "dst_md5": "6f429d9c733860c3c0a5abe101a05021",
+   "at": "2026-10-06 12:32:53"
+  },
+  "bgm-idol-inorinouta-inst.wav": {
+   "src_md5": "a46bc8e8de52f014b7fc87ab1741cd64",
+   "src_size": 27840044,
+   "src_dur": 145.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-idol-inorinouta-inst.ogg",
+   "dst_size": 2481240,
+   "dst_dur": 145.006,
+   "dst_md5": "77f4b40c0051eab99d945766ae319339",
+   "at": "2026-10-06 12:32:55"
+  },
+  "bgm-idol-kannjouloyalty-inst.wav": {
+   "src_md5": "a819e795052c5cc29b6ef586ceac942c",
+   "src_size": 20385928,
+   "src_dur": 106.176479,
+   "dst": "Output/Audio/BGM_ogg/bgm-idol-kannjouloyalty-inst.ogg",
+   "dst_size": 1623704,
+   "dst_dur": 106.183,
+   "dst_md5": "fee6f8e9819b6bcd62fe08d301e300cb",
+   "at": "2026-10-06 12:32:56"
+  },
+  "bgm-idol-wishness-inst.wav": {
+   "src_md5": "a91f43f5a0f415b0b5acd7b709792191",
+   "src_size": 19033088,
+   "src_dur": 99.130438,
+   "dst": "Output/Audio/BGM_ogg/bgm-idol-wishness-inst.ogg",
+   "dst_size": 1504027,
+   "dst_dur": 99.137,
+   "dst_md5": "58c75e52f8621b64faaa99f2de98b616",
+   "at": "2026-10-06 12:32:57"
+  },
+  "bgm-idom-appeal.wav": {
+   "src_md5": "2bcfd82d2e4ae4e184c77db1d0b214f2",
+   "src_size": 11371964,
+   "src_dur": 64.466667,
+   "dst": "Output/Audio/BGM_ogg/bgm-idom-appeal.ogg",
+   "dst_size": 1067315,
+   "dst_dur": 64.473,
+   "dst_md5": "597c4fe4f0ec5f2404b5b3a7d61cc96a",
+   "at": "2026-10-06 12:32:58"
+  },
+  "bgm-idom-gomyway.wav": {
+   "src_md5": "16272b3ce8d2745b4ede3f206e83731d",
+   "src_size": 21831308,
+   "src_dur": 123.76,
+   "dst": "Output/Audio/BGM_ogg/bgm-idom-gomyway.ogg",
+   "dst_size": 1905305,
+   "dst_dur": 123.766,
+   "dst_md5": "72fa2f76c141f4ac190c8d1d8512c98f",
+   "at": "2026-10-06 12:33:00"
+  },
+  "bgm-idom-mainbgm.wav": {
+   "src_md5": "8681c3ebbf6c310f52bc4c186b029e4f",
+   "src_size": 20594156,
+   "src_dur": 116.746667,
+   "dst": "Output/Audio/BGM_ogg/bgm-idom-mainbgm.ogg",
+   "dst_size": 1807245,
+   "dst_dur": 116.753,
+   "dst_md5": "1ce17f46af06bf9cdac22ecef6b23bf2",
+   "at": "2026-10-06 12:33:01"
+  },
+  "bgm-idom-speed.wav": {
+   "src_md5": "d11b3f04b4cfa5c2a8d856e8287bd36d",
+   "src_size": 13526396,
+   "src_dur": 76.68,
+   "dst": "Output/Audio/BGM_ogg/bgm-idom-speed.ogg",
+   "dst_size": 1137063,
+   "dst_dur": 76.686,
+   "dst_md5": "d2ace4ecd9b7cee057752fb6a268e165",
+   "at": "2026-10-06 12:33:02"
+  },
+  "bgm-idom-tender.wav": {
+   "src_md5": "346e1487ce892e2a049a93e08a61ce99",
+   "src_size": 16139468,
+   "src_dur": 91.493333,
+   "dst": "Output/Audio/BGM_ogg/bgm-idom-tender.ogg",
+   "dst_size": 1613207,
+   "dst_dur": 91.5,
+   "dst_md5": "b31d4645f05656759119df898e2aeae1",
+   "at": "2026-10-06 12:33:03"
+  },
+  "bgm-idom-theidolm@ster.wav": {
+   "src_md5": "c0ec811f40f3a7f5da9708aad2e99269",
+   "src_size": 29602248,
+   "src_dur": 167.812948,
+   "dst": "Output/Audio/BGM_ogg/bgm-idom-theidolm@ster.ogg",
+   "dst_size": 2598476,
+   "dst_dur": 167.819,
+   "dst_md5": "de76cf9a2908b1cf780cb490335e2acb",
+   "at": "2026-10-06 12:33:06"
+  },
+  "bgm-idom-thinking.wav": {
+   "src_md5": "265e650164458e37d15a3382bb14ff26",
+   "src_size": 8660108,
+   "src_dur": 49.093333,
+   "dst": "Output/Audio/BGM_ogg/bgm-idom-thinking.ogg",
+   "dst_size": 728855,
+   "dst_dur": 49.1,
+   "dst_md5": "08d81d33665a8ad0617bd1a745649189",
+   "at": "2026-10-06 12:33:06"
+  },
+  "bgm-idom-town.wav": {
+   "src_md5": "1c8f4beb80fce4be8fb9b6812455b3fa",
+   "src_size": 19232348,
+   "src_dur": 109.026667,
+   "dst": "Output/Audio/BGM_ogg/bgm-idom-town.ogg",
+   "dst_size": 1828341,
+   "dst_dur": 109.033,
+   "dst_md5": "cf1ec108154b672ca9d882aff63645ce",
+   "at": "2026-10-06 12:33:08"
+  },
+  "bgm-level-french1.wav": {
+   "src_md5": "a80bddbcb1712bec157d4d40020d0029",
+   "src_size": 22115868,
+   "src_dur": 125.373152,
+   "dst": "Output/Audio/BGM_ogg/bgm-level-french1.ogg",
+   "dst_size": 2110861,
+   "dst_dur": 125.38,
+   "dst_md5": "5c15c3065567836bec072707b7bac8b3",
+   "at": "2026-10-06 12:33:09"
+  },
+  "bgm-level-french2.wav": {
+   "src_md5": "852ca61e0dc08a2515bf21a147c788a8",
+   "src_size": 34940940,
+   "src_dur": 198.077642,
+   "dst": "Output/Audio/BGM_ogg/bgm-level-french2.ogg",
+   "dst_size": 3194917,
+   "dst_dur": 198.084,
+   "dst_md5": "b08e7f4b38350d6d4abdd49861558494",
+   "at": "2026-10-06 12:33:11"
+  },
+  "bgm-level-nep.wav": {
+   "src_md5": "8f033831a69b3b417a9097d197723023",
+   "src_size": 49202456,
+   "src_dur": 256.262563,
+   "dst": "Output/Audio/BGM_ogg/bgm-level-nep.ogg",
+   "dst_size": 4395079,
+   "dst_dur": 256.269,
+   "dst_md5": "f339ac800e466febee41ecd6264a4872",
+   "at": "2026-10-06 12:33:14"
+  },
+  "bgm-level-nep2.wav": {
+   "src_md5": "ca9942bed090170126755ae54c09e254",
+   "src_size": 24597136,
+   "src_dur": 139.439297,
+   "dst": "Output/Audio/BGM_ogg/bgm-level-nep2.ogg",
+   "dst_size": 2208839,
+   "dst_dur": 139.446,
+   "dst_md5": "01aeeae28c860c6545e5a2316facd80a",
+   "at": "2026-10-06 12:33:16"
+  },
+  "bgm-level-uta.wav": {
+   "src_md5": "7353e5804d663fd13c5a2d8ee8734894",
+   "src_size": 31723820,
+   "src_dur": 179.84,
+   "dst": "Output/Audio/BGM_ogg/bgm-level-uta.ogg",
+   "dst_size": 2851783,
+   "dst_dur": 179.846,
+   "dst_md5": "687467c05b1ae4d71aaa8edc489d0f09",
+   "at": "2026-10-06 12:33:18"
+  },
+  "bgm-level02.wav": {
+   "src_md5": "aca8c3755d506351c7447e031adf5836",
+   "src_size": 11119148,
+   "src_dur": 63.033469,
+   "dst": "Output/Audio/BGM_ogg/bgm-level02.ogg",
+   "dst_size": 986108,
+   "dst_dur": 63.04,
+   "dst_md5": "d1bf157d9eb7eab6e3c97d646e441719",
+   "at": "2026-10-06 12:33:19"
+  },
+  "bgm-level03.wav": {
+   "src_md5": "77f8414e3847c2b141fa2ea3bca96e6c",
+   "src_size": 30240812,
+   "src_dur": 171.432925,
+   "dst": "Output/Audio/BGM_ogg/bgm-level03.ogg",
+   "dst_size": 2767539,
+   "dst_dur": 171.439,
+   "dst_md5": "3bbba6d3ae8dcffdfc06abcb8736f0d0",
+   "at": "2026-10-06 12:33:21"
+  },
+  "bgm-login-2022401jp.wav": {
+   "src_md5": "683790f9dd9909bc61c82bd4cd218c57",
+   "src_size": 19631760,
+   "src_dur": 102.248521,
+   "dst": "Output/Audio/BGM_ogg/bgm-login-2022401jp.ogg",
+   "dst_size": 1570340,
+   "dst_dur": 102.255,
+   "dst_md5": "3eba17ac12e643afae4b1a0e3aaa3796",
+   "at": "2026-10-06 12:33:22"
+  },
+  "bgm-login-2022401us.wav": {
+   "src_md5": "ca7ff7d6ab4c863ca5419f21636c5b80",
+   "src_size": 27859080,
+   "src_dur": 157.931043,
+   "dst": "Output/Audio/BGM_ogg/bgm-login-2022401us.ogg",
+   "dst_size": 2491662,
+   "dst_dur": 157.938,
+   "dst_md5": "ce51fce364e17321c09e12583e644401",
+   "at": "2026-10-06 12:33:24"
+  },
+  "bgm-login-20240401jp.wav": {
+   "src_md5": "19388c6ed815b9aef6d5169089a4b8dd",
+   "src_size": 23040044,
+   "src_dur": 120.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-login-20240401jp.ogg",
+   "dst_size": 2058522,
+   "dst_dur": 120.007,
+   "dst_md5": "97e40f698206583e7051f41ed34a2708",
+   "at": "2026-10-06 12:33:25"
+  },
+  "bgm-login-20240401us.wav": {
+   "src_md5": "6ce6ecc83dea3e3f8ca159bb192eaa53",
+   "src_size": 19662380,
+   "src_dur": 102.408,
+   "dst": "Output/Audio/BGM_ogg/bgm-login-20240401us.ogg",
+   "dst_size": 1621085,
+   "dst_dur": 102.415,
+   "dst_md5": "2ac7efd76c77ef7d4041ff190a89e74a",
+   "at": "2026-10-06 12:33:26"
+  },
+  "bgm-login-20250401us.wav": {
+   "src_md5": "8c7ee6ce0557e63bb31136fd8c43ff4c",
+   "src_size": 15798904,
+   "src_dur": 82.285729,
+   "dst": "Output/Audio/BGM_ogg/bgm-login-20250401us.ogg",
+   "dst_size": 1333793,
+   "dst_dur": 82.292,
+   "dst_md5": "204c2ad8f70ecdefbfe08c257da21944",
+   "at": "2026-10-06 12:33:28"
+  },
+  "bgm-login-jp-20230914.wav": {
+   "src_md5": "922e01ac013e82bcf5b3952e3eca5a8f",
+   "src_size": 38451772,
+   "src_dur": 200.269417,
+   "dst": "Output/Audio/BGM_ogg/bgm-login-jp-20230914.ogg",
+   "dst_size": 3057857,
+   "dst_dur": 200.276,
+   "dst_md5": "0d87af1ef62becf196f86422fe67a763",
+   "at": "2026-10-06 12:33:30"
+  },
+  "bgm-login-orchestral-ver.wav": {
+   "src_md5": "8a2fb1a8ba0cabc8bf3d1167075b0269",
+   "src_size": 28417548,
+   "src_dur": 148.007833,
+   "dst": "Output/Audio/BGM_ogg/bgm-login-orchestral-ver.ogg",
+   "dst_size": 2526855,
+   "dst_dur": 148.014,
+   "dst_md5": "4babdee43519203edd03eb5def700877",
+   "at": "2026-10-06 12:33:32"
+  },
+  "bgm-login_0401.wav": {
+   "src_md5": "76f22e324aa5d66ffcdc67ab0ebe1864",
+   "src_size": 11340044,
+   "src_dur": 64.285714,
+   "dst": "Output/Audio/BGM_ogg/bgm-login_0401.ogg",
+   "dst_size": 1210859,
+   "dst_dur": 64.292,
+   "dst_md5": "66822a48e475056f58ccc425969d2830",
+   "at": "2026-10-06 12:33:33"
+  },
+  "bgm-login_us_0401.wav": {
+   "src_md5": "6f6b8beed9db05fd833c7a08355bae61",
+   "src_size": 28269568,
+   "src_dur": 160.258073,
+   "dst": "Output/Audio/BGM_ogg/bgm-login_us_0401.ogg",
+   "dst_size": 2691784,
+   "dst_dur": 160.265,
+   "dst_md5": "c28fb02c31c2414bcfa65762287952c9",
+   "at": "2026-10-06 12:33:35"
+  },
+  "bgm-logo-amagi.wav": {
+   "src_md5": "7eec79285fe0ee67b0e4735bf2f6a948",
+   "src_size": 4128044,
+   "src_dur": 21.5,
+   "dst": "Output/Audio/BGM_ogg/bgm-logo-amagi.ogg",
+   "dst_size": 339875,
+   "dst_dur": 21.506,
+   "dst_md5": "628c6775f806cdb4c928c8198d2f4ec0",
+   "at": "2026-10-06 12:33:35"
+  },
+  "bgm-main-arbitrationsystem-theme.wav": {
+   "src_md5": "fd1df09e72706d662a15cdb47a621bce",
+   "src_size": 23203432,
+   "src_dur": 131.538481,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-arbitrationsystem-theme.ogg",
+   "dst_size": 2218889,
+   "dst_dur": 131.545,
+   "dst_md5": "016125ff16a7089d2a18fbf9099b435b",
+   "at": "2026-10-06 12:33:37"
+  },
+  "bgm-main-ashes-theme.wav": {
+   "src_md5": "a2f5479d90606acc65647cbfdb67885a",
+   "src_size": 20506548,
+   "src_dur": 116.250023,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-ashes-theme.ogg",
+   "dst_size": 1808443,
+   "dst_dur": 116.257,
+   "dst_md5": "d00ce0f6cce1e8e1029c3b7d6e74c57c",
+   "at": "2026-10-06 12:33:38"
+  },
+  "bgm-main-christmas.wav": {
+   "src_md5": "e8a2da3cb7f6d0869e7af6290d2635ac",
+   "src_size": 20615832,
+   "src_dur": 116.869546,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-christmas.ogg",
+   "dst_size": 1938353,
+   "dst_dur": 116.876,
+   "dst_md5": "90cf06cafdd17c2e93ac100ebb17c98d",
+   "at": "2026-10-06 12:33:39"
+  },
+  "bgm-main-chunjie-pv.wav": {
+   "src_md5": "d249fbe385f18467d92c49ec4fe7d71a",
+   "src_size": 27783056,
+   "src_dur": 157.500068,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-chunjie-pv.ogg",
+   "dst_size": 2545174,
+   "dst_dur": 157.507,
+   "dst_md5": "51d867dc6b98a360d32a249ce1d1c51b",
+   "at": "2026-10-06 12:33:41"
+  },
+  "bgm-main-chunjie.wav": {
+   "src_md5": "a14c681b6305e4ca2eca363fe4271aab",
+   "src_size": 13824048,
+   "src_dur": 78.36737,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-chunjie.ogg",
+   "dst_size": 1330496,
+   "dst_dur": 78.374,
+   "dst_md5": "82ecab74f5ba8cff4dcff8aa8a0cf555",
+   "at": "2026-10-06 12:33:42"
+  },
+  "bgm-main-chunjie2.wav": {
+   "src_md5": "fe93fd2c481547b6a01b00f1e741f1e9",
+   "src_size": 26299604,
+   "src_dur": 136.976875,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-chunjie2.ogg",
+   "dst_size": 2290143,
+   "dst_dur": 136.983,
+   "dst_md5": "9ccb79fd62c0146a70a0a52e9b7027ad",
+   "at": "2026-10-06 12:33:44"
+  },
+  "bgm-main-chunjie3.wav": {
+   "src_md5": "7ec045edd9215408958d389747da850c",
+   "src_size": 20744684,
+   "src_dur": 117.6,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-chunjie3.ogg",
+   "dst_size": 1977397,
+   "dst_dur": 117.606,
+   "dst_md5": "23117e508a7675e9ba5eb8125fd791b9",
+   "at": "2026-10-06 12:33:46"
+  },
+  "bgm-main-chunjie4-1.wav": {
+   "src_md5": "f4f181fac9ffd40e9039a82eb607793e",
+   "src_size": 7761356,
+   "src_dur": 43.998367,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-chunjie4-1.ogg",
+   "dst_size": 713062,
+   "dst_dur": 44.005,
+   "dst_md5": "d315797f7d8b4c3fe01921943bbfbb52",
+   "at": "2026-10-06 12:33:46"
+  },
+  "bgm-main-chunjie4-2.wav": {
+   "src_md5": "12cfcfe0b6d6777c25249c24299a07ad",
+   "src_size": 15993612,
+   "src_dur": 90.666485,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-chunjie4-2.ogg",
+   "dst_size": 1508390,
+   "dst_dur": 90.673,
+   "dst_md5": "a4ab74802b7aa7624961eaaa3b5a3ca8",
+   "at": "2026-10-06 12:33:48"
+  },
+  "bgm-main-chunjie5-1.wav": {
+   "src_md5": "d1d2cab6a280f7508f80e40f84979226",
+   "src_size": 15435044,
+   "src_dur": 87.5,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-chunjie5-1.ogg",
+   "dst_size": 1431534,
+   "dst_dur": 87.507,
+   "dst_md5": "8422bb8084b8ba8f3453049cfe956b22",
+   "at": "2026-10-06 12:33:49"
+  },
+  "bgm-main-newyear.wav": {
+   "src_md5": "22350c277ae484fbb09e93f8e994b7a6",
+   "src_size": 21773684,
+   "src_dur": 123.433333,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-newyear.ogg",
+   "dst_size": 2085597,
+   "dst_dur": 123.44,
+   "dst_md5": "e0eb3f01a00b6c5729ba211ac191b189",
+   "at": "2026-10-06 12:33:50"
+  },
+  "bgm-main-seaandsun.wav": {
+   "src_md5": "7742387bfd77d4af6686322909e206c1",
+   "src_size": 19007900,
+   "src_dur": 98.99925,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-seaandsun.ogg",
+   "dst_size": 1647322,
+   "dst_dur": 99.006,
+   "dst_md5": "fc14b5e686008518ae8cac32d91fc8dc",
+   "at": "2026-10-06 12:33:52"
+  },
+  "bgm-main-uta.wav": {
+   "src_md5": "71dc1fe2370302b07bc8235296f8ae05",
+   "src_size": 36020924,
+   "src_dur": 204.2,
+   "dst": "Output/Audio/BGM_ogg/bgm-main-uta.ogg",
+   "dst_size": 3712250,
+   "dst_dur": 204.207,
+   "dst_md5": "9be0504d7e25858889ff4fdd4dd7f197",
+   "at": "2026-10-06 12:33:54"
+  },
+  "bgm-map-longgong.wav": {
+   "src_md5": "d0a7c918b49e36017c30e25471e4f968",
+   "src_size": 17723120,
+   "src_dur": 92.307688,
+   "dst": "Output/Audio/BGM_ogg/bgm-map-longgong.ogg",
+   "dst_size": 1491694,
+   "dst_dur": 92.314,
+   "dst_md5": "8cfee6c83991fb6f6c865df68e345b35",
+   "at": "2026-10-06 12:33:55"
+  },
+  "bgm-musashi-1.wav": {
+   "src_md5": "0e099e87a6c05d376afa6a3c7a15df4d",
+   "src_size": 17435720,
+   "src_dur": 90.810813,
+   "dst": "Output/Audio/BGM_ogg/bgm-musashi-1.ogg",
+   "dst_size": 1513733,
+   "dst_dur": 90.817,
+   "dst_md5": "2e06888f4c5e14b605e4804451232d1f",
+   "at": "2026-10-06 12:33:57"
+  },
+  "bgm-musashi-2.wav": {
+   "src_md5": "d01d86c480718064a23ac9557bc78f2b",
+   "src_size": 28896024,
+   "src_dur": 150.499896,
+   "dst": "Output/Audio/BGM_ogg/bgm-musashi-2.ogg",
+   "dst_size": 2377774,
+   "dst_dur": 150.506,
+   "dst_md5": "90077e1012c272b15a7334ed37483a60",
+   "at": "2026-10-06 12:33:58"
+  },
+  "bgm-nagato-boss.wav": {
+   "src_md5": "e3e87d4f5fee9c55cab5fe42e3f58b52",
+   "src_size": 22253588,
+   "src_dur": 126.153878,
+   "dst": "Output/Audio/BGM_ogg/bgm-nagato-boss.ogg",
+   "dst_size": 2009902,
+   "dst_dur": 126.16,
+   "dst_md5": "8b353150328eeca952dacdd6ecac586f",
+   "at": "2026-10-06 12:34:00"
+  },
+  "bgm-nagato-map.wav": {
+   "src_md5": "b752e568358dfc519a8409f57f39a0f9",
+   "src_size": 25510200,
+   "src_dur": 144.615397,
+   "dst": "Output/Audio/BGM_ogg/bgm-nagato-map.ogg",
+   "dst_size": 2393062,
+   "dst_dur": 144.622,
+   "dst_md5": "ac681f2164c5f2e4d99f4306a0e4a6f5",
+   "at": "2026-10-06 12:34:02"
+  },
+  "bgm-newyear.wav": {
+   "src_md5": "f8f6e1bc25420a0882ce8cefcef92de4",
+   "src_size": 16654284,
+   "src_dur": 94.411791,
+   "dst": "Output/Audio/BGM_ogg/bgm-newyear.ogg",
+   "dst_size": 1630583,
+   "dst_dur": 94.418,
+   "dst_md5": "44dfe1d07444f2df2ff900e1e6c01edf",
+   "at": "2026-10-06 12:34:03"
+  },
+  "bgm-newyear2.wav": {
+   "src_md5": "f8f6e1bc25420a0882ce8cefcef92de4",
+   "src_size": 16654284,
+   "src_dur": 94.411791,
+   "dst": "Output/Audio/BGM_ogg/bgm-newyear2.ogg",
+   "dst_size": 1630583,
+   "dst_dur": 94.418,
+   "dst_md5": "ee982b74cfa5fae3b36a4fb273e99591",
+   "at": "2026-10-06 12:34:04"
+  },
+  "bgm-qe-ova-1.wav": {
+   "src_md5": "bbbb4e4c40c6f147fec0531f4fdbbe8a",
+   "src_size": 19920044,
+   "src_dur": 103.75,
+   "dst": "Output/Audio/BGM_ogg/bgm-qe-ova-1.ogg",
+   "dst_size": 1785109,
+   "dst_dur": 103.757,
+   "dst_md5": "230cbb0b1249c74af477daac183f2ce5",
+   "at": "2026-10-06 12:34:05"
+  },
+  "bgm-qe-ova-10.wav": {
+   "src_md5": "904c4ce52632e00ee9f308dc3ceba43f",
+   "src_size": 22968044,
+   "src_dur": 119.625,
+   "dst": "Output/Audio/BGM_ogg/bgm-qe-ova-10.ogg",
+   "dst_size": 2142436,
+   "dst_dur": 119.632,
+   "dst_md5": "11e627331df28ef5eb1c8ba0dcc2a585",
+   "at": "2026-10-06 12:34:07"
+  },
+  "bgm-qe-ova-12.wav": {
+   "src_md5": "24e820d8eeb6ac541353259e3b9fd7a3",
+   "src_size": 15888044,
+   "src_dur": 82.75,
+   "dst": "Output/Audio/BGM_ogg/bgm-qe-ova-12.ogg",
+   "dst_size": 1446732,
+   "dst_dur": 82.757,
+   "dst_md5": "ff44296def71bbaf5b6c6df39b517393",
+   "at": "2026-10-06 12:34:08"
+  },
+  "bgm-qe-ova-13.wav": {
+   "src_md5": "1e0c0d9261ca92151e31ea6862b16116",
+   "src_size": 20208044,
+   "src_dur": 105.25,
+   "dst": "Output/Audio/BGM_ogg/bgm-qe-ova-13.ogg",
+   "dst_size": 1906313,
+   "dst_dur": 105.257,
+   "dst_md5": "dc08665af60fa9a8a55e67582e3c353b",
+   "at": "2026-10-06 12:34:09"
+  },
+  "bgm-qe-ova-15.wav": {
+   "src_md5": "67e6842875bca76dc4a4a9baa94ee3f6",
+   "src_size": 7872044,
+   "src_dur": 41.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-qe-ova-15.ogg",
+   "dst_size": 673051,
+   "dst_dur": 41.007,
+   "dst_md5": "a4baee65500ddefd90ebd73f1637f253",
+   "at": "2026-10-06 12:34:10"
+  },
+  "bgm-qe-ova-2.wav": {
+   "src_md5": "9487b042904e9fcecef4b17773bb6fad",
+   "src_size": 17952044,
+   "src_dur": 93.5,
+   "dst": "Output/Audio/BGM_ogg/bgm-qe-ova-2.ogg",
+   "dst_size": 1658740,
+   "dst_dur": 93.507,
+   "dst_md5": "34a21a514975970c2b3eb459c99dd303",
+   "at": "2026-10-06 12:34:11"
+  },
+  "bgm-qe-ova-3.wav": {
+   "src_md5": "a815f209d5f611c8cba77370801e40a6",
+   "src_size": 23616044,
+   "src_dur": 123.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-qe-ova-3.ogg",
+   "dst_size": 2260227,
+   "dst_dur": 123.007,
+   "dst_md5": "4a28a81419e53c5ead5387d80fd6f1d2",
+   "at": "2026-10-06 12:34:13"
+  },
+  "bgm-qe-ova-4.wav": {
+   "src_md5": "fd003426d906e270d4e359060f21a821",
+   "src_size": 20688044,
+   "src_dur": 107.75,
+   "dst": "Output/Audio/BGM_ogg/bgm-qe-ova-4.ogg",
+   "dst_size": 1855978,
+   "dst_dur": 107.757,
+   "dst_md5": "ce5b7455b8f885df6efc86e28006617e",
+   "at": "2026-10-06 12:34:14"
+  },
+  "bgm-qe-ova-9.wav": {
+   "src_md5": "e7967a3211cbd9799e07f76c9228364c",
+   "src_size": 15696044,
+   "src_dur": 81.75,
+   "dst": "Output/Audio/BGM_ogg/bgm-qe-ova-9.ogg",
+   "dst_size": 1384954,
+   "dst_dur": 81.757,
+   "dst_md5": "567a1096814783c35fefea566c01e0da",
+   "at": "2026-10-06 12:34:15"
+  },
+  "bgm-ryza-1.wav": {
+   "src_md5": "5258112989add823311e39dde609ed8d",
+   "src_size": 58395692,
+   "src_dur": 304.144,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-1.ogg",
+   "dst_size": 5261069,
+   "dst_dur": 304.151,
+   "dst_md5": "4bc3db9ce4a2077e648e2682d6bf775f",
+   "at": "2026-10-06 12:34:19"
+  },
+  "bgm-ryza-10.wav": {
+   "src_md5": "24a7dc1b429746a2ca03f53a3a8b5ba6",
+   "src_size": 21022504,
+   "src_dur": 109.491979,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-10.ogg",
+   "dst_size": 1866718,
+   "dst_dur": 109.498,
+   "dst_md5": "a4be3cdb1e115a278e33071049674530",
+   "at": "2026-10-06 12:34:20"
+  },
+  "bgm-ryza-11.wav": {
+   "src_md5": "47ca15f90080623477250cff02b571b5",
+   "src_size": 30304176,
+   "src_dur": 157.834021,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-11.ogg",
+   "dst_size": 2787738,
+   "dst_dur": 157.841,
+   "dst_md5": "8edf879c4218d34bc23bd1f78530d745",
+   "at": "2026-10-06 12:34:22"
+  },
+  "bgm-ryza-12.wav": {
+   "src_md5": "524e32c2dafc17a2f5f6889d8460eadb",
+   "src_size": 16518252,
+   "src_dur": 86.032333,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-12.ogg",
+   "dst_size": 1622880,
+   "dst_dur": 86.039,
+   "dst_md5": "41a7db170bca8641693ae14c11353625",
+   "at": "2026-10-06 12:34:23"
+  },
+  "bgm-ryza-13.wav": {
+   "src_md5": "473764eeea42dd30b0d2e7c11961c035",
+   "src_size": 36373360,
+   "src_dur": 189.444354,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-13.ogg",
+   "dst_size": 3287908,
+   "dst_dur": 189.451,
+   "dst_md5": "80e2a9608944ab7b79da78909baae5c2",
+   "at": "2026-10-06 12:34:25"
+  },
+  "bgm-ryza-2.wav": {
+   "src_md5": "28c73012788fc196f895aaad95b54ec8",
+   "src_size": 38071060,
+   "src_dur": 198.286542,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-2.ogg",
+   "dst_size": 3468349,
+   "dst_dur": 198.293,
+   "dst_md5": "58e4380b57d985247aa3e6a0d35f809e",
+   "at": "2026-10-06 12:34:27"
+  },
+  "bgm-ryza-3.wav": {
+   "src_md5": "aab7279bb2016cc41e8174917367268c",
+   "src_size": 55022060,
+   "src_dur": 286.573,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-3.ogg",
+   "dst_size": 5349082,
+   "dst_dur": 286.579,
+   "dst_md5": "4c27515f4c36d3a1820a02d09af2cb80",
+   "at": "2026-10-06 12:34:30"
+  },
+  "bgm-ryza-4.wav": {
+   "src_md5": "8364253b08aac53304e9dd833435622f",
+   "src_size": 46867448,
+   "src_dur": 244.101063,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-4.ogg",
+   "dst_size": 4405531,
+   "dst_dur": 244.108,
+   "dst_md5": "d66d4183e4eaee4117471ae11dbde446",
+   "at": "2026-10-06 12:34:33"
+  },
+  "bgm-ryza-5.wav": {
+   "src_md5": "7245b723e91872d5a968a683d596360f",
+   "src_size": 45165420,
+   "src_dur": 235.236333,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-5.ogg",
+   "dst_size": 4036166,
+   "dst_dur": 235.243,
+   "dst_md5": "bcebe390e1b52bd22812228e092e3c68",
+   "at": "2026-10-06 12:34:35"
+  },
+  "bgm-ryza-6.wav": {
+   "src_md5": "35a896ebc888b098eb5b1465509716fd",
+   "src_size": 50571584,
+   "src_dur": 263.393438,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-6.ogg",
+   "dst_size": 4594226,
+   "dst_dur": 263.4,
+   "dst_md5": "689bea06615898e3bf0bfb2d8ea94d7e",
+   "at": "2026-10-06 12:34:38"
+  },
+  "bgm-ryza-7.wav": {
+   "src_md5": "a416e6ec7b78740b9064cca318bf80e2",
+   "src_size": 46834868,
+   "src_dur": 243.931375,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-7.ogg",
+   "dst_size": 4111465,
+   "dst_dur": 243.938,
+   "dst_md5": "e9e013fb0649a7f335eba239a42bba93",
+   "at": "2026-10-06 12:34:40"
+  },
+  "bgm-ryza-8.wav": {
+   "src_md5": "42fb608ee031983dbb3d090216d41300",
+   "src_size": 62644216,
+   "src_dur": 326.271729,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-8.ogg",
+   "dst_size": 5639311,
+   "dst_dur": 326.278,
+   "dst_md5": "bc7ea773d0fc965d479996a8b5888a3b",
+   "at": "2026-10-06 12:34:43"
+  },
+  "bgm-ryza-9.wav": {
+   "src_md5": "d8a9df71b43a9d18ea24601671140033",
+   "src_size": 61564708,
+   "src_dur": 320.649292,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-9.ogg",
+   "dst_size": 5601205,
+   "dst_dur": 320.656,
+   "dst_md5": "e783a19bbe20604ad2bee86d7d2f8a89",
+   "at": "2026-10-06 12:34:46"
+  },
+  "bgm-ryza-az-battle.wav": {
+   "src_md5": "8b059efd3a2d3abdaacd41b015a7f920",
+   "src_size": 20516700,
+   "src_dur": 116.307574,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-az-battle.ogg",
+   "dst_size": 1851425,
+   "dst_dur": 116.314,
+   "dst_md5": "bf9d37e79f8ae03c6e7b2c1a7de4346b",
+   "at": "2026-10-06 12:34:48"
+  },
+  "bgm-ryza-az-pv.wav": {
+   "src_md5": "84e31a224ef704adee08415c99e1e35f",
+   "src_size": 17136212,
+   "src_dur": 97.14381,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-az-pv.ogg",
+   "dst_size": 1605845,
+   "dst_dur": 97.15,
+   "dst_md5": "b925abe47cf704177948b0b26653a647",
+   "at": "2026-10-06 12:34:49"
+  },
+  "bgm-ryza-az-theme.wav": {
+   "src_md5": "fe09d0906d7e96a1e6d9f5170b06be2e",
+   "src_size": 21375564,
+   "src_dur": 121.176417,
+   "dst": "Output/Audio/BGM_ogg/bgm-ryza-az-theme.ogg",
+   "dst_size": 1998911,
+   "dst_dur": 121.183,
+   "dst_md5": "2456c10dcd5e80dd6abb9f3efbb3eaa7",
+   "at": "2026-10-06 12:34:51"
+  },
+  "bgm-sailawayjustice-inst.wav": {
+   "src_md5": "690b6a6c75576b4c0fa2a7b835c60fbf",
+   "src_size": 44912476,
+   "src_dur": 233.918917,
+   "dst": "Output/Audio/BGM_ogg/bgm-sailawayjustice-inst.ogg",
+   "dst_size": 3659471,
+   "dst_dur": 233.925,
+   "dst_md5": "52b2cc6a2470b14f904c62c9b0c332b8",
+   "at": "2026-10-06 12:34:53"
+  },
+  "bgm-sk-az-battle-2.wav": {
+   "src_md5": "d09200a72b5ff281841686d529df8b75",
+   "src_size": 17408044,
+   "src_dur": 90.666667,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-az-battle-2.ogg",
+   "dst_size": 1480269,
+   "dst_dur": 90.673,
+   "dst_md5": "4e218085b86089a322fbd64bdbda32e3",
+   "at": "2026-10-06 12:34:54"
+  },
+  "bgm-sk-az-battle-boss.wav": {
+   "src_md5": "2360b9a340723ef79a2d36a1a4692792",
+   "src_size": 19854164,
+   "src_dur": 112.551701,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-az-battle-boss.ogg",
+   "dst_size": 1754300,
+   "dst_dur": 112.558,
+   "dst_md5": "0ec2bd468bd4b8ea6983ad7963c9c6f1",
+   "at": "2026-10-06 12:34:56"
+  },
+  "bgm-sk-az-battle.wav": {
+   "src_md5": "cf24c5ec6739aad57813be89034b8953",
+   "src_size": 20571752,
+   "src_dur": 116.61966,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-az-battle.ogg",
+   "dst_size": 1937457,
+   "dst_dur": 116.626,
+   "dst_md5": "fd0db089f24bee27c917f0386d603dea",
+   "at": "2026-10-06 12:34:57"
+  },
+  "bgm-sk-az-pv1.wav": {
+   "src_md5": "a4fc86a5997d82fd2aea8f07bb152226",
+   "src_size": 11970908,
+   "src_dur": 67.862041,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-az-pv1.ogg",
+   "dst_size": 1045438,
+   "dst_dur": 67.869,
+   "dst_md5": "21dffd7285389603ce5061274bbe2b25",
+   "at": "2026-10-06 12:34:58"
+  },
+  "bgm-sk-az-pv2.wav": {
+   "src_md5": "281c1860732e4a9b97b43ac030c1eb02",
+   "src_size": 11094992,
+   "src_dur": 62.896531,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-az-pv2.ogg",
+   "dst_size": 1077759,
+   "dst_dur": 62.903,
+   "dst_md5": "555fadfa2e6d269e6f596631bc74bb99",
+   "at": "2026-10-06 12:34:59"
+  },
+  "bgm-sk-az-story.wav": {
+   "src_md5": "9c5ecfdc807157d5fccfdcc2f215cc72",
+   "src_size": 21262532,
+   "src_dur": 120.535646,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-az-story.ogg",
+   "dst_size": 2047102,
+   "dst_dur": 120.542,
+   "dst_md5": "ff9aae020705bdb66d053c75b5fc7edd",
+   "at": "2026-10-06 12:35:01"
+  },
+  "bgm-sk-gachamenu.wav": {
+   "src_md5": "c8c851945b5683890cf665019bf8b836",
+   "src_size": 23958484,
+   "src_dur": 124.783542,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-gachamenu.ogg",
+   "dst_size": 2135894,
+   "dst_dur": 124.79,
+   "dst_md5": "a24c7b370cea15a735bdd876688b6cc5",
+   "at": "2026-10-06 12:35:02"
+  },
+  "bgm-sk-home.wav": {
+   "src_md5": "7eac9c6b2dd0796fa0a1faac38c8023e",
+   "src_size": 26001180,
+   "src_dur": 135.422583,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-home.ogg",
+   "dst_size": 2270624,
+   "dst_dur": 135.429,
+   "dst_md5": "f0c14350f098f5154e03fb21c593128a",
+   "at": "2026-10-06 12:35:04"
+  },
+  "bgm-sk-menu.wav": {
+   "src_md5": "139d425dee6fdb81e9f5c580d1471f73",
+   "src_size": 26276620,
+   "src_dur": 136.857167,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-menu.ogg",
+   "dst_size": 2402536,
+   "dst_dur": 136.864,
+   "dst_md5": "ba3242144029bd2beff374c77eae819d",
+   "at": "2026-10-06 12:35:05"
+  },
+  "bgm-sk-theme-gessen.wav": {
+   "src_md5": "6b5eece905c746413cc123dd2fe056d6",
+   "src_size": 26711052,
+   "src_dur": 139.119833,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-theme-gessen.ogg",
+   "dst_size": 2214188,
+   "dst_dur": 139.126,
+   "dst_md5": "b41b992b6550b0a1e294412e54111771",
+   "at": "2026-10-06 12:35:07"
+  },
+  "bgm-sk-theme-guren.wav": {
+   "src_md5": "d975a9bb0b2ab2de8da3597b234b262c",
+   "src_size": 26495948,
+   "src_dur": 137.9995,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-theme-guren.ogg",
+   "dst_size": 2196734,
+   "dst_dur": 138.006,
+   "dst_md5": "9d503b1fe2cfb881ca686167ff3db289",
+   "at": "2026-10-06 12:35:09"
+  },
+  "bgm-sk-theme-hanzo.wav": {
+   "src_md5": "ed1902697abd6f941c8b8ddc729859ba",
+   "src_size": 27056484,
+   "src_dur": 140.918958,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-theme-hanzo.ogg",
+   "dst_size": 2259752,
+   "dst_dur": 140.925,
+   "dst_md5": "59ef3ba3c1bb833f6c11c4b75473bc6e",
+   "at": "2026-10-06 12:35:10"
+  },
+  "bgm-sk-theme-hebijo.wav": {
+   "src_md5": "1e3e80f76516cf12f7671e05c2de313c",
+   "src_size": 26857404,
+   "src_dur": 139.882083,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-theme-hebijo.ogg",
+   "dst_size": 2214555,
+   "dst_dur": 139.889,
+   "dst_md5": "d6199366e8fb73ff76f3aafcea1d9625",
+   "at": "2026-10-06 12:35:12"
+  },
+  "bgm-sk-theme-touno.wav": {
+   "src_md5": "65e0be3d995d3fbade3327b0600f5596",
+   "src_size": 25553172,
+   "src_dur": 133.089208,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-theme-touno.ogg",
+   "dst_size": 2054235,
+   "dst_dur": 133.096,
+   "dst_md5": "b57686a1005dbd90a78f8618cb2a615f",
+   "at": "2026-10-06 12:35:13"
+  },
+  "bgm-sk-theme.wav": {
+   "src_md5": "26b44e9e21b1cd3a7be08ab0097f90d7",
+   "src_size": 27193808,
+   "src_dur": 154.15966,
+   "dst": "Output/Audio/BGM_ogg/bgm-sk-theme.ogg",
+   "dst_size": 2639831,
+   "dst_dur": 154.166,
+   "dst_md5": "7d5b803426c017b58268f0479d37470b",
+   "at": "2026-10-06 12:35:15"
+  },
+  "bgm-song-alizarin-full-inst.wav": {
+   "src_md5": "c28d7dfd43c273ad12900ac8697f70ed",
+   "src_size": 45056044,
+   "src_dur": 234.666667,
+   "dst": "Output/Audio/BGM_ogg/bgm-song-alizarin-full-inst.ogg",
+   "dst_size": 3649031,
+   "dst_dur": 234.673,
+   "dst_md5": "7863f1d406a127a9506d168229f22236",
+   "at": "2026-10-06 12:35:18"
+  },
+  "bgm-song-alizarin-full.wav": {
+   "src_md5": "aa630e982beafaf40e497db8046890ab",
+   "src_size": 45056044,
+   "src_dur": 234.666667,
+   "dst": "Output/Audio/BGM_ogg/bgm-song-alizarin-full.ogg",
+   "dst_size": 3642916,
+   "dst_dur": 234.673,
+   "dst_md5": "cf5192ba4bda8958efa1eb188afd57e4",
+   "at": "2026-10-06 12:35:20"
+  },
+  "bgm-song-cyanidin-full-inst.wav": {
+   "src_md5": "ce727e4b429e557b8c16abba6b4538ee",
+   "src_size": 41026108,
+   "src_dur": 213.677417,
+   "dst": "Output/Audio/BGM_ogg/bgm-song-cyanidin-full-inst.ogg",
+   "dst_size": 3416296,
+   "dst_dur": 213.684,
+   "dst_md5": "4c4af640a66dcb533a0e2eb285a9d0f0",
+   "at": "2026-10-06 12:35:22"
+  },
+  "bgm-song-cyanidin-full.wav": {
+   "src_md5": "fd16de2d50e0cf6e2c7ef776a8539b80",
+   "src_size": 41026108,
+   "src_dur": 213.677417,
+   "dst": "Output/Audio/BGM_ogg/bgm-song-cyanidin-full.ogg",
+   "dst_size": 3379791,
+   "dst_dur": 213.684,
+   "dst_md5": "a2090442ef15bbcb3c66c1e1b56e8658",
+   "at": "2026-10-06 12:35:24"
+  },
+  "bgm-song01.wav": {
+   "src_md5": "f91a44493308f60b4e6ce280899cdd3b",
+   "src_size": 19853660,
+   "src_dur": 103.40425,
+   "dst": "Output/Audio/BGM_ogg/bgm-song01.ogg",
+   "dst_size": 1598729,
+   "dst_dur": 103.411,
+   "dst_md5": "c9b30537a0302cd487000c1df419cda8",
+   "at": "2026-10-06 12:35:25"
+  },
+  "bgm-song02.wav": {
+   "src_md5": "d91ed3ff82a9fa3da31983e842e2a4bd",
+   "src_size": 13932280,
+   "src_dur": 78.98093,
+   "dst": "Output/Audio/BGM_ogg/bgm-song02.ogg",
+   "dst_size": 1240677,
+   "dst_dur": 78.987,
+   "dst_md5": "7b3d0b4acc0a5afba7347207219b8d76",
+   "at": "2026-10-06 12:35:26"
+  },
+  "bgm-song03.wav": {
+   "src_md5": "1b1bae13927d8ebd951e6ea88ad9c2a1",
+   "src_size": 27540384,
+   "src_dur": 156.124376,
+   "dst": "Output/Audio/BGM_ogg/bgm-song03.ogg",
+   "dst_size": 2579007,
+   "dst_dur": 156.131,
+   "dst_md5": "313fb6408c726742290e09323a054d4b",
+   "at": "2026-10-06 12:35:28"
+  },
+  "bgm-song04.wav": {
+   "src_md5": "b3fda5f1c3fbdd14695426f93105f325",
+   "src_size": 23018240,
+   "src_dur": 119.886438,
+   "dst": "Output/Audio/BGM_ogg/bgm-song04.ogg",
+   "dst_size": 1875475,
+   "dst_dur": 119.893,
+   "dst_md5": "0716d073e4693ea78f69af1bf1a8cd94",
+   "at": "2026-10-06 12:35:29"
+  },
+  "bgm-song05.wav": {
+   "src_md5": "5af3a2cdc59db918b2a175ee2e1658e5",
+   "src_size": 19968044,
+   "src_dur": 104.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-song05.ogg",
+   "dst_size": 1623846,
+   "dst_dur": 104.007,
+   "dst_md5": "aeb762f3e8de66a7f3ba498805494009",
+   "at": "2026-10-06 12:35:31"
+  },
+  "bgm-song06.wav": {
+   "src_md5": "c427af2f09cb103d0ec57e8ab086d0c8",
+   "src_size": 20664044,
+   "src_dur": 107.625,
+   "dst": "Output/Audio/BGM_ogg/bgm-song06.ogg",
+   "dst_size": 1730912,
+   "dst_dur": 107.632,
+   "dst_md5": "497daeda83782b7eb95e32aa81bbfabf",
+   "at": "2026-10-06 12:35:32"
+  },
+  "bgm-song07.wav": {
+   "src_md5": "0c8c3d618cce83922eab9f5ba814da9c",
+   "src_size": 27840044,
+   "src_dur": 145.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-song07.ogg",
+   "dst_size": 2431657,
+   "dst_dur": 145.006,
+   "dst_md5": "f8f0d69d6838cc5b600220643814a498",
+   "at": "2026-10-06 12:35:33"
+  },
+  "bgm-song08.wav": {
+   "src_md5": "682875042fbb0385d86afeeeb18dae7d",
+   "src_size": 20385928,
+   "src_dur": 106.176479,
+   "dst": "Output/Audio/BGM_ogg/bgm-song08.ogg",
+   "dst_size": 1617202,
+   "dst_dur": 106.183,
+   "dst_md5": "f072e828eadf91639bbfb1732aa59039",
+   "at": "2026-10-06 12:35:35"
+  },
+  "bgm-song09.wav": {
+   "src_md5": "50c36702b2d6003ee651e797acb4ff33",
+   "src_size": 19968044,
+   "src_dur": 104.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-song09.ogg",
+   "dst_size": 1585569,
+   "dst_dur": 104.007,
+   "dst_md5": "efdd90ed2d0aeda44a75cb9704c1b709",
+   "at": "2026-10-06 12:35:36"
+  },
+  "bgm-song10.wav": {
+   "src_md5": "ee7a720dac822d6589f65b9e919ecfc3",
+   "src_size": 19033088,
+   "src_dur": 99.130438,
+   "dst": "Output/Audio/BGM_ogg/bgm-song10.ogg",
+   "dst_size": 1511789,
+   "dst_dur": 99.137,
+   "dst_md5": "d9ee9d0d680584268cc1c4681823a6bb",
+   "at": "2026-10-06 12:35:37"
+  },
+  "bgm-song11.wav": {
+   "src_md5": "6ff6b5d4d9526ab2da41d7bc9f8fcf54",
+   "src_size": 19621204,
+   "src_dur": 102.193542,
+   "dst": "Output/Audio/BGM_ogg/bgm-song11.ogg",
+   "dst_size": 1596138,
+   "dst_dur": 102.2,
+   "dst_md5": "184b3f2a3ba299ee77c670612c08a989",
+   "at": "2026-10-06 12:35:38"
+  },
+  "bgm-song12.wav": {
+   "src_md5": "5d946014d39dd03250d39d77e83839d5",
+   "src_size": 18432044,
+   "src_dur": 96.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-song12.ogg",
+   "dst_size": 1471531,
+   "dst_dur": 96.007,
+   "dst_md5": "be529d85d1c8c8d9a56e5a6e017033bd",
+   "at": "2026-10-06 12:35:39"
+  },
+  "bgm-ssss-1114a.wav": {
+   "src_md5": "7c5a6b56b5bef0abc5006c50c9d9ea1d",
+   "src_size": 27875948,
+   "src_dur": 158.026667,
+   "dst": "Output/Audio/BGM_ogg/bgm-ssss-1114a.ogg",
+   "dst_size": 2497416,
+   "dst_dur": 158.033,
+   "dst_md5": "e5a8c79fb4a96096a452e259c88c8c4a",
+   "at": "2026-10-06 12:35:41"
+  },
+  "bgm-ssss-az-battle-boss.wav": {
+   "src_md5": "7a1a5a9d3dc0f6641983e8b626694b8c",
+   "src_size": 20234140,
+   "src_dur": 114.70576,
+   "dst": "Output/Audio/BGM_ogg/bgm-ssss-az-battle-boss.ogg",
+   "dst_size": 1823310,
+   "dst_dur": 114.712,
+   "dst_md5": "ece1b30b8af27039a387fc4b0da1d405",
+   "at": "2026-10-06 12:35:42"
+  },
+  "bgm-ssss-az-battle.wav": {
+   "src_md5": "33ba05168b42ece2e7528e59c2309f57",
+   "src_size": 21772824,
+   "src_dur": 123.428458,
+   "dst": "Output/Audio/BGM_ogg/bgm-ssss-az-battle.ogg",
+   "dst_size": 1980356,
+   "dst_dur": 123.435,
+   "dst_md5": "a9c9ab28f021ee2227b84e2d4dc585d0",
+   "at": "2026-10-06 12:35:44"
+  },
+  "bgm-ssss-az-pv.wav": {
+   "src_md5": "036606abe8f1e4cf768e033b31cb9bdd",
+   "src_size": 21839544,
+   "src_dur": 123.806689,
+   "dst": "Output/Audio/BGM_ogg/bgm-ssss-az-pv.ogg",
+   "dst_size": 2094225,
+   "dst_dur": 123.813,
+   "dst_md5": "14310cc90b1458ed56543f96a1d62efd",
+   "at": "2026-10-06 12:35:45"
+  },
+  "bgm-ssss-az-story.wav": {
+   "src_md5": "61fb80b7a8b63abe2a000b2f36715642",
+   "src_size": 21379612,
+   "src_dur": 121.199365,
+   "dst": "Output/Audio/BGM_ogg/bgm-ssss-az-story.ogg",
+   "dst_size": 2086293,
+   "dst_dur": 121.206,
+   "dst_md5": "72c6389d894adc2e32a87f43c6cd4fc7",
+   "at": "2026-10-06 12:35:46"
+  },
+  "bgm-ssss-strobememory.wav": {
+   "src_md5": "f1535089347f94f421e34c13b320e668",
+   "src_size": 50005916,
+   "src_dur": 283.48,
+   "dst": "Output/Audio/BGM_ogg/bgm-ssss-strobememory.ogg",
+   "dst_size": 4488941,
+   "dst_dur": 283.486,
+   "dst_md5": "e88bb679115d535c8cf7776efb507f5f",
+   "at": "2026-10-06 12:35:49"
+  },
+  "bgm-star.wav": {
+   "src_md5": "aa846c5a2cca4c010f8175d0f82efa67",
+   "src_size": 16739484,
+   "src_dur": 94.894785,
+   "dst": "Output/Audio/BGM_ogg/bgm-star.ogg",
+   "dst_size": 1564989,
+   "dst_dur": 94.901,
+   "dst_md5": "63aa2566aa9dcc1b433f38dcea834eab",
+   "at": "2026-10-06 12:35:50"
+  },
+  "bgm-story-1.wav": {
+   "src_md5": "042348eaf7df6ef0a8f8ac986d3a614c",
+   "src_size": 18686372,
+   "src_dur": 105.931565,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-1.ogg",
+   "dst_size": 1967920,
+   "dst_dur": 105.938,
+   "dst_md5": "9211fc036ee3f54b831692662e44c46b",
+   "at": "2026-10-06 12:35:51"
+  },
+  "bgm-story-2.wav": {
+   "src_md5": "f15e0675316c9ad1cd252733a90b44eb",
+   "src_size": 6212392,
+   "src_dur": 35.217392,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-2.ogg",
+   "dst_size": 713986,
+   "dst_dur": 35.224,
+   "dst_md5": "87d89060eb6838b28a16f11506bff9ed",
+   "at": "2026-10-06 12:35:52"
+  },
+  "bgm-story-3.wav": {
+   "src_md5": "68143e92aa4798f6db2887354fda5373",
+   "src_size": 11655048,
+   "src_dur": 66.071451,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-3.ogg",
+   "dst_size": 1065386,
+   "dst_dur": 66.078,
+   "dst_md5": "e76816db5d294f1e5dae1f613faf3661",
+   "at": "2026-10-06 12:35:53"
+  },
+  "bgm-story-4.wav": {
+   "src_md5": "50bd31175d9ef69e830aa0edb0fcb30d",
+   "src_size": 10174508,
+   "src_dur": 57.678367,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-4.ogg",
+   "dst_size": 960064,
+   "dst_dur": 57.685,
+   "dst_md5": "fa95e06e0aff5fcff732c203a4172352",
+   "at": "2026-10-06 12:35:53"
+  },
+  "bgm-story-6.wav": {
+   "src_md5": "0483e807ebd91a2df078b2e61b04dbdf",
+   "src_size": 11730988,
+   "src_dur": 66.50195,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-6.ogg",
+   "dst_size": 1102886,
+   "dst_dur": 66.508,
+   "dst_md5": "0ea0c903f79585b1e414dc7df94e1a68",
+   "at": "2026-10-06 12:35:54"
+  },
+  "bgm-story-7.wav": {
+   "src_md5": "a79a2e6416f7b8a6e7f7bb4284a2e624",
+   "src_size": 15394956,
+   "src_dur": 87.272744,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-7.ogg",
+   "dst_size": 1383716,
+   "dst_dur": 87.279,
+   "dst_md5": "0fc019180dcc2581f7bc574a75b52e32",
+   "at": "2026-10-06 12:35:55"
+  },
+  "bgm-story-8.wav": {
+   "src_md5": "77c802fb347d478b0c232164dde80f9a",
+   "src_size": 18866892,
+   "src_dur": 98.264833,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-8.ogg",
+   "dst_size": 1596056,
+   "dst_dur": 98.271,
+   "dst_md5": "993aeda69db45766634149f9137064ac",
+   "at": "2026-10-06 12:35:56"
+  },
+  "bgm-story-afterrain-soft.wav": {
+   "src_md5": "ed570ca4eeb2d38ea5ce1c481dd1d6e5",
+   "src_size": 13230144,
+   "src_dur": 75.000567,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-afterrain-soft.ogg",
+   "dst_size": 1261921,
+   "dst_dur": 75.007,
+   "dst_md5": "db6d7ec7fa35d7139c646a7f7f6d35b3",
+   "at": "2026-10-06 12:35:57"
+  },
+  "bgm-story-amagi-up.wav": {
+   "src_md5": "89fa615707392b93dee0bc634c6c945b",
+   "src_size": 10600376,
+   "src_dur": 60.092585,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-amagi-up.ogg",
+   "dst_size": 1027337,
+   "dst_dur": 60.099,
+   "dst_md5": "2bb6e0b7e22fe4cbdb036a12403cb3af",
+   "at": "2026-10-06 12:35:58"
+  },
+  "bgm-story-amahara-stage1.wav": {
+   "src_md5": "47fde3178f63ff33107440b5176ede9d",
+   "src_size": 17280044,
+   "src_dur": 90.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-amahara-stage1.ogg",
+   "dst_size": 1544007,
+   "dst_dur": 90.007,
+   "dst_md5": "212e3461258c0069adf3c1f36a4871b4",
+   "at": "2026-10-06 12:35:59"
+  },
+  "bgm-story-amahara-stage2.wav": {
+   "src_md5": "57534a382829a263e1fededfa5139605",
+   "src_size": 17602604,
+   "src_dur": 91.68,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-amahara-stage2.ogg",
+   "dst_size": 1548530,
+   "dst_dur": 91.686,
+   "dst_md5": "d6c06d389a026bd6ac56a3d1a1211ecd",
+   "at": "2026-10-06 12:36:00"
+  },
+  "bgm-story-amahara-stage3.wav": {
+   "src_md5": "2c9cdd2162e9c9db328a0c6599db73ac",
+   "src_size": 18795836,
+   "src_dur": 97.89475,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-amahara-stage3.ogg",
+   "dst_size": 1653599,
+   "dst_dur": 97.901,
+   "dst_md5": "244c40b319614d5481078b2865b8d2e8",
+   "at": "2026-10-06 12:36:02"
+  },
+  "bgm-story-antarctica-serious.wav": {
+   "src_md5": "be38bfc46b1b1fd1252dd4b159f56e07",
+   "src_size": 14222296,
+   "src_dur": 80.625011,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-antarctica-serious.ogg",
+   "dst_size": 1365608,
+   "dst_dur": 80.632,
+   "dst_md5": "673eda93377e0d692082504f58ea0854",
+   "at": "2026-10-06 12:36:03"
+  },
+  "bgm-story-antix-past.wav": {
+   "src_md5": "b0d9abb2ab8cf38b11e7218f633909ce",
+   "src_size": 17102668,
+   "src_dur": 96.953651,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-antix-past.ogg",
+   "dst_size": 1525931,
+   "dst_dur": 96.96,
+   "dst_md5": "9f370f904dfe25d9498dd03a967c2057",
+   "at": "2026-10-06 12:36:04"
+  },
+  "bgm-story-battle-16bit-sfc.wav": {
+   "src_md5": "f08ce198652513ca31c5fdd2acdfba13",
+   "src_size": 12170368,
+   "src_dur": 63.387104,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-battle-16bit-sfc.ogg",
+   "dst_size": 1015807,
+   "dst_dur": 63.394,
+   "dst_md5": "6dc37a3dd5425479f72966aad3b35bce",
+   "at": "2026-10-06 12:36:05"
+  },
+  "bgm-story-battle-16bit.wav": {
+   "src_md5": "a647c908362403649f2daa8f169d4d48",
+   "src_size": 12263272,
+   "src_dur": 63.870979,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-battle-16bit.ogg",
+   "dst_size": 1057616,
+   "dst_dur": 63.877,
+   "dst_md5": "025c33a82413e8cb94862be58eef8ebe",
+   "at": "2026-10-06 12:36:05"
+  },
+  "bgm-story-bismark-determination.wav": {
+   "src_md5": "d796928208c0625c8f39cfbb2f0fc4a2",
+   "src_size": 11025520,
+   "src_dur": 62.502698,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-bismark-determination.ogg",
+   "dst_size": 970200,
+   "dst_dur": 62.509,
+   "dst_md5": "97c91855ee9212b44b8810db0604717c",
+   "at": "2026-10-06 12:36:06"
+  },
+  "bgm-story-cccp-soft.wav": {
+   "src_md5": "e0bd3ee1f52a879f6732a59e5b876057",
+   "src_size": 23912776,
+   "src_dur": 124.545479,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-cccp-soft.ogg",
+   "dst_size": 2088822,
+   "dst_dur": 124.552,
+   "dst_md5": "1d54b0fa5b42d5d3a6fff97d5be40b5e",
+   "at": "2026-10-06 12:36:08"
+  },
+  "bgm-story-china-0226-pv.wav": {
+   "src_md5": "745c8784418a539cd4b7464ff189a824",
+   "src_size": 17203248,
+   "src_dur": 89.600021,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-china-0226-pv.ogg",
+   "dst_size": 1529920,
+   "dst_dur": 89.607,
+   "dst_md5": "3851a439950d8f487c0e0b0cf17087c4",
+   "at": "2026-10-06 12:36:09"
+  },
+  "bgm-story-china.wav": {
+   "src_md5": "6647ed1cd3e7d9064c849e01e03a6bed",
+   "src_size": 13230980,
+   "src_dur": 103.366688,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-china.ogg",
+   "dst_size": 1732998,
+   "dst_dur": 103.373,
+   "dst_md5": "fced449103e0deeebb89452a4660190d",
+   "at": "2026-10-06 12:36:10"
+  },
+  "bgm-story-chunjie2025-1.wav": {
+   "src_md5": "2d4b098a3b97b38a357fc7a39b24953c",
+   "src_size": 16486444,
+   "src_dur": 85.866667,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-chunjie2025-1.ogg",
+   "dst_size": 1446483,
+   "dst_dur": 85.873,
+   "dst_md5": "356b5a16a4fb5ead668b0510a01f217d",
+   "at": "2026-10-06 12:36:11"
+  },
+  "bgm-story-clemenceau-judgement.wav": {
+   "src_md5": "66ff993e4f82c6448fc2e81a37d22ac7",
+   "src_size": 9860836,
+   "src_dur": 55.900181,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-clemenceau-judgement.ogg",
+   "dst_size": 919319,
+   "dst_dur": 55.907,
+   "dst_md5": "b75b3c0861befba7b91aca9f26c8b6c1",
+   "at": "2026-10-06 12:36:11"
+  },
+  "bgm-story-commander-up.wav": {
+   "src_md5": "37b105e4005355e531621392c71d3669",
+   "src_size": 22068480,
+   "src_dur": 114.939771,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-commander-up.ogg",
+   "dst_size": 1807935,
+   "dst_dur": 114.946,
+   "dst_md5": "625469b08aa08d1949deb23944813b60",
+   "at": "2026-10-06 12:36:13"
+  },
+  "bgm-story-concert-delight.wav": {
+   "src_md5": "20d3e90e631bf0bc81af7ad425972212",
+   "src_size": 16998520,
+   "src_dur": 96.363243,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-concert-delight.ogg",
+   "dst_size": 1548708,
+   "dst_dur": 96.37,
+   "dst_md5": "0d11d667df25ede37cebe316992ee91e",
+   "at": "2026-10-06 12:36:14"
+  },
+  "bgm-story-dailyfuture-soft.wav": {
+   "src_md5": "7d82affbdefcb5a7ecf90efecdd540b7",
+   "src_size": 23240392,
+   "src_dur": 121.043479,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-dailyfuture-soft.ogg",
+   "dst_size": 2025577,
+   "dst_dur": 121.05,
+   "dst_md5": "a02de993bd71d9c10f6ee44a2e2e3cab",
+   "at": "2026-10-06 12:36:15"
+  },
+  "bgm-story-dailyfuture-upspeed.wav": {
+   "src_md5": "5621b6c522eebcd66626c398af0d3ba6",
+   "src_size": 27500352,
+   "src_dur": 155.897438,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-dailyfuture-upspeed.ogg",
+   "dst_size": 2633467,
+   "dst_dur": 155.904,
+   "dst_md5": "85fbbad03ff1aa5c7e2e765449ac4426",
+   "at": "2026-10-06 12:36:17"
+  },
+  "bgm-story-darkplan.wav": {
+   "src_md5": "3d87404684aafd4f957630d6e30f5a14",
+   "src_size": 12288044,
+   "src_dur": 64.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-darkplan.ogg",
+   "dst_size": 1054721,
+   "dst_dur": 64.007,
+   "dst_md5": "2eb6e584928c6aacfdcb6a40a07dcd6b",
+   "at": "2026-10-06 12:36:18"
+  },
+  "bgm-story-date-light.wav": {
+   "src_md5": "d3229f7eaa4960662cd13919338e9f18",
+   "src_size": 14745644,
+   "src_dur": 76.8,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-date-light.ogg",
+   "dst_size": 1366271,
+   "dst_dur": 76.806,
+   "dst_md5": "d7dcdb911d8636f87be383565f584266",
+   "at": "2026-10-06 12:36:19"
+  },
+  "bgm-story-dazy-style.wav": {
+   "src_md5": "1e78cf2addd90a3ecdd93dade549394c",
+   "src_size": 12460100,
+   "src_dur": 70.635238,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-dazy-style.ogg",
+   "dst_size": 1100656,
+   "dst_dur": 70.642,
+   "dst_md5": "b371701e22e0929509895dc54dd7a3d0",
+   "at": "2026-10-06 12:36:20"
+  },
+  "bgm-story-egypt-mystic.wav": {
+   "src_md5": "7a46e0447ca3adae48de6867d3082a19",
+   "src_size": 8160812,
+   "src_dur": 42.504,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-egypt-mystic.ogg",
+   "dst_size": 672795,
+   "dst_dur": 42.511,
+   "dst_md5": "002eb92aadf91cd8b154369b79c35061",
+   "at": "2026-10-06 12:36:20"
+  },
+  "bgm-story-enzecheng-theme.wav": {
+   "src_md5": "5c2de32368fe0776029035e79aeaa8d1",
+   "src_size": 22870636,
+   "src_dur": 119.117667,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-enzecheng-theme.ogg",
+   "dst_size": 2050882,
+   "dst_dur": 119.124,
+   "dst_md5": "1285de0ba2e721aad0d142620cb1275c",
+   "at": "2026-10-06 12:36:22"
+  },
+  "bgm-story-expo-lastday.wav": {
+   "src_md5": "aec40333d31af8f3cc793e1e82ad5b26",
+   "src_size": 16846244,
+   "src_dur": 95.5,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-expo-lastday.ogg",
+   "dst_size": 1537101,
+   "dst_dur": 95.507,
+   "dst_md5": "93b1c79401633c5a27baff4bf447f2ba",
+   "at": "2026-10-06 12:36:23"
+  },
+  "bgm-story-fantasyland-light.wav": {
+   "src_md5": "7b659995fc82d71a25bfbbd360bd0507",
+   "src_size": 12355236,
+   "src_dur": 70.040771,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-fantasyland-light.ogg",
+   "dst_size": 1250020,
+   "dst_dur": 70.047,
+   "dst_md5": "584702474f4db104e744285ca89d330c",
+   "at": "2026-10-06 12:36:24"
+  },
+  "bgm-story-fantasyland-summer.wav": {
+   "src_md5": "0820e669a534f499f79b9e56dc4c545a",
+   "src_size": 15611444,
+   "src_dur": 88.5,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-fantasyland-summer.ogg",
+   "dst_size": 1443580,
+   "dst_dur": 88.507,
+   "dst_md5": "3da7e478687e8a98061538935650def6",
+   "at": "2026-10-06 12:36:25"
+  },
+  "bgm-story-finalbattle-unity.wav": {
+   "src_md5": "72cac3e127af91c822d2d4e4ed359c82",
+   "src_size": 28691364,
+   "src_dur": 149.433958,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-finalbattle-unity.ogg",
+   "dst_size": 2359425,
+   "dst_dur": 149.44,
+   "dst_md5": "6ae62a0c12fbed9732528aa4270b667f",
+   "at": "2026-10-06 12:36:26"
+  },
+  "bgm-story-flowerdust-soft.wav": {
+   "src_md5": "e6cc953dcf3169f394bf87fa1125b8ed",
+   "src_size": 25602852,
+   "src_dur": 133.347958,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-flowerdust-soft.ogg",
+   "dst_size": 2268729,
+   "dst_dur": 133.354,
+   "dst_md5": "4338a31774ebef7b16be80c62e81ff3f",
+   "at": "2026-10-06 12:36:27"
+  },
+  "bgm-story-french.wav": {
+   "src_md5": "5e52901d8d41ad44859fae57db23922f",
+   "src_size": 9311024,
+   "src_dur": 105.566667,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-french.ogg",
+   "dst_size": 1711830,
+   "dst_dur": 105.573,
+   "dst_md5": "9f07656bb3c171cbca854f794539caf0",
+   "at": "2026-10-06 12:36:28"
+  },
+  "bgm-story-french1.wav": {
+   "src_md5": "1651712edc559e088ca9e15a578436a7",
+   "src_size": 24424364,
+   "src_dur": 138.459864,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-french1.ogg",
+   "dst_size": 2226798,
+   "dst_dur": 138.466,
+   "dst_md5": "4d51585f46778fca8e70af7bdf2a5d71",
+   "at": "2026-10-06 12:36:30"
+  },
+  "bgm-story-french2.wav": {
+   "src_md5": "4727950af32ab1d9bac5dca37147db42",
+   "src_size": 34737300,
+   "src_dur": 196.92322,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-french2.ogg",
+   "dst_size": 3252297,
+   "dst_dur": 196.93,
+   "dst_md5": "1dd709fefad44ce6d5f863e598f28317",
+   "at": "2026-10-06 12:36:32"
+  },
+  "bgm-story-game-rhythm.wav": {
+   "src_md5": "2f015f50ba6b2d0ad6234e55a7a933cb",
+   "src_size": 19869740,
+   "src_dur": 103.488,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-game-rhythm.ogg",
+   "dst_size": 1891883,
+   "dst_dur": 103.495,
+   "dst_md5": "9af257516dcc8cfa85846549665c6700",
+   "at": "2026-10-06 12:36:33"
+  },
+  "bgm-story-ghostnight-fascinsting.wav": {
+   "src_md5": "d4f9f2e295a0832aea904a747bedf65d",
+   "src_size": 12041264,
+   "src_dur": 68.260884,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-ghostnight-fascinsting.ogg",
+   "dst_size": 1148752,
+   "dst_dur": 68.267,
+   "dst_md5": "dd85f946340c3b0df3ae0da1ec67b7e7",
+   "at": "2026-10-06 12:36:34"
+  },
+  "bgm-story-hospital-light.wav": {
+   "src_md5": "8dddd6733cb95c3e8352f0673cf2c230",
+   "src_size": 8659244,
+   "src_dur": 45.1,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-hospital-light.ogg",
+   "dst_size": 799907,
+   "dst_dur": 45.106,
+   "dst_md5": "b4f23a4e29b3cb90ac5575bde24b82ca",
+   "at": "2026-10-06 12:36:35"
+  },
+  "bgm-story-hrr-pv.wav": {
+   "src_md5": "b605f8aad995a3837cf3d323bd97f749",
+   "src_size": 9732080,
+   "src_dur": 50.687688,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-hrr-pv.ogg",
+   "dst_size": 872674,
+   "dst_dur": 50.694,
+   "dst_md5": "833a69cce4755d10fffed0ad89411c82",
+   "at": "2026-10-06 12:36:35"
+  },
+  "bgm-story-hrr.wav": {
+   "src_md5": "375f6367ee5d8006f785c1ec9caa0941",
+   "src_size": 17408044,
+   "src_dur": 90.666667,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-hrr.ogg",
+   "dst_size": 1521621,
+   "dst_dur": 90.673,
+   "dst_md5": "ce7c2c2a92e7bd32cfdff4a32920a5f1",
+   "at": "2026-10-06 12:36:36"
+  },
+  "bgm-story-ironblood-light.wav": {
+   "src_md5": "80307207678125197b8ed2dc6114897d",
+   "src_size": 23636324,
+   "src_dur": 123.105625,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-ironblood-light.ogg",
+   "dst_size": 2066366,
+   "dst_dur": 123.112,
+   "dst_md5": "17e425dbff8f49e369656797a338e7c2",
+   "at": "2026-10-06 12:36:38"
+  },
+  "bgm-story-ironblood-strong.wav": {
+   "src_md5": "789cb5218e28593231158e91cba700fa",
+   "src_size": 25899712,
+   "src_dur": 146.823515,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-ironblood-strong.ogg",
+   "dst_size": 2345276,
+   "dst_dur": 146.83,
+   "dst_md5": "f845a81f1a8413c4093d698223d60eb0",
+   "at": "2026-10-06 12:36:39"
+  },
+  "bgm-story-island-soft.wav": {
+   "src_md5": "7d8860141147a5d880e25cf91e1d1946",
+   "src_size": 20357136,
+   "src_dur": 115.403016,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-island-soft.ogg",
+   "dst_size": 1938376,
+   "dst_dur": 115.41,
+   "dst_md5": "b5e6a340b0f790389e6a51a99cc1a72e",
+   "at": "2026-10-06 12:36:40"
+  },
+  "bgm-story-italy.wav": {
+   "src_md5": "54364ee557666f0b30dd5f627b22efc1",
+   "src_size": 10407644,
+   "src_dur": 118.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-italy.ogg",
+   "dst_size": 2002756,
+   "dst_dur": 118.007,
+   "dst_md5": "e23d97be073abacd1d31a14409161acc",
+   "at": "2026-10-06 12:36:42"
+  },
+  "bgm-story-kezhan-china.wav": {
+   "src_md5": "31f66ec9cb1941ebfa2e802f673ed7be",
+   "src_size": 15814484,
+   "src_dur": 82.366875,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-kezhan-china.ogg",
+   "dst_size": 1360342,
+   "dst_dur": 82.373,
+   "dst_md5": "84cd4a19d9a30b5ef12f5fbb4c0c2037",
+   "at": "2026-10-06 12:36:43"
+  },
+  "bgm-story-lightheven-up.wav": {
+   "src_md5": "c89f2dc1226877cde9fa8851b1b0341b",
+   "src_size": 10973496,
+   "src_dur": 62.207778,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-lightheven-up.ogg",
+   "dst_size": 924862,
+   "dst_dur": 62.214,
+   "dst_md5": "21cdafde466bc8e7c68c149ffb3091a8",
+   "at": "2026-10-06 12:36:44"
+  },
+  "bgm-story-lion-up.wav": {
+   "src_md5": "7a4dedabc5b7544a93c4be665c03bf0f",
+   "src_size": 9683244,
+   "src_dur": 50.433333,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-lion-up.ogg",
+   "dst_size": 796625,
+   "dst_dur": 50.44,
+   "dst_md5": "ff59c0a95f19893622e8535942551cdd",
+   "at": "2026-10-06 12:36:44"
+  },
+  "bgm-story-marcopolo-dream.wav": {
+   "src_md5": "58b92104c55bd0bdae80588810217768",
+   "src_size": 17363524,
+   "src_dur": 90.434792,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-marcopolo-dream.ogg",
+   "dst_size": 1366564,
+   "dst_dur": 90.441,
+   "dst_md5": "12f882330c24c1d1dd5e286a6d42114b",
+   "at": "2026-10-06 12:36:46"
+  },
+  "bgm-story-masazhusai.wav": {
+   "src_md5": "3cda5896b195fb5285660a97cd65ff18",
+   "src_size": 15758444,
+   "src_dur": 178.666667,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-masazhusai.ogg",
+   "dst_size": 2803087,
+   "dst_dur": 178.673,
+   "dst_md5": "04af185d67bbd9aa14417f4ebc619cb6",
+   "at": "2026-10-06 12:36:47"
+  },
+  "bgm-story-mayrain.wav": {
+   "src_md5": "a553ad2577fcdd78297a45d8ad2bae48",
+   "src_size": 13406448,
+   "src_dur": 76.000023,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-mayrain.ogg",
+   "dst_size": 1260873,
+   "dst_dur": 76.007,
+   "dst_md5": "b79ada710c146ef3503d471537f7e66d",
+   "at": "2026-10-06 12:36:48"
+  },
+  "bgm-story-maystorm.wav": {
+   "src_md5": "3a022d52562c2c11efac0874e2354aaf",
+   "src_size": 10113648,
+   "src_dur": 57.333356,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-maystorm.ogg",
+   "dst_size": 922371,
+   "dst_dur": 57.34,
+   "dst_md5": "54e3d9d143177e67da0c493b00124f49",
+   "at": "2026-10-06 12:36:49"
+  },
+  "bgm-story-memory-grief.wav": {
+   "src_md5": "4c04391a9d81cb48a002904f8e4f3b48",
+   "src_size": 19200044,
+   "src_dur": 100.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-memory-grief.ogg",
+   "dst_size": 1870991,
+   "dst_dur": 100.007,
+   "dst_md5": "a7ed57939e17021f772e529ff187b7fd",
+   "at": "2026-10-06 12:36:50"
+  },
+  "bgm-story-midgard.wav": {
+   "src_md5": "49d603e0fa4a7b0fd699c2de2d493508",
+   "src_size": 18432044,
+   "src_dur": 96.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-midgard.ogg",
+   "dst_size": 1477205,
+   "dst_dur": 96.007,
+   "dst_md5": "43de05ae2bfe7bf90008bd4fe4f00fa0",
+   "at": "2026-10-06 12:36:52"
+  },
+  "bgm-story-mirrorheart-mystic.wav": {
+   "src_md5": "5ae65a400b2c74f46c6074fda9017e1d",
+   "src_size": 28756576,
+   "src_dur": 163.018889,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-mirrorheart-mystic.ogg",
+   "dst_size": 2789126,
+   "dst_dur": 163.025,
+   "dst_md5": "9b9003ba611666a9530131032ec56c11",
+   "at": "2026-10-06 12:36:53"
+  },
+  "bgm-story-mmorpg.wav": {
+   "src_md5": "da93c6a24997facb8778fe9b5e3dd684",
+   "src_size": 18169284,
+   "src_dur": 103.000227,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-mmorpg.ogg",
+   "dst_size": 1665868,
+   "dst_dur": 103.007,
+   "dst_md5": "f961ec6e54c57536e90349101fc861bd",
+   "at": "2026-10-06 12:36:55"
+  },
+  "bgm-story-musicanniversary-gorgeous.wav": {
+   "src_md5": "20d3e90e631bf0bc81af7ad425972212",
+   "src_size": 16998520,
+   "src_dur": 96.363243,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-musicanniversary-gorgeous.ogg",
+   "dst_size": 1548708,
+   "dst_dur": 96.37,
+   "dst_md5": "9ddc092aa9acfca1026a5c332d40226e",
+   "at": "2026-10-06 12:36:56"
+  },
+  "bgm-story-nailuo-theme.wav": {
+   "src_md5": "378e19a35a6cd1115a2b916875e32d13",
+   "src_size": 24411532,
+   "src_dur": 138.38712,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-nailuo-theme.ogg",
+   "dst_size": 2202806,
+   "dst_dur": 138.394,
+   "dst_md5": "58b262f30285453c991b81e01b4b0922",
+   "at": "2026-10-06 12:36:58"
+  },
+  "bgm-story-nepu1.wav": {
+   "src_md5": "4f9a0932c21ebd40e3a7faafc5076b2e",
+   "src_size": 53740092,
+   "src_dur": 279.896083,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-nepu1.ogg",
+   "dst_size": 5075557,
+   "dst_dur": 279.903,
+   "dst_md5": "5807124b368161f27ff35636e37501e7",
+   "at": "2026-10-06 12:37:01"
+  },
+  "bgm-story-nepu2.wav": {
+   "src_md5": "fdda295bd3aaca2b467133e67c67021d",
+   "src_size": 14996688,
+   "src_dur": 85.014989,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-nepu2.ogg",
+   "dst_size": 1495372,
+   "dst_dur": 85.022,
+   "dst_md5": "0e26394b2e57c6afaed25d71b6e60c61",
+   "at": "2026-10-06 12:37:02"
+  },
+  "bgm-story-newsakura.wav": {
+   "src_md5": "88b601aca6dc1cc8c654820f33685e41",
+   "src_size": 21657648,
+   "src_dur": 112.800021,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-newsakura.ogg",
+   "dst_size": 1878987,
+   "dst_dur": 112.807,
+   "dst_md5": "d6d41c7aa1a4d3c58b73dbb0ec61c9f6",
+   "at": "2026-10-06 12:37:03"
+  },
+  "bgm-story-niceship-soft.wav": {
+   "src_md5": "5481c07d99f4cb0336f29a75d595ccdf",
+   "src_size": 11194552,
+   "src_dur": 63.46093,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-niceship-soft.ogg",
+   "dst_size": 1043799,
+   "dst_dur": 63.467,
+   "dst_md5": "22f7a7098f700d095e178bc6911c6520",
+   "at": "2026-10-06 12:37:04"
+  },
+  "bgm-story-ninjacity.wav": {
+   "src_md5": "cbd9e1bceedab346a0fdedefe7f98dee",
+   "src_size": 18873644,
+   "src_dur": 98.3,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-ninjacity.ogg",
+   "dst_size": 1642048,
+   "dst_dur": 98.306,
+   "dst_md5": "7bf06003308b18bda5cf446fd4761b04",
+   "at": "2026-10-06 12:37:06"
+  },
+  "bgm-story-nonightcity.wav": {
+   "src_md5": "9709c2edb162b52db589ddcaf96b76d7",
+   "src_size": 15049168,
+   "src_dur": 85.312494,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-nonightcity.ogg",
+   "dst_size": 1357332,
+   "dst_dur": 85.319,
+   "dst_md5": "d94ca5ce94dc7d2ffa8606a13e14217a",
+   "at": "2026-10-06 12:37:07"
+  },
+  "bgm-story-oldcastle-carnival.wav": {
+   "src_md5": "46e945ce510cdd62478d394cfdc2f7b9",
+   "src_size": 10083888,
+   "src_dur": 57.164649,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-oldcastle-carnival.ogg",
+   "dst_size": 917410,
+   "dst_dur": 57.171,
+   "dst_md5": "529a8a5e8ee46c8c23e05578b41b5ad0",
+   "at": "2026-10-06 12:37:07"
+  },
+  "bgm-story-richang-1.wav": {
+   "src_md5": "2e44bf7d9f8611bff3020b2cba1f9241",
+   "src_size": 17554328,
+   "src_dur": 91.428563,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-1.ogg",
+   "dst_size": 1532082,
+   "dst_dur": 91.435,
+   "dst_md5": "344a2da8c8afcf930e127903e73dd21a",
+   "at": "2026-10-06 12:37:09"
+  },
+  "bgm-story-richang-10.wav": {
+   "src_md5": "f334ce11451fa1cd2184bce58097b8d3",
+   "src_size": 14820760,
+   "src_dur": 77.191229,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-10.ogg",
+   "dst_size": 1312270,
+   "dst_dur": 77.198,
+   "dst_md5": "74cd0442fde2a091f1246f6cb15e7613",
+   "at": "2026-10-06 12:37:10"
+  },
+  "bgm-story-richang-11.wav": {
+   "src_md5": "904abb02ba738a1b46a4a76f94084b50",
+   "src_size": 11289648,
+   "src_dur": 64.000023,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-11.ogg",
+   "dst_size": 1154122,
+   "dst_dur": 64.007,
+   "dst_md5": "ee6716a797bb80f83a243fd4cfe38df2",
+   "at": "2026-10-06 12:37:11"
+  },
+  "bgm-story-richang-12.wav": {
+   "src_md5": "2d74bcb81fbd3ff2ce69387be0b9edec",
+   "src_size": 17817644,
+   "src_dur": 92.8,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-12.ogg",
+   "dst_size": 1620486,
+   "dst_dur": 92.806,
+   "dst_md5": "963e36d2dba65e5aade60e08faadcf10",
+   "at": "2026-10-06 12:37:12"
+  },
+  "bgm-story-richang-13.wav": {
+   "src_md5": "22e8631db7ff8f775a616dcfb2747c1e",
+   "src_size": 13581516,
+   "src_dur": 70.736833,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-13.ogg",
+   "dst_size": 1185801,
+   "dst_dur": 70.743,
+   "dst_md5": "cec87f4b0adbbb25f7cdee79d0998f6e",
+   "at": "2026-10-06 12:37:13"
+  },
+  "bgm-story-richang-2.wav": {
+   "src_md5": "c8b1651c781a68dd9d954726fe6690a0",
+   "src_size": 17901624,
+   "src_dur": 93.237396,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-2.ogg",
+   "dst_size": 1584030,
+   "dst_dur": 93.244,
+   "dst_md5": "b298964a6d4e7972c0b2ac07cc3dd001",
+   "at": "2026-10-06 12:37:14"
+  },
+  "bgm-story-richang-3.wav": {
+   "src_md5": "f569be3c4375bd0fae2c65ac2ffebde2",
+   "src_size": 24816704,
+   "src_dur": 129.253438,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-3.ogg",
+   "dst_size": 2356485,
+   "dst_dur": 129.26,
+   "dst_md5": "19e2aa41a814d54a6d96592e43fdfa89",
+   "at": "2026-10-06 12:37:16"
+  },
+  "bgm-story-richang-4.wav": {
+   "src_md5": "2af328a9519645dc969c9a1d3e17ce97",
+   "src_size": 12996964,
+   "src_dur": 67.692292,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-4.ogg",
+   "dst_size": 1250408,
+   "dst_dur": 67.699,
+   "dst_md5": "2cf75449574302c9f6654071b7f986d2",
+   "at": "2026-10-06 12:37:17"
+  },
+  "bgm-story-richang-5.wav": {
+   "src_md5": "30fabeb9d2bb379bea9f1f26f54c2572",
+   "src_size": 13165756,
+   "src_dur": 68.571417,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-5.ogg",
+   "dst_size": 1194810,
+   "dst_dur": 68.578,
+   "dst_md5": "19c161519a26c3e4a0c0a2eb822e3dfa",
+   "at": "2026-10-06 12:37:18"
+  },
+  "bgm-story-richang-6.wav": {
+   "src_md5": "1a0b625f635dee40a18aa3a8e2893d2f",
+   "src_size": 24152316,
+   "src_dur": 125.793083,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-6.ogg",
+   "dst_size": 2301065,
+   "dst_dur": 125.8,
+   "dst_md5": "b7f1c789bcb83435ec7a643c3ceb6d3b",
+   "at": "2026-10-06 12:37:20"
+  },
+  "bgm-story-richang-7.wav": {
+   "src_md5": "bfe6bda1ac4a26400c9801565c681296",
+   "src_size": 13292348,
+   "src_dur": 69.23075,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-7.ogg",
+   "dst_size": 1260116,
+   "dst_dur": 69.237,
+   "dst_md5": "19e28977b96635ee71ee4b44b47aefa8",
+   "at": "2026-10-06 12:37:21"
+  },
+  "bgm-story-richang-8.wav": {
+   "src_md5": "b03eee036801249b603cd89ebedce561",
+   "src_size": 13435956,
+   "src_dur": 69.978708,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-8.ogg",
+   "dst_size": 1203981,
+   "dst_dur": 69.985,
+   "dst_md5": "1058a9d10ad62897937c7ee2285dc9ee",
+   "at": "2026-10-06 12:37:22"
+  },
+  "bgm-story-richang-9.wav": {
+   "src_md5": "11195934e51922457d3eabb422431dbb",
+   "src_size": 18432044,
+   "src_dur": 96.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-9.ogg",
+   "dst_size": 1687471,
+   "dst_dur": 96.007,
+   "dst_md5": "7976db013e549ef55f03fb72c80f9e0d",
+   "at": "2026-10-06 12:37:23"
+  },
+  "bgm-story-richang-fashion-pv.wav": {
+   "src_md5": "bef4abd9a83355872fc099b37da7b288",
+   "src_size": 16979244,
+   "src_dur": 88.433333,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-fashion-pv.ogg",
+   "dst_size": 1413298,
+   "dst_dur": 88.44,
+   "dst_md5": "6bc0a53a70dcf05aa6e5cb8cf325fc74",
+   "at": "2026-10-06 12:37:24"
+  },
+  "bgm-story-richang-flexible.wav": {
+   "src_md5": "8b72beee60184dcdf23696b01706705f",
+   "src_size": 6646196,
+   "src_dur": 34.615375,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-flexible.ogg",
+   "dst_size": 624491,
+   "dst_dur": 34.622,
+   "dst_md5": "e876dfb412ac1dd37916b0253194d4ea",
+   "at": "2026-10-06 12:37:25"
+  },
+  "bgm-story-richang-light.wav": {
+   "src_md5": "0df90d63b96da8cdee9c209062b2dda8",
+   "src_size": 26571456,
+   "src_dur": 138.392771,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-light.ogg",
+   "dst_size": 2558981,
+   "dst_dur": 138.399,
+   "dst_md5": "57ecde67b73306633add5d525bd54a50",
+   "at": "2026-10-06 12:37:27"
+  },
+  "bgm-story-richang-partynight.wav": {
+   "src_md5": "8d09a2f2131791749953271b3d131e18",
+   "src_size": 10822796,
+   "src_dur": 56.3685,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-partynight.ogg",
+   "dst_size": 867363,
+   "dst_dur": 56.375,
+   "dst_md5": "34b9da60fd5ef34951a731249569552d",
+   "at": "2026-10-06 12:37:28"
+  },
+  "bgm-story-richang-quiet.wav": {
+   "src_md5": "a362c2ef8a0e146705a7eb587b92685a",
+   "src_size": 19748612,
+   "src_dur": 102.857125,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-quiet.ogg",
+   "dst_size": 1804795,
+   "dst_dur": 102.864,
+   "dst_md5": "9a95a2ec8e9f0661c0a9666446b4d022",
+   "at": "2026-10-06 12:37:29"
+  },
+  "bgm-story-richang-refreshing.wav": {
+   "src_md5": "e9f0f3a91f45ff848d74dc810a8511f0",
+   "src_size": 13305648,
+   "src_dur": 75.428594,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-refreshing.ogg",
+   "dst_size": 1331385,
+   "dst_dur": 75.435,
+   "dst_md5": "ac3e0d5a364a2c3e724ebd742a5faa56",
+   "at": "2026-10-06 12:37:30"
+  },
+  "bgm-story-richang-relax.wav": {
+   "src_md5": "995a67d4d3af87c60913a1cfbbe76d06",
+   "src_size": 13422816,
+   "src_dur": 69.910271,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-relax.ogg",
+   "dst_size": 1138830,
+   "dst_dur": 69.917,
+   "dst_md5": "221bf23dc19d2e212d59799db1866dd8",
+   "at": "2026-10-06 12:37:31"
+  },
+  "bgm-story-richang-rosy-short.wav": {
+   "src_md5": "2d465efc88d5a8cfb5a1fc5328e74d9b",
+   "src_size": 9382732,
+   "src_dur": 53.189841,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-rosy-short.ogg",
+   "dst_size": 863339,
+   "dst_dur": 53.196,
+   "dst_md5": "e4987b46a5adb31fbbef1c6b432ce63f",
+   "at": "2026-10-06 12:37:32"
+  },
+  "bgm-story-richang-softlight.wav": {
+   "src_md5": "1269748e4dc5d6783bc2f31431c14f28",
+   "src_size": 11372848,
+   "src_dur": 59.233354,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-softlight.ogg",
+   "dst_size": 966189,
+   "dst_dur": 59.24,
+   "dst_md5": "aed09e963a30ca32a4d79a954f7dee03",
+   "at": "2026-10-06 12:37:33"
+  },
+  "bgm-story-richang-sooth.wav": {
+   "src_md5": "f9c4c933e5ef7f1310c94ca3986c02c4",
+   "src_size": 12965304,
+   "src_dur": 67.527396,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-sooth.ogg",
+   "dst_size": 1133646,
+   "dst_dur": 67.534,
+   "dst_md5": "69f0b13b6af3468c91c9c8b42728d43b",
+   "at": "2026-10-06 12:37:34"
+  },
+  "bgm-story-richang-wavelight.wav": {
+   "src_md5": "cbde45176f2b6de04b31bf4c94006767",
+   "src_size": 10092516,
+   "src_dur": 52.564958,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-wavelight.ogg",
+   "dst_size": 893751,
+   "dst_dur": 52.571,
+   "dst_md5": "ea732342f6889d9b61837833afff9309",
+   "at": "2026-10-06 12:37:34"
+  },
+  "bgm-story-richang-westdaily.wav": {
+   "src_md5": "0e5e00373898cbcebf22b92c65bfaa9b",
+   "src_size": 17280044,
+   "src_dur": 90.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang-westdaily.ogg",
+   "dst_size": 1568066,
+   "dst_dur": 90.007,
+   "dst_md5": "5b01f042c33c1e7ab60192c5cb45459a",
+   "at": "2026-10-06 12:37:36"
+  },
+  "bgm-story-richang.wav": {
+   "src_md5": "1140cd006c358cdb487dede10baa3915",
+   "src_size": 16128048,
+   "src_dur": 91.428594,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-richang.ogg",
+   "dst_size": 1562489,
+   "dst_dur": 91.435,
+   "dst_md5": "b060d51d9739c95020bf75f86ebadf0d",
+   "at": "2026-10-06 12:37:37"
+  },
+  "bgm-story-roma-inside.wav": {
+   "src_md5": "f1c73468e2b993ec759ee0f4dbc6f4f8",
+   "src_size": 20881968,
+   "src_dur": 118.378254,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-roma-inside.ogg",
+   "dst_size": 1843751,
+   "dst_dur": 118.385,
+   "dst_md5": "ede55722c36e5b41290bfc25a8c34c7d",
+   "at": "2026-10-06 12:37:38"
+  },
+  "bgm-story-roma-outside.wav": {
+   "src_md5": "5f4113ec45e9167ca4521ed54836f952",
+   "src_size": 20842360,
+   "src_dur": 118.153719,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-roma-outside.ogg",
+   "dst_size": 1935410,
+   "dst_dur": 118.16,
+   "dst_md5": "84a095030725778e62594877c34f4b9f",
+   "at": "2026-10-06 12:37:39"
+  },
+  "bgm-story-room-agir.wav": {
+   "src_md5": "abb0dc4d35d86701de9a0d7ef8b47b57",
+   "src_size": 17280048,
+   "src_dur": 90.000021,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-room-agir.ogg",
+   "dst_size": 1611016,
+   "dst_dur": 90.007,
+   "dst_md5": "eb6489a5e3a1abdc93586589ac8f6e40",
+   "at": "2026-10-06 12:37:40"
+  },
+  "bgm-story-room-anchorage.wav": {
+   "src_md5": "79b8af4fc78f16c75101d9d586cb64ac",
+   "src_size": 32927888,
+   "src_dur": 186.665782,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-room-anchorage.ogg",
+   "dst_size": 3178470,
+   "dst_dur": 186.672,
+   "dst_md5": "6f5a0a46ffe7659705e00bc45381a3e5",
+   "at": "2026-10-06 12:37:43"
+  },
+  "bgm-story-room-bar.wav": {
+   "src_md5": "3a5192fcc1b01af0a233a5d674f8c7e1",
+   "src_size": 20526592,
+   "src_dur": 116.363651,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-room-bar.ogg",
+   "dst_size": 2092911,
+   "dst_dur": 116.37,
+   "dst_md5": "ff4e11d2278417d67e7af9d7a3fb8172",
+   "at": "2026-10-06 12:37:44"
+  },
+  "bgm-story-room-dance-1.wav": {
+   "src_md5": "1a454c6e4bed237bcf3948a7622b9ac9",
+   "src_size": 6981864,
+   "src_dur": 36.363646,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-room-dance-1.ogg",
+   "dst_size": 587715,
+   "dst_dur": 36.37,
+   "dst_md5": "b8fef896f860bc3065abd9f5d1cb79ee",
+   "at": "2026-10-06 12:37:45"
+  },
+  "bgm-story-room-dance-2.wav": {
+   "src_md5": "83aa36c2aba06d5413bc5625c1796dc3",
+   "src_size": 9735260,
+   "src_dur": 50.70425,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-room-dance-2.ogg",
+   "dst_size": 860770,
+   "dst_dur": 50.711,
+   "dst_md5": "aed71b966a99777cbff5aa78bbdda0a4",
+   "at": "2026-10-06 12:37:46"
+  },
+  "bgm-story-room-dance-3.wav": {
+   "src_md5": "9eae5a81d4ba270a5b56c2a617dbd91f",
+   "src_size": 9924968,
+   "src_dur": 51.692313,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-room-dance-3.ogg",
+   "dst_size": 917674,
+   "dst_dur": 51.699,
+   "dst_md5": "60899dd9f23ffad17320f6e8d50f1639",
+   "at": "2026-10-06 12:37:46"
+  },
+  "bgm-story-room-newjersey.wav": {
+   "src_md5": "b3093e2b49fa01adc16ce6ed2ecb0a4e",
+   "src_size": 30799480,
+   "src_dur": 174.599977,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-room-newjersey.ogg",
+   "dst_size": 2917318,
+   "dst_dur": 174.606,
+   "dst_md5": "ef1972d8a7a2ce2e24893d384e91904c",
+   "at": "2026-10-06 12:37:49"
+  },
+  "bgm-story-room-noshiro.wav": {
+   "src_md5": "26482f8686f268a829a3f103dc74238a",
+   "src_size": 16357128,
+   "src_dur": 92.727234,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-room-noshiro.ogg",
+   "dst_size": 1692209,
+   "dst_dur": 92.734,
+   "dst_md5": "e1c0e7257962be6a4a17b89ae16c670a",
+   "at": "2026-10-06 12:37:50"
+  },
+  "bgm-story-room-sirius.wav": {
+   "src_md5": "e0afcc8317c86ca6a4e0513536ecefe9",
+   "src_size": 16145144,
+   "src_dur": 91.52551,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-room-sirius.ogg",
+   "dst_size": 1651169,
+   "dst_dur": 91.532,
+   "dst_md5": "49e1fbcd49adba5b5cfcb7e2d3c36d67",
+   "at": "2026-10-06 12:37:51"
+  },
+  "bgm-story-room-taiho.wav": {
+   "src_md5": "7ae2d118198eeef36ee8a49cc97c27c5",
+   "src_size": 17184044,
+   "src_dur": 89.5,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-room-taiho.ogg",
+   "dst_size": 1568007,
+   "dst_dur": 89.507,
+   "dst_md5": "c980eeb19d62d27694101a6b2c3d2681",
+   "at": "2026-10-06 12:37:52"
+  },
+  "bgm-story-royalnavy-serious.wav": {
+   "src_md5": "24526293ce921d97e4599d9d54117958",
+   "src_size": 14661864,
+   "src_dur": 76.363646,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-royalnavy-serious.ogg",
+   "dst_size": 1203414,
+   "dst_dur": 76.37,
+   "dst_md5": "ae0e7e709d3e85080429eb35c01b2a2a",
+   "at": "2026-10-06 12:37:53"
+  },
+  "bgm-story-shenguang-holy.wav": {
+   "src_md5": "54138c30dce6a0461e503b355cf71fd6",
+   "src_size": 18432048,
+   "src_dur": 96.000021,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-shenguang-holy.ogg",
+   "dst_size": 1829494,
+   "dst_dur": 96.007,
+   "dst_md5": "d081539cf46470936e9740b6bd158d45",
+   "at": "2026-10-06 12:37:54"
+  },
+  "bgm-story-spycity-fashion.wav": {
+   "src_md5": "ba49d523bb1476a4a7611aedb2375310",
+   "src_size": 14412844,
+   "src_dur": 75.066667,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-spycity-fashion.ogg",
+   "dst_size": 1318459,
+   "dst_dur": 75.073,
+   "dst_md5": "cb607c340f5a40e70f690ce7087b4b5c",
+   "at": "2026-10-06 12:37:55"
+  },
+  "bgm-story-startravel.wav": {
+   "src_md5": "2bf1cd0953fcae2801370c7038ca2ee1",
+   "src_size": 16085736,
+   "src_dur": 91.18873,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-startravel.ogg",
+   "dst_size": 1493495,
+   "dst_dur": 91.195,
+   "dst_md5": "2904e421688f73bff0023c6074d4823d",
+   "at": "2026-10-06 12:37:56"
+  },
+  "bgm-story-temepest-1.wav": {
+   "src_md5": "eb1af85b75f3554ee231e60ab96af340",
+   "src_size": 9466524,
+   "src_dur": 53.664853,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-temepest-1.ogg",
+   "dst_size": 821440,
+   "dst_dur": 53.671,
+   "dst_md5": "146be6d069f582c50359026fc87117b4",
+   "at": "2026-10-06 12:37:57"
+  },
+  "bgm-story-temepest-2.wav": {
+   "src_md5": "303c5a4234b63cc12d788acc3db9bd92",
+   "src_size": 17280044,
+   "src_dur": 90.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-temepest-2.ogg",
+   "dst_size": 1455055,
+   "dst_dur": 90.007,
+   "dst_md5": "d3904e35cb03116f28164a433bbe2e65",
+   "at": "2026-10-06 12:37:58"
+  },
+  "bgm-story-tempest-freedom.wav": {
+   "src_md5": "78c7b837d2babd7daefd079d99b6a5c3",
+   "src_size": 9937852,
+   "src_dur": 51.759417,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-tempest-freedom.ogg",
+   "dst_size": 861754,
+   "dst_dur": 51.766,
+   "dst_md5": "89fb2832ecfef4069810f35f499dd67c",
+   "at": "2026-10-06 12:37:59"
+  },
+  "bgm-story-tempest-light.wav": {
+   "src_md5": "8206bfcae419c8963f3889baef76b074",
+   "src_size": 12227688,
+   "src_dur": 69.31771,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-tempest-light.ogg",
+   "dst_size": 1082443,
+   "dst_dur": 69.324,
+   "dst_md5": "25a93a80042ae5ebf1db8de1c570c0c3",
+   "at": "2026-10-06 12:38:00"
+  },
+  "bgm-story-tempest-marching.wav": {
+   "src_md5": "fed1139d913aeeb534bc8745c31750e3",
+   "src_size": 10159308,
+   "src_dur": 57.5922,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-tempest-marching.ogg",
+   "dst_size": 900799,
+   "dst_dur": 57.599,
+   "dst_md5": "e2360c9af1ca13f995551d1383c51301",
+   "at": "2026-10-06 12:38:01"
+  },
+  "bgm-story-thehierophantv.wav": {
+   "src_md5": "4c6af60fcc71681c4ec46c823bc75a3d",
+   "src_size": 17280044,
+   "src_dur": 90.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-thehierophantv.ogg",
+   "dst_size": 1503301,
+   "dst_dur": 90.007,
+   "dst_md5": "58689eb00def4ec823e101fe9a258d06",
+   "at": "2026-10-06 12:38:02"
+  },
+  "bgm-story-theme-sardinia.wav": {
+   "src_md5": "fc444e6bfc63b44cd697d544ffb09a77",
+   "src_size": 24940252,
+   "src_dur": 129.896917,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-theme-sardinia.ogg",
+   "dst_size": 2291928,
+   "dst_dur": 129.903,
+   "dst_md5": "bf10c47aa65afc24a9d3dd85a37f5dd0",
+   "at": "2026-10-06 12:38:04"
+  },
+  "bgm-story-tiancheng.wav": {
+   "src_md5": "c18bc1321096ed4b90f52418674c2361",
+   "src_size": 41277644,
+   "src_dur": 234.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-tiancheng.ogg",
+   "dst_size": 4015137,
+   "dst_dur": 234.006,
+   "dst_md5": "347880505b71797ed82e4451866c3133",
+   "at": "2026-10-06 12:38:06"
+  },
+  "bgm-story-tulipa-pv.wav": {
+   "src_md5": "0fa09dd52b5f9a6fb2f385e1661e11fa",
+   "src_size": 15987248,
+   "src_dur": 83.266688,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-tulipa-pv.ogg",
+   "dst_size": 1397992,
+   "dst_dur": 83.273,
+   "dst_md5": "611a93ae473ff6f8b9971abc018676c6",
+   "at": "2026-10-06 12:38:07"
+  },
+  "bgm-story-tulipa.wav": {
+   "src_md5": "9ca3b47199435ca947a12ad87230a0b7",
+   "src_size": 17510448,
+   "src_dur": 91.200021,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-tulipa.ogg",
+   "dst_size": 1708128,
+   "dst_dur": 91.207,
+   "dst_md5": "694889e6c730684f9f4c53bcacea87a9",
+   "at": "2026-10-06 12:38:09"
+  },
+  "bgm-story-unzen-heart.wav": {
+   "src_md5": "553c2623796c1943a5b14064d5b45ad6",
+   "src_size": 21582392,
+   "src_dur": 122.348912,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-unzen-heart.ogg",
+   "dst_size": 2007826,
+   "dst_dur": 122.355,
+   "dst_md5": "a8b1c990eeb78be526c7b40672b09404",
+   "at": "2026-10-06 12:38:10"
+  },
+  "bgm-story-unzen.wav": {
+   "src_md5": "51a5f18da906e969c65de54ab860f771",
+   "src_size": 10532436,
+   "src_dur": 59.707438,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-unzen.ogg",
+   "dst_size": 932408,
+   "dst_dur": 59.714,
+   "dst_md5": "be149f47d558b48169bb9aaf3a17c4f5",
+   "at": "2026-10-06 12:38:11"
+  },
+  "bgm-story-uta.wav": {
+   "src_md5": "b80b4037cb1475ee475e1538acb4a8a7",
+   "src_size": 39388988,
+   "src_dur": 223.293333,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-uta.ogg",
+   "dst_size": 3858888,
+   "dst_dur": 223.3,
+   "dst_md5": "ed70c64dd79563c2483d15d9d381d2bc",
+   "at": "2026-10-06 12:38:13"
+  },
+  "bgm-story-villaisland-daliy.wav": {
+   "src_md5": "22fd8ff4fa6691b4c6b29188432eeace",
+   "src_size": 13811244,
+   "src_dur": 71.933333,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-villaisland-daliy.ogg",
+   "dst_size": 1223228,
+   "dst_dur": 71.94,
+   "dst_md5": "5e9c59ed3e19dc359ee71035e43a14e4",
+   "at": "2026-10-06 12:38:15"
+  },
+  "bgm-story-villaisland-light.wav": {
+   "src_md5": "4ab2c9e967bdd29ad539315183ccc7fb",
+   "src_size": 26417120,
+   "src_dur": 137.588938,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-villaisland-light.ogg",
+   "dst_size": 2477235,
+   "dst_dur": 137.595,
+   "dst_md5": "641b42c557c31778c7f77aa50fb02e89",
+   "at": "2026-10-06 12:38:16"
+  },
+  "bgm-story-villaisland-night.wav": {
+   "src_md5": "06e277d221a2cf139779f4436e8ff4fc",
+   "src_size": 10636844,
+   "src_dur": 55.4,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-villaisland-night.ogg",
+   "dst_size": 964466,
+   "dst_dur": 55.407,
+   "dst_md5": "abef0c37f1531153f4a24f18d6c7ccce",
+   "at": "2026-10-06 12:38:17"
+  },
+  "bgm-story-wanderingcity-future.wav": {
+   "src_md5": "ed8da92e1577c94b77cd6b3ccf3bfe79",
+   "src_size": 21211476,
+   "src_dur": 110.476208,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-wanderingcity-future.ogg",
+   "dst_size": 1744913,
+   "dst_dur": 110.483,
+   "dst_md5": "f68d075cbea2608f9354beaac95d2af1",
+   "at": "2026-10-06 12:38:19"
+  },
+  "bgm-story-wanderingcity-pv.wav": {
+   "src_md5": "3232526a6f87b9ebdf70c6d651dce520",
+   "src_size": 18899244,
+   "src_dur": 98.433333,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-wanderingcity-pv.ogg",
+   "dst_size": 1552086,
+   "dst_dur": 98.44,
+   "dst_md5": "502e74146ad320642a38d6aef8b8f9ac",
+   "at": "2026-10-06 12:38:20"
+  },
+  "bgm-story-weimu-link.wav": {
+   "src_md5": "313c4aa047ccf9b4fd5520e3850f4143",
+   "src_size": 26071624,
+   "src_dur": 135.789479,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-weimu-link.ogg",
+   "dst_size": 2330627,
+   "dst_dur": 135.796,
+   "dst_md5": "e5f08cde6a2816d04e7bcad2cc3e3f2b",
+   "at": "2026-10-06 12:38:21"
+  },
+  "bgm-story-worldα-brokenlight.wav": {
+   "src_md5": "cf95b2489a77fa34983406f4e16ff784",
+   "src_size": 20810372,
+   "src_dur": 108.387125,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-worldα-brokenlight.ogg",
+   "dst_size": 1886464,
+   "dst_dur": 108.394,
+   "dst_md5": "cbbde4ed2bb305cfa3c52a98c6af7c29",
+   "at": "2026-10-06 12:38:23"
+  },
+  "bgm-story-worldα-grief.wav": {
+   "src_md5": "5830634823436f9303f559e746e43c2e",
+   "src_size": 12110816,
+   "src_dur": 63.076938,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-worldα-grief.ogg",
+   "dst_size": 1108111,
+   "dst_dur": 63.083,
+   "dst_md5": "7dc0748eb713d5d27c2533d6e9d38713",
+   "at": "2026-10-06 12:38:23"
+  },
+  "bgm-story-zhangwu-china.wav": {
+   "src_md5": "6d41915433ef2c7a83bd9801807faed9",
+   "src_size": 18432772,
+   "src_dur": 96.003792,
+   "dst": "Output/Audio/BGM_ogg/bgm-story-zhangwu-china.ogg",
+   "dst_size": 1657335,
+   "dst_dur": 96.01,
+   "dst_md5": "bf236d47b5cc3e8c7467c755d271bc4d",
+   "at": "2026-10-06 12:38:25"
+  },
+  "bgm-theme-akagi-inside.wav": {
+   "src_md5": "dd8d8b790f48fddd2111370208000803",
+   "src_size": 21723472,
+   "src_dur": 113.142854,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-akagi-inside.ogg",
+   "dst_size": 1982822,
+   "dst_dur": 113.149,
+   "dst_md5": "e66205cfa76843713a1b49cf373b6f64",
+   "at": "2026-10-06 12:38:26"
+  },
+  "bgm-theme-akagi-meta.wav": {
+   "src_md5": "0390bf9795860513c2e7463972b6bc36",
+   "src_size": 19115392,
+   "src_dur": 108.363651,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-akagi-meta.ogg",
+   "dst_size": 1729948,
+   "dst_dur": 108.37,
+   "dst_md5": "82bdb354a8a71028234feb414da6305e",
+   "at": "2026-10-06 12:38:27"
+  },
+  "bgm-theme-amagi-cv.wav": {
+   "src_md5": "5b2a852cae1c4922826e66a1dcba4c9b",
+   "src_size": 21216220,
+   "src_dur": 120.273107,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-amagi-cv.ogg",
+   "dst_size": 2119237,
+   "dst_dur": 120.28,
+   "dst_md5": "005a69b1aa20180e3d4529b901b075f0",
+   "at": "2026-10-06 12:38:29"
+  },
+  "bgm-theme-antarctica.wav": {
+   "src_md5": "aacf9e16aa9b0ad7efdbf39b99b21436",
+   "src_size": 16128052,
+   "src_dur": 91.428617,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-antarctica.ogg",
+   "dst_size": 1424745,
+   "dst_dur": 91.435,
+   "dst_md5": "aad293fe5ef033f7b03bb25bf465ac86",
+   "at": "2026-10-06 12:38:30"
+  },
+  "bgm-theme-aostelab.wav": {
+   "src_md5": "0085560390574648e3ba9e0524bd9ed3",
+   "src_size": 17280044,
+   "src_dur": 90.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-aostelab.ogg",
+   "dst_size": 1395015,
+   "dst_dur": 90.007,
+   "dst_md5": "b36cd5850de05b36a1b9bcc9d6d9129c",
+   "at": "2026-10-06 12:38:31"
+  },
+  "bgm-theme-arbitrator-tower.wav": {
+   "src_md5": "3cdba6b601a8d1bb2c9d60903eeb86fa",
+   "src_size": 17334472,
+   "src_dur": 98.267732,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-arbitrator-tower.ogg",
+   "dst_size": 1682646,
+   "dst_dur": 98.274,
+   "dst_md5": "de0dacfc98da131138267d8f10caee1c",
+   "at": "2026-10-06 12:38:32"
+  },
+  "bgm-theme-bismark-reborn.wav": {
+   "src_md5": "31f9804eb4f4309dea040db2a8224c94",
+   "src_size": 22579712,
+   "src_dur": 128.002653,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-bismark-reborn.ogg",
+   "dst_size": 1988616,
+   "dst_dur": 128.009,
+   "dst_md5": "100bfcf8073d8d385a631a8235790659",
+   "at": "2026-10-06 12:38:34"
+  },
+  "bgm-theme-brokenworld-sad.wav": {
+   "src_md5": "3efe6b131e97b7d5149ae8d089710be3",
+   "src_size": 25352696,
+   "src_dur": 132.045063,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-brokenworld-sad.ogg",
+   "dst_size": 2179086,
+   "dst_dur": 132.052,
+   "dst_md5": "f85a2c477bfa76da47c35a9a560ad276",
+   "at": "2026-10-06 12:38:35"
+  },
+  "bgm-theme-camelot-up.wav": {
+   "src_md5": "e6f70e9782333f0e371f84f495527174",
+   "src_size": 6138764,
+   "src_dur": 34.8,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-camelot-up.ogg",
+   "dst_size": 541983,
+   "dst_dur": 34.806,
+   "dst_md5": "ecd8faa3029a28dadff7d87c6111a2de",
+   "at": "2026-10-06 12:38:36"
+  },
+  "bgm-theme-camelot.wav": {
+   "src_md5": "0e7b9e7de5cbdf803397003ee9213578",
+   "src_size": 19724752,
+   "src_dur": 111.818073,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-camelot.ogg",
+   "dst_size": 1818075,
+   "dst_dur": 111.825,
+   "dst_md5": "ad1bddeb8b6298cc127618bfcfb1eef8",
+   "at": "2026-10-06 12:38:37"
+  },
+  "bgm-theme-china-jianwu.wav": {
+   "src_md5": "9a74a78c14003a7db692f894047c8c48",
+   "src_size": 23778508,
+   "src_dur": 123.846167,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-china-jianwu.ogg",
+   "dst_size": 2123066,
+   "dst_dur": 123.853,
+   "dst_md5": "c08c4189ea914fe765157e6cf65960b9",
+   "at": "2026-10-06 12:38:38"
+  },
+  "bgm-theme-china-zhangwu.wav": {
+   "src_md5": "ff9913101999feedfda57b9bceaac5a4",
+   "src_size": 19084848,
+   "src_dur": 99.400021,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-china-zhangwu.ogg",
+   "dst_size": 1650930,
+   "dst_dur": 99.407,
+   "dst_md5": "bc426a0748798ba9151e7f0559ed2980",
+   "at": "2026-10-06 12:38:40"
+  },
+  "bgm-theme-chunjie2025-2.wav": {
+   "src_md5": "eaa7af8fff94981adb21e91331b0afbb",
+   "src_size": 11571244,
+   "src_dur": 60.266667,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-chunjie2025-2.ogg",
+   "dst_size": 1024774,
+   "dst_dur": 60.273,
+   "dst_md5": "f30f6110e4e681de7a591639d79977d7",
+   "at": "2026-10-06 12:38:41"
+  },
+  "bgm-theme-clemenceau.wav": {
+   "src_md5": "b44a629576ab8f17d57879da6673caa0",
+   "src_size": 21499032,
+   "src_dur": 121.876349,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-clemenceau.ogg",
+   "dst_size": 2001541,
+   "dst_dur": 121.883,
+   "dst_md5": "5735f0981cbb9ef9e0be247b202904d1",
+   "at": "2026-10-06 12:38:42"
+  },
+  "bgm-theme-dailyfuture.wav": {
+   "src_md5": "92e1e84ab12c453059e779f78ea54c65",
+   "src_size": 19081060,
+   "src_dur": 108.169025,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-dailyfuture.ogg",
+   "dst_size": 1895306,
+   "dst_dur": 108.176,
+   "dst_md5": "760e6193b1a43797cb42641e92b23cea",
+   "at": "2026-10-06 12:38:43"
+  },
+  "bgm-theme-designfleet-vii.wav": {
+   "src_md5": "038507e9e37d6b789567707cb40fbc4d",
+   "src_size": 15486420,
+   "src_dur": 87.791247,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-designfleet-vii.ogg",
+   "dst_size": 1448545,
+   "dst_dur": 87.798,
+   "dst_md5": "4475fda559c029a4aee564dae4817a03",
+   "at": "2026-10-06 12:38:44"
+  },
+  "bgm-theme-designfleet.wav": {
+   "src_md5": "0333fd768d2cbc8f3585fc2f7d4a664c",
+   "src_size": 14688044,
+   "src_dur": 76.5,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-designfleet.ogg",
+   "dst_size": 1238510,
+   "dst_dur": 76.507,
+   "dst_md5": "9319a175d82c94dd5bb11dda9679fbfd",
+   "at": "2026-10-06 12:38:45"
+  },
+  "bgm-theme-designshipvi.wav": {
+   "src_md5": "6ce604a2194efc7feb6a79bca3efe273",
+   "src_size": 14004200,
+   "src_dur": 79.388639,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-designshipvi.ogg",
+   "dst_size": 1243873,
+   "dst_dur": 79.395,
+   "dst_md5": "81f145ac1f4aef7c9fb6e955622b9adf",
+   "at": "2026-10-06 12:38:46"
+  },
+  "bgm-theme-donghuang.wav": {
+   "src_md5": "ead2fa3c36350f7b86579c69700c9da0",
+   "src_size": 21373560,
+   "src_dur": 121.165057,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-donghuang.ogg",
+   "dst_size": 2000814,
+   "dst_dur": 121.172,
+   "dst_md5": "16d59ca378fbc6486d2648cfd89af38f",
+   "at": "2026-10-06 12:38:48"
+  },
+  "bgm-theme-dos.wav": {
+   "src_md5": "ee0e15edab417bc857e928102f1e19d3",
+   "src_size": 17640044,
+   "src_dur": 91.875,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-dos.ogg",
+   "dst_size": 1449075,
+   "dst_dur": 91.882,
+   "dst_md5": "a373357af986fcb69ca6f67dee5a80b2",
+   "at": "2026-10-06 12:38:49"
+  },
+  "bgm-theme-elizabeth-andmeta.wav": {
+   "src_md5": "6aa8bf9f3b003cafef786302bf3d15c1",
+   "src_size": 17014196,
+   "src_dur": 88.615375,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-elizabeth-andmeta.ogg",
+   "dst_size": 1384604,
+   "dst_dur": 88.622,
+   "dst_md5": "5fac1b16cca16ed8774bcfe7d8692152",
+   "at": "2026-10-06 12:38:50"
+  },
+  "bgm-theme-fool23-en-long.wav": {
+   "src_md5": "713f5bffde60121e74c6dfae5b3f8f75",
+   "src_size": 23992020,
+   "src_dur": 124.958208,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-fool23-en-long.ogg",
+   "dst_size": 1984273,
+   "dst_dur": 124.965,
+   "dst_md5": "7c816b15d3c6506beffe71e41daa9e3f",
+   "at": "2026-10-06 12:38:51"
+  },
+  "bgm-theme-fool23-en-short.wav": {
+   "src_md5": "f25b905444f2927e668eeff176555316",
+   "src_size": 9296040,
+   "src_dur": 48.416646,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-fool23-en-short.ogg",
+   "dst_size": 762656,
+   "dst_dur": 48.423,
+   "dst_md5": "c5060a00873b9e554d172ae644e91aa2",
+   "at": "2026-10-06 12:38:52"
+  },
+  "bgm-theme-fool23-en.wav": {
+   "src_md5": "4a836729a73eaf7e6ec05ac6a7474fae",
+   "src_size": 24106924,
+   "src_dur": 125.556667,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-fool23-en.ogg",
+   "dst_size": 1991408,
+   "dst_dur": 125.563,
+   "dst_md5": "21acff2a6f1fa5e4d544773be0d310d9",
+   "at": "2026-10-06 12:38:53"
+  },
+  "bgm-theme-frederick.wav": {
+   "src_md5": "92c9d0b593803129ef6ed33945c33a7d",
+   "src_size": 23409368,
+   "src_dur": 132.705918,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-frederick.ogg",
+   "dst_size": 2121933,
+   "dst_dur": 132.712,
+   "dst_md5": "4703da41e267a6d3365fd7067b1ba625",
+   "at": "2026-10-06 12:38:55"
+  },
+  "bgm-theme-fushun-adventure.wav": {
+   "src_md5": "f5451c9187075c5756d61304d4a7fd77",
+   "src_size": 17898188,
+   "src_dur": 101.463401,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-fushun-adventure.ogg",
+   "dst_size": 1608295,
+   "dst_dur": 101.47,
+   "dst_md5": "af7c763768c1180dc0f832cc0cf9bed6",
+   "at": "2026-10-06 12:38:56"
+  },
+  "bgm-theme-ganjisawai.wav": {
+   "src_md5": "310f04baeb9f265c2e7a5d9375c153cc",
+   "src_size": 23212208,
+   "src_dur": 131.588231,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-ganjisawai.ogg",
+   "dst_size": 2219053,
+   "dst_dur": 131.595,
+   "dst_md5": "6a54c4b81f256ca478015460b5d819e5",
+   "at": "2026-10-06 12:38:58"
+  },
+  "bgm-theme-glorious-meta.wav": {
+   "src_md5": "b58fed3c80320511a166f71df1d40f45",
+   "src_size": 17618872,
+   "src_dur": 91.764729,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-glorious-meta.ogg",
+   "dst_size": 1556389,
+   "dst_dur": 91.771,
+   "dst_md5": "e83853e0723aacf20360a42747479ee5",
+   "at": "2026-10-06 12:38:59"
+  },
+  "bgm-theme-goldensea.wav": {
+   "src_md5": "338c0e180bce19235d6bd8ccd194239e",
+   "src_size": 18432048,
+   "src_dur": 96.000021,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-goldensea.ogg",
+   "dst_size": 1763139,
+   "dst_dur": 96.007,
+   "dst_md5": "5ffd77d62387f8292e97adc4712ac9a3",
+   "at": "2026-10-06 12:39:00"
+  },
+  "bgm-theme-haitian-soft-loop.wav": {
+   "src_md5": "31cdca75aa4d83e6412f8fb0c6052295",
+   "src_size": 29696044,
+   "src_dur": 154.666667,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-haitian-soft-loop.ogg",
+   "dst_size": 2580503,
+   "dst_dur": 154.673,
+   "dst_md5": "4a206a7f95a9045a043eb3febce6187d",
+   "at": "2026-10-06 12:39:02"
+  },
+  "bgm-theme-helena.wav": {
+   "src_md5": "f99f8f9234912318a0a645d8f42ef8b9",
+   "src_size": 20016720,
+   "src_dur": 104.253521,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-helena.ogg",
+   "dst_size": 1692570,
+   "dst_dur": 104.26,
+   "dst_md5": "0674340b85abcd0536e346d00077a618",
+   "at": "2026-10-06 12:39:03"
+  },
+  "bgm-theme-highseasfleet-reborn.wav": {
+   "src_md5": "9d1dd2ffe2f3da6df7de2d8799431adc",
+   "src_size": 24299732,
+   "src_dur": 137.753333,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-highseasfleet-reborn.ogg",
+   "dst_size": 2221110,
+   "dst_dur": 137.76,
+   "dst_md5": "3e73cacc85642c1aecad50982ef4bafa",
+   "at": "2026-10-06 12:39:04"
+  },
+  "bgm-theme-highseasfleet.wav": {
+   "src_md5": "07a12b7e7eaa9007965fcad0366abd5a",
+   "src_size": 17472044,
+   "src_dur": 91.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-highseasfleet.ogg",
+   "dst_size": 1406519,
+   "dst_dur": 91.007,
+   "dst_md5": "bf712d70540c338eff4d48b3de910374",
+   "at": "2026-10-06 12:39:05"
+  },
+  "bgm-theme-hospital-deep.wav": {
+   "src_md5": "b974ae7e9764b37f6b2c0e3b5a80cc0a",
+   "src_size": 5798444,
+   "src_dur": 30.2,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-hospital-deep.ogg",
+   "dst_size": 490268,
+   "dst_dur": 30.206,
+   "dst_md5": "46cba5806c6e7a3e5340642f2a518ce4",
+   "at": "2026-10-06 12:39:06"
+  },
+  "bgm-theme-hrr.wav": {
+   "src_md5": "f8c6cd922c4290151ca3c44d752e40cf",
+   "src_size": 19200044,
+   "src_dur": 100.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-hrr.ogg",
+   "dst_size": 1588675,
+   "dst_dur": 100.007,
+   "dst_md5": "470ddca44c70df66b9922a667eafc2d4",
+   "at": "2026-10-06 12:39:07"
+  },
+  "bgm-theme-ijndailymeeting.wav": {
+   "src_md5": "02e2879d7590210e3220aaea2b1d06fe",
+   "src_size": 58967844,
+   "src_dur": 307.123958,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-ijndailymeeting.ogg",
+   "dst_size": 5230331,
+   "dst_dur": 307.13,
+   "dst_md5": "7c4467c2cd7bd66f3d093502f4fdbc12",
+   "at": "2026-10-06 12:39:11"
+  },
+  "bgm-theme-irisangel.wav": {
+   "src_md5": "0b54ccdca284111e0c059b377e87d40d",
+   "src_size": 17089312,
+   "src_dur": 89.006604,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-irisangel.ogg",
+   "dst_size": 1387626,
+   "dst_dur": 89.013,
+   "dst_md5": "cd13a09c23eaa3c3f37802e4e47bda58",
+   "at": "2026-10-06 12:39:12"
+  },
+  "bgm-theme-kerguelen.wav": {
+   "src_md5": "584727b7a182f993abb42bb9e4b9d2d3",
+   "src_size": 7996848,
+   "src_dur": 45.333356,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-kerguelen.ogg",
+   "dst_size": 708572,
+   "dst_dur": 45.34,
+   "dst_md5": "6460a3d40c32b25440c066c7ba861fdf",
+   "at": "2026-10-06 12:39:12"
+  },
+  "bgm-theme-lightheven.wav": {
+   "src_md5": "70f6aac12620d0ae7cdce4180f0ab762",
+   "src_size": 17901652,
+   "src_dur": 101.483039,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-lightheven.ogg",
+   "dst_size": 1710549,
+   "dst_dur": 101.49,
+   "dst_md5": "9c39fc78f90c173a74fad0a68b1c0e46",
+   "at": "2026-10-06 12:39:14"
+  },
+  "bgm-theme-lion.wav": {
+   "src_md5": "fb010b81d8c3b287546187881f71983b",
+   "src_size": 17895192,
+   "src_dur": 93.203896,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-lion.ogg",
+   "dst_size": 1486181,
+   "dst_dur": 93.21,
+   "dst_md5": "78029e12f53b70fe4f7003cf9226cca4",
+   "at": "2026-10-06 12:39:15"
+  },
+  "bgm-theme-longgong-another.wav": {
+   "src_md5": "3b697638bfc71864be09f241dc8abcf5",
+   "src_size": 29295372,
+   "src_dur": 152.579833,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-longgong-another.ogg",
+   "dst_size": 2529351,
+   "dst_dur": 152.586,
+   "dst_md5": "443d170b55fda4d2cbcf588522ca3ec0",
+   "at": "2026-10-06 12:39:16"
+  },
+  "bgm-theme-longgong-loop.wav": {
+   "src_md5": "f2f9b72239c758c2d695e98a6a287a0c",
+   "src_size": 22368044,
+   "src_dur": 116.5,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-longgong-loop.ogg",
+   "dst_size": 1961713,
+   "dst_dur": 116.507,
+   "dst_md5": "c92f98e3a6d693283c763082c1081cd2",
+   "at": "2026-10-06 12:39:18"
+  },
+  "bgm-theme-longgong.wav": {
+   "src_md5": "2372559749f5cd4cf91f0a5f219d0f53",
+   "src_size": 29247584,
+   "src_dur": 152.330938,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-longgong.ogg",
+   "dst_size": 2555554,
+   "dst_dur": 152.337,
+   "dst_md5": "96290bb16eca4317e990ef7db2888e51",
+   "at": "2026-10-06 12:39:20"
+  },
+  "bgm-theme-marcopolo.wav": {
+   "src_md5": "bc06ebb8dc8fb10d4a1c3a12b0d715c7",
+   "src_size": 21168048,
+   "src_dur": 120.000023,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-marcopolo.ogg",
+   "dst_size": 1938399,
+   "dst_dur": 120.007,
+   "dst_md5": "56fb8b5a414caf964a8814d690c0e921",
+   "at": "2026-10-06 12:39:21"
+  },
+  "bgm-theme-merkuriameta.wav": {
+   "src_md5": "5e2cf379d8cae4e6f3e3d35870176b2b",
+   "src_size": 20542704,
+   "src_dur": 106.993021,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-merkuriameta.ogg",
+   "dst_size": 1769315,
+   "dst_dur": 107.0,
+   "dst_md5": "b017bf54ec304cc6b1e4417a6a4099d2",
+   "at": "2026-10-06 12:39:22"
+  },
+  "bgm-theme-midgard-hunting.wav": {
+   "src_md5": "be06b7a5ecd8881ece4841c11db98ac8",
+   "src_size": 19208052,
+   "src_dur": 108.888934,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-midgard-hunting.ogg",
+   "dst_size": 1646694,
+   "dst_dur": 108.895,
+   "dst_md5": "e12e435f2f8361e1cc7a608cba3640fb",
+   "at": "2026-10-06 12:39:24"
+  },
+  "bgm-theme-misaka.wav": {
+   "src_md5": "38332b5485e26b6aa2fc43d276aecd33",
+   "src_size": 21832852,
+   "src_dur": 123.768753,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-misaka.ogg",
+   "dst_size": 1969852,
+   "dst_dur": 123.775,
+   "dst_md5": "f641b717cd34590c5e964687088d7fe5",
+   "at": "2026-10-06 12:39:25"
+  },
+  "bgm-theme-musashi-inside.wav": {
+   "src_md5": "d0c58b39fe2be9e1bc6a452d0d3db960",
+   "src_size": 20378876,
+   "src_dur": 115.526259,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-musashi-inside.ogg",
+   "dst_size": 1836760,
+   "dst_dur": 115.533,
+   "dst_md5": "0fe14adc3f5864f7fa44527b30a335be",
+   "at": "2026-10-06 12:39:26"
+  },
+  "bgm-theme-musashi-marching.wav": {
+   "src_md5": "072c7e157ad867c38b92ae767fdd89e7",
+   "src_size": 19854164,
+   "src_dur": 112.551701,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-musashi-marching.ogg",
+   "dst_size": 1778145,
+   "dst_dur": 112.558,
+   "dst_md5": "415af516fa8877e492a64a0121a106a1",
+   "at": "2026-10-06 12:39:27"
+  },
+  "bgm-theme-musashi-outside.wav": {
+   "src_md5": "8c17ffce5a2d2ac59283708bcfd7e38a",
+   "src_size": 21292012,
+   "src_dur": 110.895667,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-musashi-outside.ogg",
+   "dst_size": 1778784,
+   "dst_dur": 110.902,
+   "dst_md5": "f2ad20fc5d5416ac1143d1b8f90e3184",
+   "at": "2026-10-06 12:39:29"
+  },
+  "bgm-theme-myisland.wav": {
+   "src_md5": "1956b679bf28316aaead4d6ae1857cc4",
+   "src_size": 18603772,
+   "src_dur": 96.894417,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-myisland.ogg",
+   "dst_size": 1768804,
+   "dst_dur": 96.901,
+   "dst_md5": "3dd39d452195c63a9bb78b22b29e425e",
+   "at": "2026-10-06 12:39:30"
+  },
+  "bgm-theme-nagato-meta.wav": {
+   "src_md5": "feecad985ab6024b1f47acc02b83c637",
+   "src_size": 21390864,
+   "src_dur": 121.263152,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-nagato-meta.ogg",
+   "dst_size": 1946908,
+   "dst_dur": 121.27,
+   "dst_md5": "281577ae8e89615aaeaadf859731a1b2",
+   "at": "2026-10-06 12:39:31"
+  },
+  "bgm-theme-objectx-spread.wav": {
+   "src_md5": "7bdea0cb8327401781a9a60a08a32ab1",
+   "src_size": 15912092,
+   "src_dur": 90.204354,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-objectx-spread.ogg",
+   "dst_size": 1390065,
+   "dst_dur": 90.211,
+   "dst_md5": "ed95933f88f88ba0eecccde0a0dd98dc",
+   "at": "2026-10-06 12:39:33"
+  },
+  "bgm-theme-partydress.wav": {
+   "src_md5": "b083008621b50e0d585e3ab776bf031f",
+   "src_size": 16692472,
+   "src_dur": 86.939729,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-partydress.ogg",
+   "dst_size": 1609537,
+   "dst_dur": 86.946,
+   "dst_md5": "d11c4d5cf88b1ab48673ea85d3aa865e",
+   "at": "2026-10-06 12:39:34"
+  },
+  "bgm-theme-richang-fashion.wav": {
+   "src_md5": "66e3fede3224655fe782eb8c07d5a2b4",
+   "src_size": 17280044,
+   "src_dur": 90.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-richang-fashion.ogg",
+   "dst_size": 1477484,
+   "dst_dur": 90.007,
+   "dst_md5": "5f468d37dcdb7acdbb9ae9d168a58aa2",
+   "at": "2026-10-06 12:39:35"
+  },
+  "bgm-theme-richard.wav": {
+   "src_md5": "fb37d9c0619f51a379b2173f75ebe6f0",
+   "src_size": 22088396,
+   "src_dur": 125.217415,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-richard.ogg",
+   "dst_size": 2021771,
+   "dst_dur": 125.224,
+   "dst_md5": "65cd956fd46fabd488ba2db5f8cb825b",
+   "at": "2026-10-06 12:39:36"
+  },
+  "bgm-theme-richelieu.wav": {
+   "src_md5": "af93c63924ca611ba77c2c0b698c07cb",
+   "src_size": 26074540,
+   "src_dur": 147.814603,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-richelieu.ogg",
+   "dst_size": 2312481,
+   "dst_dur": 147.821,
+   "dst_md5": "21d699a518f23a19d406856530b2691f",
+   "at": "2026-10-06 12:39:38"
+  },
+  "bgm-theme-roma-image.wav": {
+   "src_md5": "4622c8f594ef4b7ac8a25985a9a26e4d",
+   "src_size": 20817396,
+   "src_dur": 118.0122,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-roma-image.ogg",
+   "dst_size": 1912074,
+   "dst_dur": 118.019,
+   "dst_md5": "740f3d11c31bfea017c3784d36db9774",
+   "at": "2026-10-06 12:39:39"
+  },
+  "bgm-theme-room-rosy.wav": {
+   "src_md5": "ac768cc41cfccd0ba77173ce3c66d5cf",
+   "src_size": 16206796,
+   "src_dur": 91.875011,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-room-rosy.ogg",
+   "dst_size": 1554036,
+   "dst_dur": 91.882,
+   "dst_md5": "d1c33c818b853e3544b13cd5b023dff3",
+   "at": "2026-10-06 12:39:41"
+  },
+  "bgm-theme-royalknights-battle.wav": {
+   "src_md5": "cb3ba1bf4e1598dcd9706d4ff126fac3",
+   "src_size": 17363524,
+   "src_dur": 90.434792,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-royalknights-battle.ogg",
+   "dst_size": 1541461,
+   "dst_dur": 90.441,
+   "dst_md5": "92fd6357966aab408c9f91ecc05561d4",
+   "at": "2026-10-06 12:39:42"
+  },
+  "bgm-theme-sakuraholyplace.wav": {
+   "src_md5": "ad3e8539b55ce65bdf44ff4f6112a814",
+   "src_size": 18432044,
+   "src_dur": 96.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-sakuraholyplace.ogg",
+   "dst_size": 1520643,
+   "dst_dur": 96.007,
+   "dst_md5": "edb4d6446d56334207e2df38fe0b00e2",
+   "at": "2026-10-06 12:39:43"
+  },
+  "bgm-theme-schoolfuture.wav": {
+   "src_md5": "23f829f67b2afd2e2b588a403eebbea8",
+   "src_size": 17209804,
+   "src_dur": 97.560998,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-schoolfuture.ogg",
+   "dst_size": 1644389,
+   "dst_dur": 97.567,
+   "dst_md5": "67f8ce637e4216f4ae3adaab9c1db8e6",
+   "at": "2026-10-06 12:39:44"
+  },
+  "bgm-theme-seaandsun-image.wav": {
+   "src_md5": "c4898bd4d931c1b95b99e996cd0facb9",
+   "src_size": 17280044,
+   "src_dur": 90.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-seaandsun-image.ogg",
+   "dst_size": 1475525,
+   "dst_dur": 90.007,
+   "dst_md5": "0706153d0a5f26c7f70c1ee6ed493334",
+   "at": "2026-10-06 12:39:46"
+  },
+  "bgm-theme-seaandsun-soft.wav": {
+   "src_md5": "c5eebad2cb5217ffda09e6e507edc1ba",
+   "src_size": 17210648,
+   "src_dur": 89.638563,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-seaandsun-soft.ogg",
+   "dst_size": 1576166,
+   "dst_dur": 89.645,
+   "dst_md5": "ab30b9a57509a11d144857f5baf30c17",
+   "at": "2026-10-06 12:39:47"
+  },
+  "bgm-theme-shallowoftheworld.wav": {
+   "src_md5": "0a162425a1e25b60fcf4b89cd41e5db6",
+   "src_size": 18621412,
+   "src_dur": 96.986292,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-shallowoftheworld.ogg",
+   "dst_size": 1383267,
+   "dst_dur": 96.993,
+   "dst_md5": "1b82079f2a278e835dc49634aad14d5b",
+   "at": "2026-10-06 12:39:48"
+  },
+  "bgm-theme-shinanometa.wav": {
+   "src_md5": "6373923ab83e3e0002cea2cd18b17544",
+   "src_size": 19904288,
+   "src_dur": 112.83585,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-shinanometa.ogg",
+   "dst_size": 1885427,
+   "dst_dur": 112.842,
+   "dst_md5": "838d7c3d21deed639fc8012ad5a8f1ba",
+   "at": "2026-10-06 12:39:49"
+  },
+  "bgm-theme-sovietunion.wav": {
+   "src_md5": "98ecf31d5446b9c93d9b9366a4171b46",
+   "src_size": 23138584,
+   "src_dur": 131.170862,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-sovietunion.ogg",
+   "dst_size": 2089550,
+   "dst_dur": 131.177,
+   "dst_md5": "409e69afdcbddd4d9172841c47569f0f",
+   "at": "2026-10-06 12:39:51"
+  },
+  "bgm-theme-starbeast.wav": {
+   "src_md5": "7f9f96e8c48ad777dd109878181136a3",
+   "src_size": 17618868,
+   "src_dur": 91.764708,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-starbeast.ogg",
+   "dst_size": 1427671,
+   "dst_dur": 91.771,
+   "dst_md5": "5949c1bcd7886a700170e22d05157f5f",
+   "at": "2026-10-06 12:39:52"
+  },
+  "bgm-theme-starsea-core.wav": {
+   "src_md5": "03cf10a5db0baea8a14bac45bab98f35",
+   "src_size": 21914604,
+   "src_dur": 124.2322,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-starsea-core.ogg",
+   "dst_size": 2186280,
+   "dst_dur": 124.239,
+   "dst_md5": "2236b0017e8516796f3f703cf440d4a9",
+   "at": "2026-10-06 12:39:53"
+  },
+  "bgm-theme-starsea-explo.wav": {
+   "src_md5": "bf00e61354b24029a4e207e37857f7cd",
+   "src_size": 13294592,
+   "src_dur": 75.365918,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-starsea-explo.ogg",
+   "dst_size": 1152900,
+   "dst_dur": 75.372,
+   "dst_md5": "f034b9e92dc40880f2ea78c40b5d3484",
+   "at": "2026-10-06 12:39:54"
+  },
+  "bgm-theme-summersky.wav": {
+   "src_md5": "3009c7b1f5066027d761ade222998c0a",
+   "src_size": 21403256,
+   "src_dur": 121.333401,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-summersky.ogg",
+   "dst_size": 1933678,
+   "dst_dur": 121.34,
+   "dst_md5": "07605bfdf81d9e6f86a4f6c651fdf9ff",
+   "at": "2026-10-06 12:39:56"
+  },
+  "bgm-theme-tempest-light.wav": {
+   "src_md5": "7f86f91315a0fe4354d2cbdf49706f7b",
+   "src_size": 19017188,
+   "src_dur": 99.047625,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-tempest-light.ogg",
+   "dst_size": 1646283,
+   "dst_dur": 99.054,
+   "dst_md5": "5006ce89bd11e7a36eef2f92a6af6a80",
+   "at": "2026-10-06 12:39:57"
+  },
+  "bgm-theme-tempest-up.wav": {
+   "src_md5": "15f648c2d87a0ad74e797bba9075981d",
+   "src_size": 21168608,
+   "src_dur": 120.003197,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-tempest-up.ogg",
+   "dst_size": 1880246,
+   "dst_dur": 120.01,
+   "dst_md5": "28b866621361d795d6f16a126ce7aa54",
+   "at": "2026-10-06 12:39:58"
+  },
+  "bgm-theme-tempest.wav": {
+   "src_md5": "d4414fbf6fa7132855eedc4994ee05ec",
+   "src_size": 29088044,
+   "src_dur": 151.5,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-tempest.ogg",
+   "dst_size": 2358473,
+   "dst_dur": 151.506,
+   "dst_md5": "8b21e3738ff56048a859b3df936c2d5c",
+   "at": "2026-10-06 12:40:00"
+  },
+  "bgm-theme-thechariotvii.wav": {
+   "src_md5": "5383a5e6aee6c708ac6d5516c7b003ef",
+   "src_size": 19549136,
+   "src_dur": 101.818188,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-thechariotvii.ogg",
+   "dst_size": 1547977,
+   "dst_dur": 101.825,
+   "dst_md5": "efa73b6003f95cd3dc09fdfba9d63f4a",
+   "at": "2026-10-06 12:40:01"
+  },
+  "bgm-theme-thedeathxiii.wav": {
+   "src_md5": "2e5972fed6a118acd4b95bfce7369bd7",
+   "src_size": 17203244,
+   "src_dur": 89.6,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-thedeathxiii.ogg",
+   "dst_size": 1443485,
+   "dst_dur": 89.606,
+   "dst_md5": "8bc3c632a6775282bc228a2e8ecf96a5",
+   "at": "2026-10-06 12:40:02"
+  },
+  "bgm-theme-thedevilxv.wav": {
+   "src_md5": "f9fc78c04f1c5dbb23252e88065863d9",
+   "src_size": 22037984,
+   "src_dur": 124.931633,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-thedevilxv.ogg",
+   "dst_size": 1985638,
+   "dst_dur": 124.938,
+   "dst_md5": "e729336375638fa7203c0fe0844d34f0",
+   "at": "2026-10-06 12:40:04"
+  },
+  "bgm-theme-theempressiii.wav": {
+   "src_md5": "83e33b753a9e602a578159053845bf0b",
+   "src_size": 33281520,
+   "src_dur": 188.670499,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-theempressiii.ogg",
+   "dst_size": 2730364,
+   "dst_dur": 188.677,
+   "dst_md5": "0e14299a971ed6ab9905d7655c6278a5",
+   "at": "2026-10-06 12:40:06"
+  },
+  "bgm-theme-thehermitix.wav": {
+   "src_md5": "313fa1f675be18ce9f5971581b6121a5",
+   "src_size": 17753852,
+   "src_dur": 100.64517,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-thehermitix.ogg",
+   "dst_size": 1615024,
+   "dst_dur": 100.652,
+   "dst_md5": "ed7e3bb98d5d12506ae11b69b1c1dc8f",
+   "at": "2026-10-06 12:40:08"
+  },
+  "bgm-theme-thehierophantv.wav": {
+   "src_md5": "d1a4337f75bf105640599014665cfdca",
+   "src_size": 22014804,
+   "src_dur": 124.800227,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-thehierophantv.ogg",
+   "dst_size": 2120811,
+   "dst_dur": 124.807,
+   "dst_md5": "d8bd11f33bb977239f4a357845d421c2",
+   "at": "2026-10-06 12:40:09"
+  },
+  "bgm-theme-theloversvi.wav": {
+   "src_md5": "cb420712245dfeed05fe16db96ed3cd5",
+   "src_size": 18432044,
+   "src_dur": 96.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-theloversvi.ogg",
+   "dst_size": 1539215,
+   "dst_dur": 96.007,
+   "dst_md5": "73d05a9bd267064d3966bebf7b56bdf5",
+   "at": "2026-10-06 12:40:10"
+  },
+  "bgm-theme-themagiciani.wav": {
+   "src_md5": "19c17b2e795dec7bb54f053e8e00f0c7",
+   "src_size": 15772272,
+   "src_dur": 89.411723,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-themagiciani.ogg",
+   "dst_size": 1425816,
+   "dst_dur": 89.418,
+   "dst_md5": "33aee97c60f3a2e2292fb348fac3ff76",
+   "at": "2026-10-06 12:40:11"
+  },
+  "bgm-theme-thetowerxvi.wav": {
+   "src_md5": "724b46a30d5c662cbe3298ac7d56f1a3",
+   "src_size": 16464048,
+   "src_dur": 93.333356,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-thetowerxvi.ogg",
+   "dst_size": 1408959,
+   "dst_dur": 93.34,
+   "dst_md5": "1dec4f9af5a59cd7408ad3650997aaf0",
+   "at": "2026-10-06 12:40:13"
+  },
+  "bgm-theme-threat-typev.wav": {
+   "src_md5": "5632480c02ecc381077543439d47a880",
+   "src_size": 17554332,
+   "src_dur": 91.428583,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-threat-typev.ogg",
+   "dst_size": 1431739,
+   "dst_dur": 91.435,
+   "dst_md5": "efb9a2d2d211003f5ed420fab1d03071",
+   "at": "2026-10-06 12:40:14"
+  },
+  "bgm-theme-tulipa.wav": {
+   "src_md5": "54d8420b71aa988ef726126537a71488",
+   "src_size": 25419096,
+   "src_dur": 132.390896,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-tulipa.ogg",
+   "dst_size": 2474646,
+   "dst_dur": 132.397,
+   "dst_md5": "8b91b12bd5fdb55bdeab6b9d67bfc04e",
+   "at": "2026-10-06 12:40:16"
+  },
+  "bgm-theme-uc.wav": {
+   "src_md5": "cc25de1bf309c791ae30e8288ae7f66f",
+   "src_size": 16027876,
+   "src_dur": 83.478292,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-uc.ogg",
+   "dst_size": 1433172,
+   "dst_dur": 83.485,
+   "dst_md5": "d250f95a30fe6b17804e7d783cbdb226",
+   "at": "2026-10-06 12:40:17"
+  },
+  "bgm-theme-ucnf-beacon.wav": {
+   "src_md5": "92391a9a43534b941d41d5e19356d942",
+   "src_size": 10524708,
+   "src_dur": 59.663628,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-ucnf-beacon.ogg",
+   "dst_size": 895218,
+   "dst_dur": 59.67,
+   "dst_md5": "891f51d828ec135f134e0f607cd012a6",
+   "at": "2026-10-06 12:40:17"
+  },
+  "bgm-theme-ucnf-flagship.wav": {
+   "src_md5": "e48d3796ee32007f30039b5b0e3028bc",
+   "src_size": 36480044,
+   "src_dur": 190.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-ucnf-flagship.ogg",
+   "dst_size": 2915751,
+   "dst_dur": 190.006,
+   "dst_md5": "3e3ac38ca9acf9bdcd797377900625e9",
+   "at": "2026-10-06 12:40:19"
+  },
+  "bgm-theme-ucnf-image.wav": {
+   "src_md5": "6ef3cbf009a582772953c15b3232e48e",
+   "src_size": 20956428,
+   "src_dur": 118.800363,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-ucnf-image.ogg",
+   "dst_size": 1921889,
+   "dst_dur": 118.807,
+   "dst_md5": "6ed401e13639c47cbe3a5993d7221d9d",
+   "at": "2026-10-06 12:40:21"
+  },
+  "bgm-theme-ulrich.wav": {
+   "src_md5": "9cd8f42ec3de089c378f25f6eeedaebb",
+   "src_size": 24643392,
+   "src_dur": 139.701519,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-ulrich.ogg",
+   "dst_size": 2185586,
+   "dst_dur": 139.708,
+   "dst_md5": "6279b67cb23bc9c3be957ab21f949413",
+   "at": "2026-10-06 12:40:22"
+  },
+  "bgm-theme-umieyuku.wav": {
+   "src_md5": "2c5fa3188595ebb6d95255722f503498",
+   "src_size": 50861932,
+   "src_dur": 264.905667,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-umieyuku.ogg",
+   "dst_size": 4216351,
+   "dst_dur": 264.912,
+   "dst_md5": "0dfeb2f2c1a8c0dddb7fa450b0d55558",
+   "at": "2026-10-06 12:40:25"
+  },
+  "bgm-theme-undead.wav": {
+   "src_md5": "95d39ed9214630c1ffec5b3926570ccc",
+   "src_size": 17248048,
+   "src_dur": 97.7778,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-undead.ogg",
+   "dst_size": 1564422,
+   "dst_dur": 97.784,
+   "dst_md5": "beed283ea5bfca41585be528c65a038f",
+   "at": "2026-10-06 12:40:26"
+  },
+  "bgm-theme-underheaven.wav": {
+   "src_md5": "5a6b3b706959078f2b693afb69ad85f3",
+   "src_size": 25304132,
+   "src_dur": 143.447211,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-underheaven.ogg",
+   "dst_size": 2413893,
+   "dst_dur": 143.454,
+   "dst_md5": "1210c91dc99ffbb3cd07b4cdc67b0ae9",
+   "at": "2026-10-06 12:40:28"
+  },
+  "bgm-theme-unknown-undefined.wav": {
+   "src_md5": "e8937fea41832ffa1f448db4cc3b6478",
+   "src_size": 18433960,
+   "src_dur": 96.009979,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-unknown-undefined.ogg",
+   "dst_size": 1534247,
+   "dst_dur": 96.016,
+   "dst_md5": "6f1c09d1a2225f33637c4157bc110e97",
+   "at": "2026-10-06 12:40:29"
+  },
+  "bgm-theme-unzen.wav": {
+   "src_md5": "62035478f5dee049a844476c8999a06f",
+   "src_size": 21209124,
+   "src_dur": 120.23288,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-unzen.ogg",
+   "dst_size": 2025415,
+   "dst_dur": 120.239,
+   "dst_md5": "956156b6c266924f8fe631de91624f46",
+   "at": "2026-10-06 12:40:31"
+  },
+  "bgm-theme-vanguard.wav": {
+   "src_md5": "698d41d8bd6a708c14505123d454e5f7",
+   "src_size": 17203244,
+   "src_dur": 89.6,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-vanguard.ogg",
+   "dst_size": 1416424,
+   "dst_dur": 89.606,
+   "dst_md5": "e37f41224212b654f928e1d2a7b0724a",
+   "at": "2026-10-06 12:40:32"
+  },
+  "bgm-theme-vichy-church.wav": {
+   "src_md5": "50800731c0d02c98eff76952c2b928a1",
+   "src_size": 17931016,
+   "src_dur": 101.649501,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-vichy-church.ogg",
+   "dst_size": 1628160,
+   "dst_dur": 101.656,
+   "dst_md5": "e8521c6f6d55b5396120ee3c5b679045",
+   "at": "2026-10-06 12:40:34"
+  },
+  "bgm-theme-vichy-revelation.wav": {
+   "src_md5": "60f95a9418b5f283b9974051baa0ed1c",
+   "src_size": 23050112,
+   "src_dur": 130.66932,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-vichy-revelation.ogg",
+   "dst_size": 2052557,
+   "dst_dur": 130.676,
+   "dst_md5": "758c585561926a8f81bbd9d54abe642e",
+   "at": "2026-10-06 12:40:35"
+  },
+  "bgm-theme-vichy-slaughter.wav": {
+   "src_md5": "1f2341a3fbe5afdb55fd139bcfad28df",
+   "src_size": 21168032,
+   "src_dur": 119.999932,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-vichy-slaughter.ogg",
+   "dst_size": 1926519,
+   "dst_dur": 120.006,
+   "dst_md5": "b2b094b2d05bf6d887b489c091073c37",
+   "at": "2026-10-06 12:40:37"
+  },
+  "bgm-theme-warmwinter-daily.wav": {
+   "src_md5": "ddfe133d22e98f95ebe5dde63da08296",
+   "src_size": 10995652,
+   "src_dur": 62.333379,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-warmwinter-daily.ogg",
+   "dst_size": 1031345,
+   "dst_dur": 62.34,
+   "dst_md5": "fc0d1e84d046a6165f060ffcd08ef842",
+   "at": "2026-10-06 12:40:38"
+  },
+  "bgm-theme-weimu.wav": {
+   "src_md5": "03cd0ca172738443a9bfc2d6fed99c24",
+   "src_size": 20480048,
+   "src_dur": 106.666688,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-weimu.ogg",
+   "dst_size": 1804087,
+   "dst_dur": 106.673,
+   "dst_md5": "aa2a88f1f4f65365b6c83f0cd7106f19",
+   "at": "2026-10-06 12:40:39"
+  },
+  "bgm-theme-yixian-pv-loop.wav": {
+   "src_md5": "81943227317357163713fa4f761ffae2",
+   "src_size": 20771144,
+   "src_dur": 117.75,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-yixian-pv-loop.ogg",
+   "dst_size": 1974072,
+   "dst_dur": 117.757,
+   "dst_md5": "2602b538055e5c9cd21c19b6e6505dff",
+   "at": "2026-10-06 12:40:40"
+  },
+  "bgm-theme-yixian-soft-loop.wav": {
+   "src_md5": "3d93714c1116a82352e8534e7019451c",
+   "src_size": 22049812,
+   "src_dur": 124.998685,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme-yixian-soft-loop.ogg",
+   "dst_size": 2215312,
+   "dst_dur": 125.005,
+   "dst_md5": "f80ce370dd6ec161c0846b066364c519",
+   "at": "2026-10-06 12:40:42"
+  },
+  "bgm-theme.wav": {
+   "src_md5": "69ccb5066c15c06bafad428b99e4d93a",
+   "src_size": 29529644,
+   "src_dur": 230.7,
+   "dst": "Output/Audio/BGM_ogg/bgm-theme.ogg",
+   "dst_size": 3579433,
+   "dst_dur": 230.707,
+   "dst_md5": "929ff9c57e28e77ebc8947d2e80212aa",
+   "at": "2026-10-06 12:40:44"
+  },
+  "bgm-tl-battle-inst.wav": {
+   "src_md5": "3ab67301935a35c188e81d76d832b452",
+   "src_size": 40882508,
+   "src_dur": 231.76,
+   "dst": "Output/Audio/BGM_ogg/bgm-tl-battle-inst.ogg",
+   "dst_size": 3683759,
+   "dst_dur": 231.767,
+   "dst_md5": "5b389a1d00869f79a8361ccb43d47589",
+   "at": "2026-10-06 12:40:46"
+  },
+  "bgm-tl-battle.wav": {
+   "src_md5": "1cd5b47ece99002c49afe7087c2a7e3e",
+   "src_size": 40706108,
+   "src_dur": 230.76,
+   "dst": "Output/Audio/BGM_ogg/bgm-tl-battle.ogg",
+   "dst_size": 3658745,
+   "dst_dur": 230.767,
+   "dst_md5": "ce2286dec696462531052421207cb3aa",
+   "at": "2026-10-06 12:40:49"
+  },
+  "bgm-tl-theme-1.wav": {
+   "src_md5": "2f2af34cd7c2f53bf28c02cc3c249ba3",
+   "src_size": 50391644,
+   "src_dur": 285.666667,
+   "dst": "Output/Audio/BGM_ogg/bgm-tl-theme-1.ogg",
+   "dst_size": 4551418,
+   "dst_dur": 285.673,
+   "dst_md5": "fab2a041ca1f32a9762efacd2f4155f9",
+   "at": "2026-10-06 12:40:52"
+  },
+  "bgm-tl-theme-2.wav": {
+   "src_md5": "652fcbd1c033910c26b517e9ce9d1f8a",
+   "src_size": 39261980,
+   "src_dur": 222.573333,
+   "dst": "Output/Audio/BGM_ogg/bgm-tl-theme-2.ogg",
+   "dst_size": 3544586,
+   "dst_dur": 222.58,
+   "dst_md5": "7060a3057ebf31abfcf56b66090c0804",
+   "at": "2026-10-06 12:40:55"
+  },
+  "bgm-votefes-start.wav": {
+   "src_md5": "dcf3ae6a1c788af781118962554f0a60",
+   "src_size": 13065412,
+   "src_dur": 68.048792,
+   "dst": "Output/Audio/BGM_ogg/bgm-votefes-start.ogg",
+   "dst_size": 1145258,
+   "dst_dur": 68.055,
+   "dst_md5": "b2013684b917aa52b73d013ff51a5bc1",
+   "at": "2026-10-06 12:40:56"
+  },
+  "bgm-votefes-up.wav": {
+   "src_md5": "95729c57761204d41b8dad189f024b93",
+   "src_size": 21845380,
+   "src_dur": 113.777792,
+   "dst": "Output/Audio/BGM_ogg/bgm-votefes-up.ogg",
+   "dst_size": 1897579,
+   "dst_dur": 113.784,
+   "dst_md5": "8b9f7787da927f64235831e40292de9c",
+   "at": "2026-10-06 12:40:57"
+  },
+  "bgm-wavyflow-full.wav": {
+   "src_md5": "8065934d2f87c8feefd144f418669763",
+   "src_size": 80813244,
+   "src_dur": 420.902083,
+   "dst": "Output/Audio/BGM_ogg/bgm-wavyflow-full.ogg",
+   "dst_size": 6678248,
+   "dst_dur": 420.909,
+   "dst_md5": "a24ac26370bea9abf86b89593e1db687",
+   "at": "2026-10-06 12:41:01"
+  },
+  "bgm-wavyflow-inst-full.wav": {
+   "src_md5": "c655e96748d8c2736ea5e20916a136de",
+   "src_size": 80813244,
+   "src_dur": 420.902083,
+   "dst": "Output/Audio/BGM_ogg/bgm-wavyflow-inst-full.ogg",
+   "dst_size": 6764266,
+   "dst_dur": 420.909,
+   "dst_md5": "cda91fc6e42e791628a6c4a2774211f1",
+   "at": "2026-10-06 12:41:05"
+  },
+  "bgm-wavyflow-inst-short.wav": {
+   "src_md5": "4c5ca8dbb34c5a8d7b14218860c965b6",
+   "src_size": 46548628,
+   "src_dur": 242.440542,
+   "dst": "Output/Audio/BGM_ogg/bgm-wavyflow-inst-short.ogg",
+   "dst_size": 3932734,
+   "dst_dur": 242.447,
+   "dst_md5": "1a24514ed290533aa62409568f535a94",
+   "at": "2026-10-06 12:41:08"
+  },
+  "bgm-wavyflow-short.wav": {
+   "src_md5": "6cf41b3de8f19acec47c90e261eac798",
+   "src_size": 46548628,
+   "src_dur": 242.440542,
+   "dst": "Output/Audio/BGM_ogg/bgm-wavyflow-short.ogg",
+   "dst_size": 3875482,
+   "dst_dur": 242.447,
+   "dst_md5": "bd24e46cdf4a4c4f2cee44a442d05ebc",
+   "at": "2026-10-06 12:41:10"
+  },
+  "bgm-wedding.wav": {
+   "src_md5": "3844c8f54c43a952d3fb0508a16b2a53",
+   "src_size": 14800940,
+   "src_dur": 83.905306,
+   "dst": "Output/Audio/BGM_ogg/bgm-wedding.ogg",
+   "dst_size": 1521977,
+   "dst_dur": 83.912,
+   "dst_md5": "2716afc144247c1e4c6ba388d3011d94",
+   "at": "2026-10-06 12:41:12"
+  },
+  "bgm-xinnong-1.wav": {
+   "src_md5": "2f381db0383358841f10dadfbc7cdc13",
+   "src_size": 39250676,
+   "src_dur": 204.430375,
+   "dst": "Output/Audio/BGM_ogg/bgm-xinnong-1.ogg",
+   "dst_size": 3271621,
+   "dst_dur": 204.437,
+   "dst_md5": "dd26e5605753dcbcf34860f88463845b",
+   "at": "2026-10-06 12:41:14"
+  },
+  "bgm-xinnong-2.wav": {
+   "src_md5": "feb2394727e9c03528ef71a8bb25feae",
+   "src_size": 38084092,
+   "src_dur": 198.354417,
+   "dst": "Output/Audio/BGM_ogg/bgm-xinnong-2.ogg",
+   "dst_size": 3061830,
+   "dst_dur": 198.361,
+   "dst_md5": "753834d066d7ed1fea13798aae5e4b3a",
+   "at": "2026-10-06 12:41:16"
+  },
+  "bgm-xinnong-3.wav": {
+   "src_md5": "c74d01f70925bebc77de5af8e26bf16f",
+   "src_size": 55516368,
+   "src_dur": 289.147521,
+   "dst": "Output/Audio/BGM_ogg/bgm-xinnong-3.ogg",
+   "dst_size": 4909553,
+   "dst_dur": 289.154,
+   "dst_md5": "2338226dfb0275e024f5d958f504e9b9",
+   "at": "2026-10-06 12:41:19"
+  },
+  "bgm-xinnong-4.wav": {
+   "src_md5": "1da52e5b3fad369b8899ff41139ced13",
+   "src_size": 58079632,
+   "src_dur": 302.497854,
+   "dst": "Output/Audio/BGM_ogg/bgm-xinnong-4.ogg",
+   "dst_size": 4969300,
+   "dst_dur": 302.504,
+   "dst_md5": "f4523c4dea4e32418b5497b65cf84f84",
+   "at": "2026-10-06 12:41:22"
+  },
+  "bgm-yumia-1.wav": {
+   "src_md5": "e7afd6f90a2568a50c25fd9bc2eedbe8",
+   "src_size": 29100736,
+   "src_dur": 151.566104,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-1.ogg",
+   "dst_size": 2693409,
+   "dst_dur": 151.573,
+   "dst_md5": "987794908877ea1ab32f34e9e73d49d9",
+   "at": "2026-10-06 12:41:24"
+  },
+  "bgm-yumia-20.wav": {
+   "src_md5": "2ad61dfd6ff0d5f6be41f41b4ebbdcca",
+   "src_size": 17549996,
+   "src_dur": 91.406,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-20.ogg",
+   "dst_size": 1607052,
+   "dst_dur": 91.412,
+   "dst_md5": "96e6f10e1c78967068a752eef2b80b07",
+   "at": "2026-10-06 12:41:25"
+  },
+  "bgm-yumia-28.wav": {
+   "src_md5": "85e7c9eb0927633523278ed4f09b2fdc",
+   "src_size": 27669492,
+   "src_dur": 144.111708,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-28.ogg",
+   "dst_size": 2265114,
+   "dst_dur": 144.118,
+   "dst_md5": "88d843d58b0ed18cbb6bcb6bebffbc5a",
+   "at": "2026-10-06 12:41:27"
+  },
+  "bgm-yumia-43.wav": {
+   "src_md5": "d8e593a2e64ad9308b969e613aec5797",
+   "src_size": 47136332,
+   "src_dur": 245.5015,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-43.ogg",
+   "dst_size": 4529359,
+   "dst_dur": 245.508,
+   "dst_md5": "d3b339d2914a4cd1e81125322d21a188",
+   "at": "2026-10-06 12:41:29"
+  },
+  "bgm-yumia-44.wav": {
+   "src_md5": "981cdb8af6034fb9f72e20d4d3ae7d90",
+   "src_size": 32192260,
+   "src_dur": 167.667792,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-44.ogg",
+   "dst_size": 2971078,
+   "dst_dur": 167.674,
+   "dst_md5": "c19dc03432e7f9fc484cfa3437be6b28",
+   "at": "2026-10-06 12:41:31"
+  },
+  "bgm-yumia-46.wav": {
+   "src_md5": "d0e8e9f56cda1b2104802eb2e65b532f",
+   "src_size": 64320044,
+   "src_dur": 335.0,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-46.ogg",
+   "dst_size": 5842060,
+   "dst_dur": 335.007,
+   "dst_md5": "1755398823250f525c732ff9e1518bc5",
+   "at": "2026-10-06 12:41:35"
+  },
+  "bgm-yumia-49.wav": {
+   "src_md5": "d477c07d45078e43fa3829d3f6368ace",
+   "src_size": 34720876,
+   "src_dur": 180.837667,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-49.ogg",
+   "dst_size": 2964403,
+   "dst_dur": 180.844,
+   "dst_md5": "b0747eaced27acf7a971362b4764bb24",
+   "at": "2026-10-06 12:41:36"
+  },
+  "bgm-yumia-51.wav": {
+   "src_md5": "c9d5c32c518056f6a82f1fe744fd6cac",
+   "src_size": 31114304,
+   "src_dur": 162.053438,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-51.ogg",
+   "dst_size": 2649518,
+   "dst_dur": 162.06,
+   "dst_md5": "74636b011c31aa64d7c26d9621cb2e2c",
+   "at": "2026-10-06 12:41:38"
+  },
+  "bgm-yumia-53.wav": {
+   "src_md5": "d31438b2a2efd3eefd33a45756c4033f",
+   "src_size": 33904804,
+   "src_dur": 176.587292,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-53.ogg",
+   "dst_size": 2794753,
+   "dst_dur": 176.594,
+   "dst_md5": "d58e48e0ba59d060dde8d764570c20d8",
+   "at": "2026-10-06 12:41:40"
+  },
+  "bgm-yumia-61.wav": {
+   "src_md5": "977a61e1aca5c7d1832b641d1da0946d",
+   "src_size": 47262372,
+   "src_dur": 246.157958,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-61.ogg",
+   "dst_size": 4252746,
+   "dst_dur": 246.164,
+   "dst_md5": "0cbbfc69820d86c8fff16999b1039b5f",
+   "at": "2026-10-06 12:41:43"
+  },
+  "bgm-yumia-7.wav": {
+   "src_md5": "da26c2681825cb28526bf794555376de",
+   "src_size": 16336712,
+   "src_dur": 85.086813,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-7.ogg",
+   "dst_size": 1492105,
+   "dst_dur": 85.093,
+   "dst_md5": "09d430addea8656d1ea3a0d564186c87",
+   "at": "2026-10-06 12:41:44"
+  },
+  "bgm-yumia-70.wav": {
+   "src_md5": "181a46f038ccd11d2c899f904e0a0eb0",
+   "src_size": 35667136,
+   "src_dur": 185.766104,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-70.ogg",
+   "dst_size": 3331618,
+   "dst_dur": 185.773,
+   "dst_md5": "0aff5d80924fd5d5c61a713a223137e5",
+   "at": "2026-10-06 12:41:46"
+  },
+  "bgm-yumia-79.wav": {
+   "src_md5": "a87776dee3f03941279ee5bc4a4b49c1",
+   "src_size": 31254172,
+   "src_dur": 162.781917,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-79.ogg",
+   "dst_size": 2707925,
+   "dst_dur": 162.788,
+   "dst_md5": "58ffd1ea33b67308a8679d9642d216b2",
+   "at": "2026-10-06 12:41:48"
+  },
+  "bgm-yumia-81.wav": {
+   "src_md5": "b568f5ef0c028f3b95cb08dc3b6a970e",
+   "src_size": 31570784,
+   "src_dur": 164.430938,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-81.ogg",
+   "dst_size": 2856134,
+   "dst_dur": 164.437,
+   "dst_md5": "bbfef9138aa6d216d0e9d9ad1e307aab",
+   "at": "2026-10-06 12:41:50"
+  },
+  "bgm-yumia-83.wav": {
+   "src_md5": "ebda4a175c26638994829f0ad2942c6c",
+   "src_size": 39710652,
+   "src_dur": 206.826083,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-83.ogg",
+   "dst_size": 3538149,
+   "dst_dur": 206.833,
+   "dst_md5": "bdebdb1bea38769536e889539ab270e8",
+   "at": "2026-10-06 12:41:52"
+  },
+  "bgm-yumia-84.wav": {
+   "src_md5": "c671a3043719f64f1f0447848372b685",
+   "src_size": 40751608,
+   "src_dur": 212.247729,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-84.ogg",
+   "dst_size": 3750946,
+   "dst_dur": 212.254,
+   "dst_md5": "0dfa1b672ef02b74fb863f496cdc3b12",
+   "at": "2026-10-06 12:41:54"
+  },
+  "bgm-yumia-az-battle.wav": {
+   "src_md5": "8a36608014f6ec6e27adae9bcb2c3361",
+   "src_size": 16497824,
+   "src_dur": 85.925938,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-az-battle.ogg",
+   "dst_size": 1467776,
+   "dst_dur": 85.932,
+   "dst_md5": "053a46f8b0f8bd56cab73b33e699a7e1",
+   "at": "2026-10-06 12:41:55"
+  },
+  "bgm-yumia-az-story.wav": {
+   "src_md5": "d0ce76c06e18c6e0681fd5caa3596eb8",
+   "src_size": 27187248,
+   "src_dur": 141.600021,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-az-story.ogg",
+   "dst_size": 2504423,
+   "dst_dur": 141.607,
+   "dst_md5": "354d8d0e86613de512a75ce8233abe74",
+   "at": "2026-10-06 12:41:57"
+  },
+  "bgm-yumia-az-theme-pv.wav": {
+   "src_md5": "e99abf26c3f94e0c8bad8105a27c3314",
+   "src_size": 14924848,
+   "src_dur": 77.733354,
+   "dst": "Output/Audio/BGM_ogg/bgm-yumia-az-theme-pv.ogg",
+   "dst_size": 1396582,
+   "dst_dur": 77.74,
+   "dst_md5": "8f4b16efb219b02c32db34aee7cade73",
+   "at": "2026-10-06 12:41:58"
+  }
+ }
+}

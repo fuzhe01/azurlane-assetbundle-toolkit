@@ -6091,3 +6091,92 @@ gain 均 ≤1.02x，几乎无视觉变化，且逐一核对 T 层都是特效不
 `PROJECT_STATUS.md` §1 / §2.3 / §2.4 / §2.7 / 待办 5、8 就地更新；§80 那条"备份在 pipeline_20261001_2248"已就地订正（见上）。**本轮删除动作**：`Output/_OLD_bak/pipeline_20261001_2248/`（空目录）、`Output/_OLD_bak/darkfix_20261004/`（单文件，删前复核 md5 与线上一致）、源包 `dorm3d`+`island`+`char`+`ui`（除 `commonui_atlas`）21,286 个 / 7.53 GB。
 
 相关：§46（CG 备份瘦身先例）、§78 / WF-15 第 9 步（台账与备份换入）、§80（纯新增的空备份）、§110（本轮查出缺口的换入）、WF-28。
+
+---
+
+## §112. BGM 转码 + 画廊播放页：`http.server` 不支持 Range 会让音频"能响但不可拖"（2026-10-06）
+
+**任务**：用户拍板「BGM 走转码 128k + 画廊加播放页」。落地时撞出三条根因，其中两条是**判据自己写错**造成的假红灯。
+
+### 1. 根因一：`SimpleHTTPRequestHandler` 没有 Range ⇒ Chrome 把整条音频当不可 seek 的流
+
+第一次跑页面探针，播放本身是通的（`0:00 → 0:01`、标题跟随、行高亮都对），但两条判据红：
+总时长显示成 **`Infinity:NaN`**、进度条 `value` 恒 0。查下去：
+`_gallery_server.py` 是 `SimpleHTTPRequestHandler` 的子类，全量响应只发一个 `Content-Length`，
+**不发 `Accept-Ranges`、也不应答 `Range`** ⇒ Chrome 判定"流式、不可 seek"，`A.duration === Infinity`。
+表现就是：能响、不能拖、时长未知。语音条一直没暴露这个问题，因为它从不显示时长也不给进度条。
+
+**修法**：`Handler._serve_range()` 自己实现分段应答（`206` + `Content-Range` + 只发切片），
+支持 `bytes=a-b` / `a-` / `-n` 三种形态，越界回 `416`，**畸形 Range 回落全量 200 而不是 500**。
+`do_GET` 的顺序：`/cg_exists` → `_serve_range()` → `super().do_GET()`。
+
+**判据（必须落在产品行动那一刻，不能只看代码写了 206）**：
+- 零浏览器测试：`scripts/diag/gallery_server_range_test.py` 12 条 —— 首 100 字节 / 中段 500 /
+  后缀 `-50` / 开区间到末 / 越界 416 / 畸形回落 200 / 音频 `OggS` magic 两字节 / 音频尾 3 字节 /
+  `/cg_exists` 仍工作 / 非法名被 `_NAME_RE` 挡住 / 大文件全量读仍正常。**全过**。
+- 真浏览器：`bgm.html` 里把进度条推到 50% 再 `pointerup`，**`#t0` 必须落到 ≈ 曲长的一半**
+  （实测 1:48 的曲子 → `0:56`）。这条只有 Range 生效才可能过，它就是"拖动真的能用"的证据。
+
+⚠️ **8777 上那台服务器是旧代码**：新代码要生效必须**重启那个窗口**（`启动资产浏览器.bat`）。
+我没有去重启它 —— 它可能正被另一个会话的探针用着。⇒ 探针改成**自己 `make_server(空闲端口)` 起一份**，
+测的是当前代码而不是"某台碰巧在跑的进程"。这也是把 `Handler`/`Server` 从 `main()` 里抽到模块级的原因。
+
+### 2. 根因二：共享配色 token 只能有一份正本，而抽取必须证"逐字节无损"
+
+`bgm.html` 要长在主站旁边，配色不能抄第三份（`cg_export.html` 是工具页、根本没有 token，
+不构成"再抄一份"的先例）。⇒ 把 `index.html` 的 `:root` 三段（浅/深/夜，共 109 行）抽成
+`gallery_src/theme.css`，两边 `<link>` / `@import`。
+
+三条必须照做的细节：
+- **用 Python `open(p,'wb')` 原地写，不用编辑工具**：`'wb'` 截断同一 inode ⇒ **硬链不断**
+  （实测写完 `st_nlink` 仍是 2、两条路径 md5 相同）。编辑工具走"临时文件 + 改名"，每改一次必断链（WF-16）。
+- **按字节搬，不改行尾**：`index.html` 全文件 CRLF；按文本读写会把 2,360 行全标成改动。
+- **还原比对**：把 `theme.css` 塞回 `@import` 那一行后与 `git show HEAD:` 比 —— 归一行尾后
+  **逐字节相同（187,622 == 187,622）**，才算"搬动"而不是"改写"。
+- `deploy_gallery.py` 的 `FILES` 从 4 个变 **6 个**（加 `bgm.html`、`theme.css`），
+  否则新页面只有 `Output/` 里那份副本 —— 正是"改了忘部署"的老失效模式。
+
+### 3. 根因三：两条假红灯都是**判据自身**写错
+
+- 用 `backgroundColor` 判 body 背景 ⇒ 恒 `rgba(0,0,0,0)`。body 用的是 `linear-gradient(...)`，
+  在 `background-image` 上。⇒ 改量 `backgroundImage` 并断言含 `gradient` 与 `rgb`。
+- 上一轮我说 `asset_manifest.json` "只扫了一层"（86,849 少算嵌套包）—— **是错的**：
+  它的 `path` 用**反斜杠**，我却 `count('/')`，于是"≥2 层的条目 0 个"。实际最深 9 层、
+  20,407 条是嵌套包。真实原因是那份 manifest 停在 06-19 三个月没重建。
+  ⇒ 这是"0 命中三种失灵"的第四种形态：**分隔符/口径不匹配会让一个根本不存在的缺陷显示为 0 命中**。
+  重建后的新数 **71,393 文件 / 21.89 GB / 111 类**，与 `check_disk_footprint.py` 独立量的 71,393 逐位吻合。
+
+### 4. 转码本体的口径（可复跑）
+
+`scripts/transcode_bgm.py`：wav → `libopus 128k`（**与 `Audio/CV2` 同格式**，实测
+`codec_name=opus`、`format=ogg`，前端 `new Audio(path)` 那条播放路径不用新写）。
+三条硬校验任一不过该文件判失败：产物 >1 KB、`ffprobe` 时长与源差 <0.25 s、源 md5 落台账。
+可续跑（台账在 + 产物在 ⇒ 跳过）。**工具本身不删源文件**，删除是另一件事、要另放行。
+
+实测：**536/536 成功、0 失败、13.3 分钟，11.75 GB → 1.06 GB（回收 91.0%）**，19.1 小时。
+校验复核：台账覆盖全部 536 个 wav、0 条时长超差、0 条产物过小、
+"记着但盘上没有"0 条、随机抽 5 条重算 md5 全等。
+
+`scripts/build_bgm_index.py` → `Output/gallery_v2/bgm.json`（536 首，**自包含**：
+时长、官方中文名、专辑都烘进产物，前端不回头读 `.diag`）。两处口径要注意：
+- 官方中文曲名来自 `music_collect_config`（54 条，实际命中文件名 40 条），专辑来自 `music_album`；
+  **专辑表没有 `id` 字段**，能对上 `album_id` 的只有 `order`（1..10 连续，且 id=10 的曲目全是
+  鸢尾主题 ⇒ 与 `order=10 奏响鸢尾之歌` 语义吻合）。
+- lua 表的**表头行约定不统一**：`music_collect_config` 的数据行键是 `1/10/11…`、表头是 `#54`；
+  而 `music_album` 的**数据行键本身就是 `#0..#9`**。按 `#` 前缀滤会把整张专辑表滤空
+  （第一版就因此报"专辑 0 张"）⇒ 改成**按内容剔表头**（带 `__name` 的那行）。
+
+### 5. 未做 / 待定
+
+- ⏳ **wav 还没删**（11.75 GB）。删之前要先把 `.diag/bgm_transcode_manifest.json`（536 条逐份 md5，
+  是"删了还能对账"的唯一凭据）从 `.diag` 挪进 `ledger/` 入库，并把 `BGM_ogg/` 换进 `BGM/`。
+- ⚠️ `.diag/sharecfg_re/lua_json/` 是中文名与专辑的来源，而 `.diag` 是临时区 ⇒
+  名字已烘进 `bgm.json`，**删表不破坏页面**，但下次重建 `bgm.json` 前要先确认表还在。
+- 25 个 `bgm-*` 源包从未解码过（含 `bgm-nier-az-story.b`）⇒ 重导会得到 561 首，是超集不是同一份快照。
+
+**涉及文件**：`gallery_src/_gallery_server.py`（`_serve_range` / `make_server` / 类提到模块级）、
+`gallery_src/theme.css`（新，109 行 token 正本）、`gallery_src/bgm.html`（新，播放页）、
+`gallery_src/index.html`（抽 token + 加「音乐库」入口，硬链未断）、`scripts/deploy_gallery.py`（`FILES` 4→6）、
+`scripts/transcode_bgm.py`、`scripts/build_bgm_index.py`、`scripts/diag/bgm_page_probe.py`、
+`scripts/diag/gallery_server_range_test.py`、`scripts/scan_assets.py`（重建 manifest，脚本未改）。
+相关：§111（磁盘盘点，本轮的转码就是它列出的头号杠杆）、WF-16（前端正本与回归）、WF-28（追加"有损转码这一档"）。

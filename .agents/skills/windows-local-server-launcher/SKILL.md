@@ -9,7 +9,7 @@ argument-hint: Path to the local page to serve (e.g. C:\proj\web\index.html) and
 argument-hint-en: Path to the local page to serve (e.g. C:\proj\web\index.html) and the port
 argument-hint-zh: 给出要服务的本地页面路径（如 C:\proj\web\index.html）和端口
 user-invocable: true
-version: 1.3.0
+version: 1.4.0
 ---
 
 # Windows Local Server Launcher
@@ -165,6 +165,8 @@ Debugging order: first prove the server itself works (`py -m http.server <port> 
 | Chinese garbled only when piped | Harness decodes cp936 bytes | Ignore; assert on ASCII markers / HTTP codes |
 | Server **accepts** connections but returns 0 bytes; whole site dead while the port still listens | `ThreadingTCPServer` + `socketserver.handle_error` prints 4 traceback blocks to **stderr**, and it runs *before* `finally: shutdown_request()`. If stderr is a slow consumer (double-clicked console paused by a text selection, or an orphaned process whose parent shell is gone leaving an unread pipe), every browser-cancelled download wedges one thread **and** leaves its socket open with zero bytes flushed | Silence only client-abort exceptions in a `Server.handle_error` override (`ConnectionReset/ConnectionAborted/BrokenPipe/Timeout`); let everything else print |
 | Gate "passes" right after you add it, then a real outage slips through | The gate has never been observed red | Drive it with a stub that reproduces the exact symptom (e.g. accept + `200` + `Content-Length: 0`) and assert it goes red, attributes correctly, and prints its forensic line |
+| **Audio/video plays but has no duration and seeking does nothing** — `A.duration === Infinity`, progress bar stuck at 0, yet "click → sound" passes every check | `http.server.SimpleHTTPRequestHandler` answers a full `Content-Length` only; it never advertises `Accept-Ranges` nor replies to `Range`. Chrome then treats the media as an **unseekable stream**. Nothing in a "does it make sound" test reveals this. | Reply `206` + `Content-Range` with just the requested slice (handle `bytes=a-b`, `a-`, `-n`; out-of-range → `416`; **malformed Range → fall back to a full `200`, never a 500**). Assert twice: a browser-free range test (first/middle/suffix/open-ended/416/fallback + byte equality) **and** a real-browser one — drag the seek bar to 50% and require the time label to land near half the known duration. |
+| A page/server change "verified green" against the already-running launcher instance | That process is running **pre-change code** (a launcher never hot-reloads), and it may belong to another concurrent session | Have the test construct its own instance on a free port (`make_server(free_port, root)` in a thread, `shutdown()` in `finally`) instead of pointing at the shared port. This is the only reason to lift `Handler`/`Server` out of `main()` — keep `main()` as the thin double-click path. |
 
 ## Proving a leak without re-running the big job
 

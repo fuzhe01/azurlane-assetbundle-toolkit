@@ -6,114 +6,7 @@
 <title>碧蓝航线资产浏览器 · Azur Lane Asset Browser</title>
 <script>/* 先定主题再渲染，否则刷新会闪一下默认色 */try{document.documentElement.dataset.theme=localStorage.getItem('gallery.theme')||'light'}catch(e){document.documentElement.dataset.theme='light'}</script>
 <style>
-/* ══════════════════════════════════════════════════════════════════════
-   两套配色共用一套形状与动效：
-     · 浅色（默认）取自游戏自己的界面语言——白色圆角面板 + 天蓝标题条 + 樱粉点缀；
-     · 深色 = 原来那套（`--bg:#0f1320` 一族），作为「夜」保留。
-   颜色的"个性"由 token 承担，形状/弹性两边一致，切主题时只有配色在动。
-   ⚠️ 组件规则里**不许出现字面颜色**，否则另一套主题会漏色。新增控件请引用 token。
-   ══════════════════════════════════════════════════════════════════════ */
-:root{
-  --r-card:16px; --r-panel:20px; --r-chip:999px; --r-in:12px;
-  /* 弹性曲线：末段过冲再落回 —— "Q弹"里"弹"的那一半 */
-  /* ⚠️ 2026-09-28 第二次改口：先做的是"Q弹/果冻"（末段过冲 + 按下压扁），用户看过实机
-     明确否掉——"不要那种点击一下就弹一下的反应，要 iPhone 那种丝滑"。
-     ⇒ 交互全部改走这一条**无过冲**的平滑曲线（iOS 的加速-减速），
-        压扁 / 鼓起 / 回弹三件套一起删；按下只剩极轻的一下 scale(.97)。
-     三个旧 token 名保留为别名：调用点有三十来处，逐处改容易漏。
-     ⚠️ 以后加动效默认用 --ease-ios；要过冲必须先问。 */
-  --ease-ios:cubic-bezier(.32,.72,0,1);
-  --spring:var(--ease-ios); --spring-jelly:var(--ease-ios); --spring-slow:var(--ease-ios);
-  --t-col:.34s;                       /* 主题切换时配色过渡的时长 */
-}
-:root,[data-theme=light]{
-  color-scheme:light;
-  --bg:#eef4fb; --bg2:#e3ecf8; --panel:#ffffff; --panel2:#f4f8fd; --line:#d8e4f2;
-  --txt:#3a4a63; --txt2:#5b6d8c; --dim:#93a3bd;
-  --brand:#5fb0ef; --brand-d:#3d87d4; --brand-l:#e8f4ff;
-  --pop:#ff9ec4; --pop-d:#f4779f; --pop-l:#fff0f6;
-  --ok:#4fc787; --ok-d:#2f8a5d;
-  --acc:var(--pop); --acc2:var(--brand);
-  --sh1:0 2px 8px rgba(96,140,190,.14); --sh2:0 6px 18px rgba(96,140,190,.18);
-  --sh3:0 14px 34px rgba(96,140,190,.24);
-  --mask:rgba(120,150,190,.42);
-  --stage:repeating-linear-gradient(45deg,#f7fafd 0 12px,#eaf1fa 12px 24px);
-  --bar:rgba(255,255,255,.94);
-  --chip:#ffffff; --chip-line:#d8e4f2; --rar-bg:#f4f8fd;
-  --grad-brand:linear-gradient(180deg,#7cc3f6 0%,#5fb0ef 45%,#3d87d4 100%);
-  --grad-pop:linear-gradient(180deg,#ffb8d3 0%,#f4779f 100%);
-  --grad-mint:linear-gradient(180deg,#8fe3bd 0%,#2f9e63 100%);
-  /* 卡片名称条的压暗底：白天用半透明墨蓝，夜里更深；文字两套都用近白 */
-  --scrim:linear-gradient(0deg,rgba(26,48,78,.90) 0%,rgba(26,48,78,.62) 46%,rgba(26,48,78,0) 100%);
-  --scrim-txt:#f4f9ff;
-  /* 水面着色参数（只有背景那层读，组件不碰）：泡沫/高光/水体色 + 斜率增益与起沫阈值。
-     白天泡沫纯白、水体往蓝里压；夜里泡沫偏冰蓝、高光更亮。 */
-  --w-foam:#ffffff; --w-glint:#ffffff; --w-deep:#5fa0d8;
-  --w-gain:8; --w-foamth:0.012; --w-alpha:0.97;
-  /* 卡片"悬空"：面板留一点透明度，海面才不是只在缝隙里露一下；
-     --gloss 是果冻的高光（上半亮、下半透），只用于按钮表面。 */
-  /* 玻璃拟态（liquid glass），不是磨砂白卡：面板**几乎全透**、只给极轻的一层模糊，
-     真正的玻璃感来自三样东西——① 上沿一道镜面亮边 ② 一圈更厚的"边墙"折射背后
-     ③ 跟着鼠标跑的高光。模糊只给进过视口的卡挂（见 .g / GLASS_IO）。 */
-  --card-bg:rgba(255,255,255,.05); --glass-line:rgba(152,182,214,.30);
-  --glass-blur:2.5px; --rim-blur:17px;
-  /* 亮边从 98% 白压到 20%：真玻璃的边缘靠"透"读出来，画一条白线只会像塑料贴皮 */
-  --rim-hi:rgba(255,255,255,.20); --spec:rgba(255,255,255,.30);
-  /* 常驻的斜向反光：玻璃在任何角度都会反一条光，这是"是玻璃"最直接的一笔。
-     它跟跟着鼠标跑的圆斑叠在一起（::after 的两层背景），不是只在高光时才出现。 */
-  --spec2:linear-gradient(118deg,rgba(255,255,255,.18) 0%,rgba(255,255,255,.04) 23%,rgba(255,255,255,0) 46%);
-  /* 文字区那层底：原来给到 60% 白 —— 那就是"奶膜"，是上一版被判"还是毛玻璃"的主因 */
-  --body-tint:rgba(255,255,255,.24);
-  --sh-float:0 14px 30px rgba(38,62,96,.16);
-  /* 导航栏是"厚材质"：比卡片实，但仍然是玻璃——下沿一条亮发丝边代替灰边 */
-  --nav-bg:rgba(255,255,255,.16); --nav-line:rgba(255,255,255,.18);
-  --title:var(--brand-d);
-  --nav-blur:6px; --nav-rim:17px;
-  --gloss:linear-gradient(180deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,.06) 42%,rgba(255,255,255,0) 60%);
-  /* 材质态三件套：选中不再整块填色，而是"更亮一档的玻璃 + 一圈细彩色内描边 + 彩色文字"。
-     整页只留 brand 一个强调色（pop 从此只出现在标签/角标这类**内容**上，不再出现在控件上）。 */
-  --on-bg:color-mix(in srgb,var(--brand) 13%,transparent);
-  --on-ring:color-mix(in srgb,var(--brand) 52%,transparent);
-  --on-txt:var(--brand-d);
-  --r0:#b8860b; --r1:#f4779f; --r2:#8f6fd0; --r3:#3d87d4; --r4:#2f9e63;
-}
-[data-theme=dark]{
-  color-scheme:dark;
-  --bg:#0f1320; --bg2:#0b0e18; --panel:#171c2e; --panel2:#1e2438; --line:#2b3350;
-  --txt:#e6e9f2; --txt2:#b9c3da; --dim:#8b93ad;
-  --brand:#4d8bff; --brand-d:#2b6cb0; --brand-l:#18223c;
-  --pop:#e94560; --pop-d:#c9304c; --pop-l:#2a1822;
-  --ok:#37c26e; --ok-d:#2a8f52;
-  --acc:#e94560; --acc2:#4d8bff;
-  --sh1:0 2px 8px rgba(0,0,0,.34); --sh2:0 6px 18px rgba(0,0,0,.4);
-  --sh3:0 14px 34px rgba(0,0,0,.52);
-  --mask:rgba(5,7,14,.82);
-  --stage:repeating-conic-gradient(#12172a 0 25%,#0d1120 0 50%) 0 0/28px 28px;
-  --bar:rgba(10,13,24,.86);
-  --chip:#1e2438; --chip-line:#2b3350; --rar-bg:#1e2438;
-  --grad-brand:linear-gradient(180deg,#5f97ff 0%,#2b6cb0 100%);
-  --grad-pop:linear-gradient(180deg,#ff6b81 0%,#c9304c 100%);
-  --grad-mint:linear-gradient(180deg,#4fd489 0%,#2a8f52 100%);
-  --scrim:linear-gradient(0deg,rgba(4,8,18,.94) 0%,rgba(4,8,18,.70) 46%,rgba(4,8,18,0) 100%);
-  --scrim-txt:#eaf0ff;
-  --w-foam:#eaf6ff; --w-glint:#cfe9ff; --w-deep:#2f6f9f;
-  --w-gain:11; --w-foamth:0.008; --w-alpha:1.0;
-  /* 夜里面板本来就深，透明度收一点就够"悬空"，再多缩略图就糊在海里了 */
-  --card-bg:rgba(10,16,30,.14); --glass-line:rgba(255,255,255,.2);
-  --glass-blur:2.5px; --rim-blur:17px;
-  --rim-hi:rgba(255,255,255,.16); --spec:rgba(210,232,255,.16);
-  --title:#9dc2ff;
-  --spec2:linear-gradient(118deg,rgba(255,255,255,.09) 0%,rgba(255,255,255,.02) 23%,rgba(255,255,255,0) 46%);
-  --body-tint:rgba(10,16,30,.32);
-  --sh-float:0 14px 30px rgba(0,0,0,.42);
-  --nav-bg:rgba(10,16,30,.2); --nav-line:rgba(255,255,255,.10);
-  --nav-blur:6px; --nav-rim:17px;
-  --gloss:linear-gradient(180deg,rgba(255,255,255,.08) 0%,rgba(255,255,255,.025) 42%,rgba(255,255,255,0) 60%);
-  --on-bg:color-mix(in srgb,var(--brand) 18%,transparent);
-  --on-ring:color-mix(in srgb,var(--brand) 46%,transparent);
-  --on-txt:#a9c8ff;
-  --r0:#c9a24b; --r1:#ff5c8a; --r2:#b07bff; --r3:#5aa2ff; --r4:#37c26e;
-}
+@import 'theme.css';
 *{margin:0;padding:0;box-sizing:border-box}
 /* 主题切换时给配色加过渡：只在 .theming 期间生效，平时不干扰下面的 hover 弹性 */
 html.theming *{transition:background-color var(--t-col),color var(--t-col),
@@ -603,6 +496,7 @@ main{position:relative;z-index:1}
   <div class="ctl"><label>配色</label><div class="opt" id="gTheme" title="昼 / 夜配色（状态会记住）">
     <button data-t="light">昼</button><button data-t="dark">夜</button>
   </div></div>
+  <div class="ctl"><label>页面</label><div class="opt"><button onclick="location.href='bgm.html'" title="游戏原声 BGM（opus，536 首）在线试听">音乐库</button></div></div>
   <div class="hint" id="count"></div>
   <div class="hint" id="modehint"></div>
 </header>

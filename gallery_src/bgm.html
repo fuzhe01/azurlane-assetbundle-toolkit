@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>音乐库 · 碧蓝航线资产浏览器</title>
+<script>/* 与 index.html 同一条规则：先定主题再渲染，否则刷新闪一下默认色 */try{document.documentElement.dataset.theme=localStorage.getItem('gallery.theme')||'light'}catch(e){document.documentElement.dataset.theme='light'}</script>
+<!-- 配色/圆角/弹性只有一份正本：theme.css（由 index.html 抽出，两边共用）。
+     ⚠️ 本文件的组件规则里**不许出现字面颜色**，否则深色主题会漏色（同 index.html 那条约束）。 -->
+<link rel="stylesheet" href="theme.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',"Microsoft YaHei",system-ui,sans-serif;color:var(--txt);
+  min-height:100vh;background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%) fixed;
+  padding-bottom:96px}
+header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;
+  padding:12px 18px;background:var(--nav-bg);backdrop-filter:blur(var(--nav-blur));
+  border-bottom:1px solid var(--nav-line)}
+header h1{font-size:16px;font-weight:800;letter-spacing:.02em;color:var(--title);white-space:nowrap}
+header .sub{font-size:12px;color:var(--dim);white-space:nowrap}
+header .sp{flex:1}
+a.back{font-size:13px;color:var(--txt2);text-decoration:none;padding:6px 12px;
+  border:1px solid var(--chip-line);border-radius:var(--r-chip);background:var(--chip);
+  transition:transform var(--t-col) var(--ease-ios),color var(--t-col) var(--ease-ios)}
+a.back:hover{color:var(--brand-d);transform:translateY(-1px)}
+a.back:active{transform:scale(.97)}
+.wrap{max-width:1000px;margin:0 auto;padding:16px 18px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+input.q{flex:1;min-width:200px;font:inherit;font-size:14px;color:var(--txt);background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r-in);padding:9px 13px;outline:none;
+  transition:border-color var(--t-col) var(--ease-ios),box-shadow var(--t-col) var(--ease-ios)}
+input.q:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--on-bg)}
+.chip{font-size:12.5px;color:var(--txt2);background:var(--chip);border:1px solid var(--chip-line);
+  border-radius:var(--r-chip);padding:6px 12px;cursor:pointer;white-space:nowrap;
+  transition:transform var(--t-col) var(--ease-ios),background var(--t-col) var(--ease-ios),color var(--t-col) var(--ease-ios)}
+.chip:hover{transform:translateY(-1px)}
+.chip.on{background:var(--grad-brand);color:#fff;border-color:transparent}
+.row{display:grid;grid-template-columns:34px 1fr auto auto;gap:12px;align-items:center;
+  padding:10px 12px;margin-bottom:6px;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--r-card);box-shadow:var(--sh1);
+  transition:transform var(--t-col) var(--ease-ios),box-shadow var(--t-col) var(--ease-ios),border-color var(--t-col) var(--ease-ios)}
+.row:hover{transform:translateY(-2px);box-shadow:var(--sh2)}
+.row.playing{border-color:var(--brand);box-shadow:0 0 0 3px var(--on-bg)}
+.row .no{font-size:12px;color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
+.row .nm{font-size:14.5px;font-weight:650;color:var(--txt);line-height:1.35;word-break:break-word}
+.row .en{font-size:12px;color:var(--dim);font-weight:400;margin-top:2px;word-break:break-all}
+.row .al{font-size:11.5px;color:var(--brand-d);background:var(--brand-l);border-radius:var(--r-chip);
+  padding:3px 9px;white-space:nowrap}
+.row .mt{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+.play{width:34px;height:34px;flex:0 0 auto;border:0;border-radius:50%;cursor:pointer;
+  background:var(--grad-brand);color:#fff;display:grid;place-items:center;
+  transition:transform var(--t-col) var(--ease-ios)}
+.play:hover{transform:scale(1.06)}
+.play:active{transform:scale(.97)}
+.play svg{width:15px;height:15px;fill:currentColor}
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--bar);
+  backdrop-filter:blur(var(--glass-blur));border-top:1px solid var(--glass-line);
+  box-shadow:var(--sh-float);padding:10px 18px 12px;display:none}
+.bar.on{display:block}
+.bar .in{max-width:1000px;margin:0 auto}
+.bar .top{display:flex;align-items:center;gap:12px}
+.bar .cur{font-size:13.5px;font-weight:650;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.bar .tm{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+.bar button{border:0;background:transparent;cursor:pointer;color:var(--txt2);width:30px;height:30px;
+  border-radius:50%;display:grid;place-items:center;transition:transform var(--t-col) var(--ease-ios),background var(--t-col) var(--ease-ios)}
+.bar button:hover{background:var(--panel2);transform:scale(1.06)}
+.bar button:active{transform:scale(.97)}
+.bar button.on{color:var(--brand-d)}
+.bar svg{width:15px;height:15px;fill:currentColor}
+.seek{width:100%;height:4px;margin:9px 0 4px;-webkit-appearance:none;appearance:none;
+  background:var(--line);border-radius:var(--r-chip);outline:none;cursor:pointer}
+.seek::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;
+  background:var(--brand);border:2px solid var(--panel);box-shadow:var(--sh1);cursor:pointer}
+.seek::-moz-range-thumb{width:12px;height:12px;border:2px solid var(--panel);border-radius:50%;
+  background:var(--brand);cursor:pointer}
+.vol{width:78px;height:4px}
+.empty{padding:40px 10px;text-align:center;color:var(--dim);font-size:13.5px;line-height:1.9}
+code{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;background:var(--panel2);
+  border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="index.html">← 资产浏览器</a>
+  <h1>音乐库</h1>
+  <span class="sub" id="sub">载入中…</span>
+  <span class="sp"></span>
+  <span class="sub" id="load"></span>
+</header>
+
+<div class="wrap">
+  <div class="tools">
+    <input class="q" id="q" placeholder="搜曲名 / 英文标识…" autocomplete="off">
+    <span id="chips" style="display:flex;gap:8px;flex-wrap:wrap"></span>
+  </div>
+  <div id="list"></div>
+</div>
+
+<div class="bar" id="bar">
+  <div class="in">
+    <div class="top">
+      <button id="prev" title="上一首"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zm3 7l9 7V5z"/></svg></button>
+      <button id="pp" title="播放 / 暂停"><svg viewBox="0 0 24 24"><path id="ppath" d="M8 5v14l11-7z"/></svg></button>
+      <button id="next" title="下一首"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM6 19l9-7-9-7z"/></svg></button>
+      <span class="tm" id="t0">0:00</span>
+      <span class="cur" id="cur">—</span>
+      <span class="tm" id="t1">0:00</span>
+      <button id="lp" title="单曲循环"><svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></svg></button>
+      <input class="seek vol" id="vol" type="range" min="0" max="1" step="0.01" title="音量">
+    </div>
+    <input class="seek" id="sk" type="range" min="0" max="1000" value="0">
+  </div>
+</div>
+
+<script>
+const P='';                                   // bgm.json 与本页同目录
+let T=[], view=[], idx=-1, album='', knownDur=0;
+const A=new Audio(); A.volume=+(localStorage.getItem('gallery.vol')??0.8);
+const $=id=>document.getElementById(id);
+const mmss=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const name=t=>t.title_cn||t.title;
+
+async function boot(){
+  let j;
+  try{ j=await (await fetch(P+'bgm.json',{cache:'no-store'})).json() }
+  catch(e){ $('list').innerHTML='<div class="empty">读不到 <code>bgm.json</code>。<br>生成：'+
+    '<code>py -3 scripts/build_bgm_index.py</code></div>'; $('sub').textContent='数据缺失'; return }
+  T=j.tracks; $('sub').textContent=`${j.counts.tracks} 首 · ${j.counts.hours} 小时 · `+
+    `${j.counts.mb} MB · 官方中文名 ${j.counts.named_cn} 首`;
+  const al=[...new Set(T.map(t=>t.album).filter(Boolean))];
+  $('chips').innerHTML=['<span class="chip on" data-a="">全部</span>']
+    .concat(al.map(a=>`<span class="chip" data-a="${esc(a)}">${esc(a)}</span>`)).join('');
+  $('chips').onclick=e=>{const b=e.target.closest('.chip'); if(!b)return;
+    album=b.dataset.a; [...$('chips').children].forEach(c=>c.classList.toggle('on',c===b)); render()};
+  render();
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function render(){
+  const q=$('q').value.trim().toLowerCase();
+  view=T.filter(t=>(!album||t.album===album)&&(!q||name(t).toLowerCase().includes(q)||
+    t.slug.toLowerCase().includes(q)||(t.title_cn||'').toLowerCase().includes(q)));
+  $('list').innerHTML=view.length?view.map((t,i)=>`
+    <div class="row${i===idx?' playing':''}" data-i="${i}">
+      <span class="no">${i+1}</span>
+      <span><span class="nm">${esc(name(t))}</span><span class="en">${esc(t.slug)}</span></span>
+      <span class="mt">${mmss(t.dur)} · ${(t.size/2**20).toFixed(1)} MB${t.album?'':''}</span>
+      <button class="play" data-i="${i}" title="播放"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+    </div>`).join('')
+    :'<div class="empty">没有匹配的曲子</div>';
+}
+
+function play(i){
+  if(i<0||i>=view.length)return;
+  idx=i; const t=view[i];
+  /* 总时长优先用 bgm.json 里的已知值：服务器不支持 Range 时 `A.duration` 是 Infinity
+     （2026-10-06 实测），拿它渲染会显示成 "Infinity:NaN"。元数据回来后若有限值再以它为准。 */
+  knownDur=t.dur||0;
+  A.src=t.url; A.play().catch(()=>{});
+  $('bar').classList.add('on'); $('cur').textContent=name(t);
+  $('t1').textContent=mmss(knownDur); document.title=name(t)+' · 音乐库';
+  [...document.querySelectorAll('.row')].forEach(r=>r.classList.toggle('playing',+r.dataset.i===i));
+}
+const total=()=>isFinite(A.duration)&&A.duration>0?A.duration:knownDur;
+A.addEventListener('play',()=>{$('ppath').setAttribute('d','M6 5h4v14H6zm8 0h4v14h-4z')});
+A.addEventListener('pause',()=>{$('ppath').setAttribute('d','M8 5v14l11-7z')});
+A.addEventListener('ended',()=>$('lp').classList.contains('on')?(A.currentTime=0,A.play()):play(idx+1));
+A.addEventListener('timeupdate',()=>{
+  $('t0').textContent=mmss(A.currentTime);
+  const d=total();
+  if(!$('sk').dataset.drag&&d)$('sk').value=Math.min(1000,A.currentTime/d*1000)});
+A.addEventListener('loadedmetadata',()=>{if(isFinite(A.duration)&&A.duration>0)$('t1').textContent=mmss(A.duration)});
+
+$('list').onclick=e=>{const b=e.target.closest('[data-i]'); if(b)play(+b.dataset.i)};
+$('q').oninput=()=>{idx=-1;render()};
+$('pp').onclick=()=>A.paused?(A.src?A.play():play(idx<0?0:idx)):A.pause();
+$('prev').onclick=()=>play(idx<=0?view.length-1:idx-1);
+$('next').onclick=()=>play(idx+1>=view.length?0:idx+1);
+$('lp').onclick=()=>{$('lp').classList.toggle('on');A.loop=$('lp').classList.contains('on')};
+$('vol').value=A.volume;
+$('vol').oninput=e=>{A.volume=+e.target.value;localStorage.setItem('gallery.vol',e.target.value)};
+$('sk').onpointerdown=()=>$('sk').dataset.drag=1;
+$('sk').onpointerup=()=>{const d=total();if(d)A.currentTime=$('sk').value/1000*d;delete $('sk').dataset.drag};
+$('sk').oninput=e=>{const d=total();if(d)$('t0').textContent=mmss(e.target.value/1000*d)};
+document.onkeydown=e=>{
+  if(e.target.tagName==='INPUT'&&e.target.id!=='sk')return;
+  if(e.code==='Space'){e.preventDefault();$('pp').click()}
+  else if(e.code==='ArrowRight'&&e.ctrlKey)$('next').click();
+  else if(e.code==='ArrowLeft'&&e.ctrlKey)$('prev').click()};
+
+boot();
+</script>
+</body>
+</html>

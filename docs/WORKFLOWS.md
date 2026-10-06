@@ -1082,6 +1082,44 @@ py -3 scripts/diag/gallery_motion_probe.py --page index.html --win 1440,900   # 
 技能 `headless-chrome-cdp-batch-export` §「视觉/交互态专用」。
 相关：`WF-16` 六件套（本节过了仍要跑那六件）、`WF-15` 换入闸门。
 
+### WF-16 追加（2026-10-06）：往画廊里**新增一个页面级文件**要过哪几道
+
+**适用**：新建 `gallery_src/<某页>.html`（本轮 `bgm.html`），或把正本里的共享内容抽成
+`theme.css` 这类被多页引用的文件。这类改动不会被六件套里的任何一件"顺带"覆盖到。
+
+1. **`deploy_gallery.py` 的 `FILES` 必须加进来**（本轮 4 → 6：`bgm.html`、`theme.css`）。
+   判据：`deploy_gallery.py --check` 打印的「同 inode N/N」里 **N 要等于 FILES 长度**，
+   且新页在 `Output/gallery_v2/` 里存在。漏了它的后果就是"正本改了、运行目录那份还是旧的"——
+   本项目已经为这个失效模式专门写过 `--relink`。
+2. **抽共享 token 只能按字节搬**，三条硬要求：
+   - 用 `open(p,'wb')` **原地写**（截断同一 inode ⇒ 硬链不断）；编辑工具走"临时文件+改名"必断链。
+   - **不改行尾**：`index.html` 全文件 CRLF，按文本读写会把 2,360 行全标成改动，评审时看不出真正改了什么。
+   - **还原比对**：把 `theme.css` 塞回 `@import` 那一行后与 `git show HEAD:` 比，
+     归一行尾后必须**逐字节相同**（本轮 187,622 == 187,622）。做不到就不许说"只是搬动"。
+3. **页面里放音频/视频 ⇒ 服务器必须应答 `Range`**。`SimpleHTTPRequestHandler` 只发全量
+   `Content-Length`，Chrome 就把整条媒体当**不可 seek 的流**：`A.duration === Infinity`、
+   进度条恒 0、拖动无效，而"点了能响"一切正常 —— 所以它不会被任何只看响不响的验收发现。
+   两条判据（缺一不可）：
+   - 零浏览器：`scripts/diag/gallery_server_range_test.py`（首/中/后缀/开区间/越界 416/畸形回落 200 +
+     既有 `/cg_exists` 回归，12 条）。
+   - 真浏览器：拖到 50% 后 `#t0` 必须落到 ≈ 曲长一半（实测 1:48 → `0:56`）。
+4. **探针自己起一份服务器**（`make_server(空闲端口, root)`），不要复用 8777 上那台：
+   它跑的可能是**改动前的代码**（改了不重启就不生效），而且另一个会话的探针可能正在用它。
+   ⇒ 这就是把 `Handler`/`Server` 从 `main()` 里提到模块级的唯一理由。
+5. **动过 `index.html` 就要跑六件套**（本轮 `--skip hit_verify`，五件全绿 EXIT=0）。
+   节奏仍是：改 → `deploy_gallery.py`（刷平）→ 提交 → `--relink` → `--check` 6/6 同 inode。
+
+**踩坑记录**：判据自身写错会造出**假红灯**，本轮两条 ——
+① 用 `backgroundColor` 判 body 背景（body 用的是 `linear-gradient`，恒 `rgba(0,0,0,0)`）；
+② 用 `/` 数 `asset_manifest.json` 的路径层级（它的分隔符是 `\`），于是"≥2 层 0 条"，
+   我据此断言那份 manifest 只扫了一层 —— **错的**，它最深 9 层。
+⇒ 任何"0 命中 / 恒为默认值"的结论，先证探针与数据的口径对得上，再定罪被测对象。
+
+**涉及文件**: `gallery_src/bgm.html`、`gallery_src/theme.css`、`gallery_src/_gallery_server.py`
+（`_serve_range` / `make_server`）、`scripts/deploy_gallery.py`（`FILES`）、
+`scripts/diag/bgm_page_probe.py`、`scripts/diag/gallery_server_range_test.py`。
+取证全过程 **§112**；省空间口径 **WF-28**。
+
 ### WF-17: Live2D 动作语音导出与接线（ACB cue → 动作组 → 浏览器出声）
 
 **日期**: 2026-09-23
@@ -2552,6 +2590,26 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
    同尺寸 ⇒ 归档；大小 +1 ⇒ 真新版本要重拉；未登记的承重包 ⇒ 仍要拉（阴性对照）。
    ⚠️ 已知缺口：没有 `--revive`，想拉回被删类目**必须先撤销 `pruned.json` 里的对应条目**，
    否则 `--only ui --apply` 会把它们全判成"已归档"而静默跳过（撤销命令见 §111 第 5 节）。
+
+**有损转码这一档（第 3 步里"能再生"的那类才允许走；本轮 = BGM 12.6 GB → 1.06 GB）**：
+上限是**格式**给的，不是去重给的 —— 零引用的大产物导出（背景音乐 / 未压缩音频）往往一挡就回收九成。
+五步，顺序不能换：
+1. **先确认它真的没人消费**（grep 索引与前端，0 命中），否则转码=改内容，要走对照验收而不是这条。
+2. **跟着现有格式走，不要引入第二条播放路径**：`Audio/CV2/*.ogg` 实测 `codec_name=opus` +
+   `new Audio(path)` ⇒ BGM 也转 opus/ogg，前端零新依赖。选格式前先量源：536 首 / 44.1kHz 立体声 /
+   **19.1 小时**，opus 128k 预估 1.0 GB（实测 1.06 GB，误差 3%）。
+3. **逐份校验再谈删除**，三条硬判据任一不过该文件判失败：产物 >1 KB、
+   `ffprobe` 时长与源差 **<0.25 s**、源 md5 落台账。工具**不删源文件** —— 删除是另一步、要另放行。
+4. **台账必须入库**（`ledger/bgm_transcode.json`，不放 `.diag`）：删掉 wav 之后，
+   它是唯一能逐份证明"这个 ogg 当时由那个 md5 的 wav 转出来"的东西。
+   派生产物要**自包含**（时长/中文名烘进 `bgm.json`），这样临时区被清也不破坏页面。
+5. **删源前先把产物换进最终位置**（`BGM_ogg/` → `BGM/`），别让引用路径长期指向临时名。
+
+**踩坑记录**：
+- 有损转码的**唯一硬证据是"能播 + 时长对"**，不是"文件变小了"。浏览器侧还要单独验一次
+  （`bgm_page_probe.py`：进度在走、拖到 50% 真跳、标题跟随、筛选与搜索）——
+  见 WF-16 追加第 3 条：**服务器不应答 `Range` 时音频"能响但不可拖"，`duration` 恒 `Infinity`**。
+- 转码台账的可续跑判据要**含源 md5**，不能只看产物存在：产物存在但源换了版本时必须重转。
 
 **涉及文件**：新增 `scripts/diag/check_disk_footprint.py`；`scripts/asset_ledger.py`
 （`prune-category` / `dep_closure()` / `pruned.json` 登记）、`scripts/mumu_sync.py:247-270`（`load_pruned` / `split_archived`）；
