@@ -6064,7 +6064,18 @@ gain 均 ≤1.02x，几乎无视觉变化，且逐一核对 T 层都是特效不
 - 引导文案同步改：`build_gallery_index.py` 那两条"先跑 `--parts-only`"现在带 `--bak`，并写明"纯新增时备份会是 0 份，但覆写范围必须当场声明"。
 - `run_v2_full.py` 的 spine 批调用补 `--bak Output/_OLD_bak/spine_full_<时间>/`（它按定义只提"正式区还没有的目录"= 纯新增，备份会是 0 份 —— 那份 0 条的 MANIFEST 就是"无前身可备份"的当场证据）。
 - **顺带修掉一个更普遍的坑**：`if __name__ == '__main__': main()` **丢掉返回值** ⇒ 负例打出 `[FAIL]` 却仍 `exit 0`。改成 `sys.exit(main())`。这正是 `update_pipeline.py` 开头列的"9 个脚本失败照样 exit 0"那一类，本轮在我自己的新闸门上又撞了一次。
-  ⚠️ **未一并改的**：`extract_spine_v2` 在 `失败 N>0`（提取本身失败）时**仍然 exit 0**（`main()` 无返回值），`st_spine` 靠数 `✗` 行判红才没漏 —— 这条留着，改它会影响既有 judge，需另行放行。
+  ⚠️→✅ **当时未一并改的这条，2026-10-07 已落地**：`extract_spine_v2` 以前在 `失败 N>0`（提取本身失败）时
+  仍然 exit 0（`main()` 打印完汇总就掉出函数尾 ⇒ `sys.exit(None)` ⇒ 0）。现 `main()` 结尾
+  `return 0 if miss == 0 else 1`（返回 1 而非 `miss`，避免 >255 被 shell 截断）。
+  核实过「改它会影响既有 judge」这句并不成立：两个程序化调用方 `run_v2_full.py:100` 与
+  `update_pipeline.py` `st_spine` **都不看退出码**（各自扫 stdout 行首 `✗`），改成非零对它们是纯增益。
+  顺带修掉同型的另一半静默失败：整批路径下 `extract_one` 成功但 `write_parts` 失败时，原来 `good` 仍为
+  `True`，那一行以 `✓` 开头、把 `parts.json ✗ 原因` 塞在行尾 —— 而两个 judge 都按**行首**匹配，看不见它
+  （`run_v2_full` 因此连 `ERRORS.log` 都不写）。现在清单落不下即判该皮肤失败，行首 `✗`、计入 `miss`、退出码非零。
+  验证（全在临时区，正式区今日 0 文件被写）：桩驱动真实 `main()` 六例全绿 —— parts 失败→`✗`+exit 1、
+  提取失败→exit 1、全成功→exit 0、一批 1 成 1 败→exit 1、`--parts-only` 目录不存在→exit 1（不退化）、
+  正式区无 `--bak`→仍 exit 2（闸门不退化）；真实皮肤 `fulangxisike_2` / `2b_2` / `aersasi` 正例 exit 0；
+  `test_pipeline_gating.py` 全绿。
 - 验证（三条 + 两条对照，全在 1 个皮肤样本上跑）：负例 `--parts-only tianjinfeng_2` ⇒ **exit 2**、`parts.json` md5 与基线 `e6125e29…` 逐字节未变；正例带 `--bak` ⇒ exit 0、备份件 md5 == 基线、且重生成后线上 md5 **仍等于基线**（⇒ 重生成幂等，这次测试没动过生产字节）；暂存区 `--out .diag/pipeline/Spine_v2` 无 `--bak` **不拦**；`test_pipeline_gating.py` 签字门与增量范围闸门全绿。
 
 ### 5. 按类目清源包：删除与登记必须同一次落（同日执行记录）
@@ -6350,14 +6361,32 @@ Pillow 文档原话 *"scaling the alpha channel twice"*：用 RGBA 图当蒙版�
 CAB→bundle / 世界框 / 绘制序），`parts.json` 加一类 `image` 层，viewer 与 `cg_export.html`
 在其上渲染骨架——与 §110 已建立的「绘制序取 prefab 层级 DFS 先序」是同一套机制。
 
-### 顺带排除的一条：`gezi_2`「立绘没有的花瓣在 Live2D 里不动」不是本轮改动造成的
+### `gezi_2`「Live2D 里几片花瓣固定不动」—— 已排除是本轮立绘改动，**Live2D 侧未结案**
 
-`gezi_2` 立绘三层（`gezi_2` / `gezi_2_bj` / `gezi_2_rw`）**全部 `active=True`、零层被激活位过滤**，
-三层都画了；Live2D 是另一份资产（`live2d/gezi_2`），花瓣集合与立绘不同属正常。
-其 57 条 motion3 里 **Part 目标曲线 0 条、Parameter 532 条**（全走参数驱动），
-而全库审计记录"PartOpacity 换装曲线 79 个模型"（§2.5）⇒ 导出器不会系统性丢 Part 曲线。
-⚠ 未验的是"游戏里这几片到底动不动"——若实见它们会动，则要回头查 moc3 的 art-mesh/part 绑定表
-（已知天花板：约 7% 贝塞尔段无法从 Unity 数据还原，§6.9）。
+先记一条自我纠正：本节上一版写的"motion3 里 Part 目标曲线 0 条 / Parameter 532 条"是**错的**——
+我筛的是 `Target=='Part'`，而 Cubism 的字段名是 **`PartOpacity`**，`idle` 实际有 150 条 PartOpacity 曲线。
+"校验脚本自己造假绿灯"的又一例：**探针读不到东西时，先怀疑字段名，不要当成"没有"。**
+
+**已排除（有硬证据）**
+- **不是贴图拼接塞进来的**：两张 4096² 页与源包 `Texture2D` 按**上下翻转后 0 像素差**（原样比 99.6% 差，
+  即纯粹是行序方向），逐字节忠实。
+- **不是动作曲线被我们丢了**：`l2d_motion_audit.py gezi_2 idle` 判 `ok`，
+  源 `idle` 权威绑定 **189** 条、磁盘 **681** 条（多出来的是"把其余参数按默认值钉住"的填充曲线），
+  `unresolved=0`、时长 `disk 22.0 == src 22.0`。
+- **不是立绘少了花瓣层**：`gezi_2` 立绘三层全 `active=True`、零层被激活位过滤。
+
+**未结案的两条（下轮从这里接）**
+1. **`physics3.json` 的绑定读不出来** —— 文件里有 8 个 setting 组，但我按
+   `PhysicsSettings[i].PhysicsSetting.Inputs/Outputs` 读出来是**空**。要么键路径不对，
+   要么绑定真丢了。**这是"花瓣该飘却不动"的头号嫌疑**（飘落类通常走物理而非曲线）。
+   ⚠ 我这次没验成，别再拿这个空结果当"没有物理绑定"的结论用。
+2. **我的段值解析不可信**：两次探针就 `idle` 里 `MB_fenweiqiu1..6` 动不动给出**相反答案**
+   （一次说平坦钉在 22.0、一次说有 6 条在变），因为 Cubism `Segments` 的步长随
+   线性/贝塞尔/反函数类型而变，我按固定 stride 取 `[3::4]` 是错的。
+   ⇒ 任何"某参数值域是否变化"的判据，必须先用**已知曲线**自测解码器再用来下结论。
+
+参数名是拼音码，可作定位线索但**不得当语义事实**：`hxhb*`≈花瓣、`MB_fenweiqiu*`≈氛围球、
+`MB_wutixialuo*`≈物体下落、`MBWJJ_wutishiliangxunhuan`≈物体数量循环。
 
 ### 已排除的假设（别重走）
 
