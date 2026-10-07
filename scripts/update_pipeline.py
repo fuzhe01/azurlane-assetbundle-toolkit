@@ -10,10 +10,12 @@
 三条不可妥协的设计（都是踩出来的，改这个文件前先读）：
 
 1. **退出码不作通过证据。** `export_cue_audio` / `make_thumbs` / `fix_model3` /
-   `extract_spine_v2` / `compose_paintings_v2` / `l2d_motion_audit` /
-   `spine_parts_prefab_diff` / `voice_gap_audit` / `run_cg_export` 这 9 个
+   `compose_paintings_v2` / `l2d_motion_audit` /
+   `spine_parts_prefab_diff` / `voice_gap_audit` / `run_cg_export` 这 8 个
    **失败时照样 exit 0**。所以每个阶段自带 `judge()`：数汇总行、或跑对应的 gate 脚本。
    没有判据的阶段一律标 `judge=None` 并在报告里写明「未证」，不许算通过。
+   （`extract_spine_v2` 原也在此列，2026-10-07 起失败即非零退出；本阶段判据照旧数 `✗` 行，
+   因为还要靠那份清单拿失败皮肤名。）
 2. **写向优先 argv；只有 env 通道的脚本必须把注入值打出来。**
    `build_gallery_index.py`(GALLERY_OUT_DIR) / `fix_model3.py`(L2D_OUT_DIR) /
    `make_thumbs.py` / `deploy_gallery.py` 没有 argv 通道 —— 2026-09-24 那次

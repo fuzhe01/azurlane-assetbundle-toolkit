@@ -1550,8 +1550,11 @@ py -3 scripts/update_pipeline.py --only spine --force   # 只重跑某阶段，�
 **三条设计约束（改这个文件前先读，都是踩出来的）**：
 
 1. **退出码不作通过证据。** 盘点出来的事实是：`export_cue_audio` / `make_thumbs` /
-   `fix_model3` / `extract_spine_v2` / `compose_paintings_v2` / `l2d_motion_audit` /
-   `spine_parts_prefab_diff` / `voice_gap_audit` / `run_cg_export` **失败时照样 exit 0**。
+   `fix_model3` / `compose_paintings_v2` / `l2d_motion_audit` /
+   `spine_parts_prefab_diff` / `voice_gap_audit` / `run_cg_export` 这 8 个 **失败时照样 exit 0**。
+   （`extract_spine_v2` 原属此类，2026-10-07 已改为失败即非零退出，并让「parts.json 落不下」这类
+   行尾失败顶到行首 `✗` —— 判据 `py -3 scripts/diag/test_spine_exit_code.py`，取证 §111 第 4 节。
+   ⚠️ 但**本条原则不要跟着松**：其余 8 个仍未修，退出码依旧不是通过证据。）
    所以每个阶段自带判据：数 `✗` 行、数 `完成N 跳过N 失败N`、要求 `[SUMMARY] 模型 i/n 处理完`
    这种收尾行、或直接跑对应的 gate 脚本（`l2d_texorder_check` / `l2d_tex_completeness` /
    `ship_meta_authority_diff` / `gallery_index_diff_check` / `deploy_gallery --check`）。

@@ -323,6 +323,9 @@ def main():
                 if good:
                     p, why = write_parts(n, out_dir)
                     msg += f" | parts.json {'✓' if p else '✗ ' + why}"
+                    # 清单没落成 ⇒ 这身算失败：画廊分层只认 parts.json，缺它就是画不出来；
+                    # 而上层 judge 按**行首**数 `✗`，写在 ✓ 行的尾巴里等于没报（§111 第 4 节）。
+                    good = p is not None
         except Exception as e:
             good, msg = False, f"异常: {e}"
         if good:
@@ -351,6 +354,9 @@ def main():
         print(f"换前备份 {len(rec)} 份（本批）/ 共 {len(files)} 份 "
               f"{sum(x['size'] for x in files) / 1048576:.1f} MB -> {bak_root}（MANIFEST.json 逐份记 md5）")
     print(f"\n成功 {ok}，失败 {miss} -> {OUT_ROOT}")
+    # 失败必须反映到退出码：以前这里掉出函数尾 ⇒ main() 返回 None ⇒ sys.exit(None) ⇒ exit 0，
+    # 按退出码判的外部编排会把"一批没提出来"当成通过。返回 1 而不是 miss，避免 >255 被截断。
+    return 0 if miss == 0 else 1
 
 
 if __name__ == "__main__":
