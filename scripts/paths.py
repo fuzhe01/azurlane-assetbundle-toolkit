@@ -75,6 +75,7 @@ VGMSTREAM = tool('AL_VGMSTREAM', 'vgmstream-cli',
                  os.path.join(_USER, 'AppData', 'Local', 'vgmstream', 'vgmstream-cli.exe'))
 FFMPEG = tool('AL_FFMPEG', 'ffmpeg',
               os.path.join(_USER, 'AppData', 'Local', 'ffmpeg', 'ffmpeg.exe'),
+              os.path.join(_USER, 'AppData', 'Local', 'ffmpeg', 'bin', 'ffmpeg.exe'),
               os.path.join(_USER, 'AppData', 'Local', 'Microsoft', 'WinGet', 'Links', 'ffmpeg.exe'))
 MUMU_ADB_CANDIDATES = [
     'C:' + os.sep + 'Program Files' + os.sep + 'Netease' + os.sep + 'MuMu' + os.sep + 'nx_main' + os.sep + 'adb.exe',
@@ -86,7 +87,8 @@ MUMU_MANAGER = (os.path.join(os.path.dirname(MUMU_ADB), 'MuMuManager.exe')
                 if MUMU_ADB else '')
 CHROME = tool('AL_CHROME', 'chrome',
               r'C:\Program Files\Google\Chrome\Application\chrome.exe',
-              r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe')
+              r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+              r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe')
 
 
 def rel(p):

@@ -1,7 +1,7 @@
 ---
 name: headless-chrome-cdp-batch-export
 description: 无头 Chrome + CDP 批量驱动本地网页完成渲染/截图/资产导出。当任务需要用浏览器前端运行时（如 Spine/WebGL/Canvas/JS 库）批量产出图片或数据文件时使用——触发词：无头浏览器批量导出、CDP 驱动网页、headless chrome 批量截图、浏览器渲染落盘、autostart 参数自动化。不适用于单次网页截图和 QwenWork 内置媒体生成工具。
-version: 1.7.0
+version: 1.8.0
 ---
 
 # 无头 Chrome + CDP 批量导出
@@ -375,6 +375,26 @@ version: 1.7.0
     - 点了没响：`await 600ms` 后读 `#t0` 仍是 `0:00`，因为首曲要现取现解码 1.8 MB。
       ⇒ 一律改成**轮询到值变了再采样**（`for(i<40 && text==='0:00') await 250`），
       这是第 2 条在媒体场景下的具体形态；固定等待造成的假红已经在项目里出现过三次。
+
+
+37. **CDP 批量导出前的"作业源"检查（2026-10-17 实测，一次空转的根因）**：
+    驱动脚本若从 `index.js` 读 `spineSkins`（folder 字符串数组）生成作业，必须先确认它不是 `[]`。
+    换 index 后曾出现 `jobs=0` CDP 空转跑满超时——因为旧的 `spineSkins` 是残留的空数组/无 `cg` 字段，
+    页面加载后队列为空，`#prog` 停在 "0/N" 不前进。⇒ 导出前先读目标 index 的作业源，用
+    `assert len(作业列表)>0 and 列表[0] 含 folder` 之类硬判据，别只看"页面起来了"。
+
+38. **驱动脚本无 argparse 时 `--help` 会直接进主流程（2026-10-17 实测）**：
+    `run_cg_export.py` 没定义 argparse，`py -3 run_cg_export.py --help` 被当成未知位置参数，
+    直接拉起一个独立 profile 的 headless Chrome 占住调试端口，且长时间不退。
+    ⇒ 探活/查重端口前先 `--help` 一遍确认参数行为；被误占的 Chrome 按 `--user-data-dir` 的
+    profile 路径精确 kill（`Get-Process chrome | where CommandLine -match profile`），别误伤用户主浏览器。
+
+39. **全量前用小样本冒烟 + 客观像素判据（2026-10-17 定型）**：
+    先 `--only` 挑 2 个代表目录导出，对产物做像素判据——非透明包围盒**占满画布长轴**、
+    采样色种上万、近黑占比约 2%（用来排除黑屏/花屏/空画布），三项都过再放全量。
+    别只看"导出完成 N/N"（脚本会把空作业算完成，`cg_exists` 也可能跳过但无内容）。
+    全量带 `--timeout` 覆盖默认值，用 `Start-Process` 脱宿主运行 + 记 PID 到 `.diag/`，
+    长时批处理三分法判定"真跑完/崩了/被截断"，别拿 `exit 0` 当完成证据。
 
 
 ## 验证
