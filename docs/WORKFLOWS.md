@@ -2261,6 +2261,49 @@ CHROME_FLAGS = ['--disable-gpu', '--disable-gpu-compositing',
 | 条 | 处置 | 理由 |
 |---|---|---|
 | 15 | **逐字放回** | 唯一未关闭待办，丢了= 静默取消工作项 |
+### WF-31: 画质（渲染分辨率 / DPR）改动怎么验到放心（2026-10-17）
+
+场景：把画廊 Live2D / Spine 的渲染分辨率从 1x 提到 ≥2x（高 DPI 屏不糊）。判据必须量
+**canvas buffer 尺寸**而不是看截图（headless SVG 下 DPR=1，截图看不出 2x）。
+
+#### 判据（红 = 不许算过）
+1. **Live2D buffer**：`app.view.width/height` ≥ `wrap.clientWidth/Height × max(2, devicePixelRatio)`，
+   且 CSS 显示尺寸仍等于视口（`autoDensity:true` 保证）。vendored pixi `RESOLUTION` 默认 **1**，
+   不显式传 `resolution` 就是 1x。
+2. **Spine buffer**：`spcwrap canvas.width/height` = `clientWidth/Height × devicePixelRatio`，
+   且**帧循环每帧**比对 `buffer vs CSS×DPR` 偏差即重建（支持拖动跨 DPR 显示器，事件监听会漏）。
+3. **命中/取景不受影响**：Live2D 命中须走 `mdl.toLocal()`（pixi 官方坐标转换，自动处理 resolution）；
+   取景 `refit()/contentBox()` 用 CSS `clientWidth/Height`，与渲染 buffer 解耦——这两处用对了，
+   `resolution/autoDensity` 不会破坏命中几何（stage 逻辑坐标与渲染像素解耦）。
+4. 探针：`py -3 scripts/diag/l2d_spine_dpr_verify.py --only <keys>`，走**真实点击路径**读 canvas buffer，
+   输出每皮肤 `buffer x CSS x dpr x 倍率` + PASS/FAIL。
+
+#### 步骤
+1. 起服务器：`py -3 Output/gallery_v2/_gallery_server.py`（端口 8777）。
+2. 改 `gallery_src/index.html`（正本）→ `py -3 scripts/deploy_gallery.py --check` 确认 6/6 同 inode、
+   漂移 0（editor 原地编辑不破坏硬链；若断链按 AGENTS.md 收尾第 1 条四步走）。
+3. `py -3 scripts/diag/l2d_spine_dpr_verify.py --only aersasi_2,aersasi_3,ougen_8,yunlong_2`，
+   确认 live2d 三样本=2x、spine=CSS×DPR 全 PASS。
+4. 真机确认（headless 只验到「≥2x 成立」）：标准屏 2x、P1440/4K 再顶到 DPR，观感锐利。
+
+#### 踩坑记录
+- **本机无 Chrome（只有 Edge）**，本项目绝大多数无头验证脚本硬编码
+  `C:/Program Files/Google/Chrome/Application/chrome.exe` → `FileNotFoundError [WinError 2]`，
+  wf16 六件套直接全挂。**别把这判成产品缺陷**；自建探针要带 Chrome/Edge 候选列表
+  （`l2d_spine_dpr_verify.py` 已做：优先 Chrome，缺则 msedge）。
+- **无头 SVG DPR=1**：`want=max(2,1)=2` 只验到「≥2x 成立」，真实高 DPI 观感必须真机确认；
+  4K/dpr=2 时会取 `max(2,2)=2` 而不更高，若想 3x/4x 需改成 `max(2,dpr)` 以外的值。
+- **连续打开多个皮肤**：前一皮肤打开后 `#search` 可能不可见/被覆盖 → 探针报
+  `Cannot set properties of null (setting 'value')`。**每样本 `Page.navigate` 重载 + 等 `#search`** 可消除
+  （`reload_page()`）。
+- **toggle 误改 `autoDensity`**：只加 `resolution` 不加 `autoDensity` 会让 canvas CSS 尺寸随之放大
+  撑垮布局；两个必须成对。
+
+#### 涉及文件
+`gallery_src/index.html`（L1214 Live2D `resolution/autoDensity`、L1685/1688 Spine `resize()` 乘 DPR、
+L2070-2075 帧循环每帧校正）；`scripts/diag/l2d_spine_dpr_verify.py`（新增画质验收探针）；
+根因与排除假设见 `docs/TROUBLESHOOTING.md` §118。
+
 | 16 | 一行桩 + 指向 §60/WF-22/A21 | 结论已由 `仅台词`、`namecode` 承载 |
 | 17 | 一行桩 + 指向 §64/WF-14/A16 | 结论已由 `parts.json`、`15 对` 承载 |
 

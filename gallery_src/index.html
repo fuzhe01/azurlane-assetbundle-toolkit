@@ -1206,7 +1206,13 @@ async function renderLive2D(s, sk){
   const wrap=document.getElementById('l2wrap');
   wrap.style.cssText='position:absolute;inset:0;bottom:44px';
   try{
-    const app=new PIXI.Application({backgroundAlpha:0, resizeTo:wrap, antialias:true});
+    /* 画质：强制 ≥2x 渲染（vendored pixi RESOLUTION 默认 1，高 DPI 屏会糊）。
+       resolution = max(2, devicePixelRatio)：标准屏至少 2x，P1440/4K 屏再顶到 DPR 倍率。
+       autoDensity=true 让 canvas 的 CSS 尺寸仍等于视口、只把后端 buffer 放大 → 清晰且不撑垮布局。
+       与下方 refit()/contentBox() 全用 CSS 尺寸（clientWidth/Height）无关：那只是取景数学，不碰渲染分辨率。 */
+    const _L2D_DPR=(window.devicePixelRatio||1);
+    const app=new PIXI.Application({backgroundAlpha:0, resizeTo:wrap, antialias:true,
+      resolution:Math.max(2,_L2D_DPR), autoDensity:true});
     wrap.appendChild(app.view); my.app=app;
     const L2M=PIXI.live2d.Live2DModel;
     const mdl=await L2M.from(P+model+'/'+sk.live2dBase+'.model3.json',{autoInteract:false});
@@ -1675,8 +1681,12 @@ async function startSpine(s, sk){
     const vm=vmemCommitter(vkey, ()=>({camX:+camX.toFixed(2), camY:+camY.toFixed(2),
                                        zoom:+zoom.toFixed(4), fv:SPINE_FRAME_V}));
     curVM=vm;
-    function resize(){ cv.width=wrap.clientWidth; cv.height=wrap.clientHeight; scene.resize();
-      scene.camera.setViewport(cv.width, cv.height); }  // 关键：scene.resize() 不更新相机视口（比例怪的根因）
+    const SpineDpr=()=>window.devicePixelRatio||1;   // 每帧校正要用当前 DPR（拖动跨显示器时变化）
+    function resize(){ const d=SpineDpr();
+      // 画质：画布 buffer 乘 DPR（CSS 尺寸是 100% 由样式控制）→ 高 DPI 屏不糊。
+      // fit()/pixelFit() 都用 cv.width/height 自身，乘完内部自洽，取景构图不变，只是分辨率提升。
+      cv.width=Math.max(2,Math.round(wrap.clientWidth*d)); cv.height=Math.max(2,Math.round(wrap.clientHeight*d));
+      scene.resize(); scene.camera.setViewport(cv.width, cv.height); }  // 关键：scene.resize() 不更新相机视口（比例怪的根因）
     /* ---------- 取景判据：附件"乘完 slot 颜色后有没有落下非近黑的笔" ----------
        两类巨幕会把包围盒撑到可见内容的 2~10 倍（弹窗里画面缩成中间一小块）：
          ① setup alpha=0 的整屏闪黑/白场 —— 一个像素都不落（实测最大 32967×29970 单位），判 alpha 就够；
@@ -2057,6 +2067,12 @@ async function startSpine(s, sk){
     const mu=()=>{ if(!drag) return; drag=false; cv.style.cursor='grab'; vm.touch(); };
     window.addEventListener('mousemove',mm); window.addEventListener('mouseup',mu); window.addEventListener('resize',resize);
     function frame(now){ if(my.cancelled){window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);return;} my.raf=requestAnimationFrame(frame);
+      /* 每帧校正 canvas（Spine 画质要求）：buffer 应恒等于 CSS 尺寸 × 当前 DPR。
+         CSS 尺寸是样式 100% 由浏览器保证，这里只负责驱动 buffer 变化时机——
+         拖动窗口跨 DPR 显示器、全屏进出都会触发 canvas 尺寸变化，用事件监听会漏。
+         尺寸未变（常见情况）时零开销，不打断绘制。 */
+      { const _d=SpineDpr(), _w=Math.max(2,Math.round(wrap.clientWidth*_d)), _h=Math.max(2,Math.round(wrap.clientHeight*_d));
+        if(cv.width!==_w||cv.height!==_h) resize(); }
       const dt=Math.min((now-last)/1000,.1);last=now;
       /* 动画**从头到尾完整播**，循环由 spine 自己的 loop 处理，不做任何区间裁剪
          （为什么这里曾经有过一段"跳过消散段"的回绕、以及为什么必须删掉，见上面 setAnim 处的说明）。 */

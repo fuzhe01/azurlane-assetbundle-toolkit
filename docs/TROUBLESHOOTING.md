@@ -6566,3 +6566,56 @@ py -3 scripts/diag/l2d_rec_vs_assetstudio_diff.py aersasi_2|ougen_8
 `Output/l2d_visual.html`（第 34-35 行 `model.motion(CLIP, IDX)`）；
 `scripts/diag/serve_live2d.py`（model3 URL 资源 rewrite）、`ensure_server_l2d.py`（可靠重启+自验证）、
 `vis_auto_l2d.py`（无头播放采样）。一次性诊断探针已归档 `.diag/cleanup/orphans_20261016.zip`。
+## §118. 画廊画质（渲染分辨率/DPR）改动：Live2D/Spine 怎么从 1x 提到 ≥2x 而不破坏命中取景（2026-10-17）
+
+**背景**：用户要求画质提升——① Live2D 强制 2x 渲染；② Spine canvas 每帧 DPR 校正；③ 静止立绘按显示器查分布（浏览器原生，天然满足）。前两点是代码改动，第三点无需动。
+
+**根因（为什么当时糊）**：vendored `pixi.min.js` 的 `RESOLUTION` 常量默认 **1**，且 `Application` 构造里
+`this.resolution = opts.resolution || RESOLUTION` → 不显式传 `resolution` 就是 1x。即使在高 DPI 屏上
+（devicePixelRatio=2）也是 1x，文字/线条/贴图被放大 2 倍渲染后模糊。
+Spine 的 `resize()` 用 `cv.width = wrap.clientWidth`（CSS 像素），完全没乘 `devicePixelRatio` → 同样高 DPI 糊。
+
+**修法（`gallery_src/index.html`，三处）**：
+1. **Live2D**：`new PIXI.Application({..., resolution:Math.max(2, dpr), autoDensity:true})`。
+   - `resolution = max(2, devicePixelRatio)`：标准屏至少 2x，P1440/4K 再顶到 DPR 倍率。
+   - `autoDensity:true` 必须成对——它把 canvas 的 CSS 尺寸按 resolution 还原到视口，只放大后端 buffer；
+     **只加 resolution 不加 autoDensity 会让 canvas CSS 尺寸随之变大撑垮布局**。
+2. **Spine**：`resize()` 里 `cv.width = Math.round(wrap.clientWidth * devicePixelRatio)`、
+   `cv.height = round(wrap.clientHeight * dpr)`（buffer 乘 DPR，CSS 尺寸由样式 `100%` 保证）。
+3. **Spine 帧循环每帧校正**：`frame()` 每帧比对 `buffer vs CSS×DPR`，偏差即 `resize()` 重建——
+   支持拖动跨 DPR 显示器、全屏进出；用事件监听会漏。
+
+**为什么不动命中/取景（关键设计）**：
+- Live2D 命中走 `mdl.toLocal(new PIXI.Point(clientX-rect.left, clientY-rect.top))`（L1551-1554）——
+  pixi 官方坐标转换**自动处理 resolution/autoDensity**，把屏幕 CSS 像素正确映射到 stage 逻辑坐标。
+  渲染分辨率（buffer 像素）与 stage 逻辑坐标**解耦**，所以命中几何完全不受影响。
+- Live2D 取景 `refit()/contentBox()` 用 CSS `clientWidth/Height`（不是 buffer），与渲染分辨率无关。
+- Spine `fit()/pixelFit()` 都用 `cv.width/height` 自身，乘 DPR 后内部自洽，构图不变、只是分辨率提升。
+
+**验证（判据：量 canvas buffer，不靠截图）**：headless SVG 下 `devicePixelRatio=1`，
+写探针 `scripts/diag/l2d_spine_dpr_verify.py`（真实点击路径读 `app.view.width/height` 与
+`spcwrap canvas.width/height`，对比 CSS×DPR）。4 样本实测：aersasi_2/3、ougen_8 的 live2d
+buffer 1868×1300 = CSS 的 **2x**（PASS）、yunlong_2 spine buffer = CSS×DPR（PASS）。
+
+**⚠️ 无头只验到「≥2x 成立」**：dpr=1 时 `want=max(2,1)=2` 成立；真实高 DPI 观感（锐利度）
+无法在 headless 等价，需用户**真机确认**（标准屏 2x、P1440/4K 再顶到 DPR）。
+
+### 已排除的假设
+- **`antialias:true` 能替代高分辨率**：两者不等价——antialias 只抗锯齿、不解决倍率放大糊；
+  且 vendored pixi RESOLUTION 默认 1，必须显式设 resolution。
+- **改 canvas CSS 尺寸能达到 2x**：不行。CSS 尺寸只影响显示布局，buffer 分辨率才决定渲染清晰度；
+  必须改 `app.renderer.resolution` / spine 的 `cv.width`。
+
+### 环境踩坑（本任务才撞上）
+**本机没有 Chrome（只有 Edge）**：本项目绝大多数无头验证脚本硬编码
+`C:/Program Files/Google/Chrome/Application/chrome.exe` → `FileNotFoundError [WinError 2]`，
+wf16 六件套直接**全挂**（`l2d_ref_diff/coord_forensics/inspector_verify/interact_verify/talk_verify`
+五件全抛 WinError 2）。**这是探针基础设施问题，不是产品缺陷**——别把 wf16 全挂当成「画质改动坏了一切」。
+结论：自建探针要带 Chrome/Edge 候选列表（`l2d_spine_dpr_verify.py` 已做，优先 Chrome 缺则 msedge）；
+wf16 各脚本仍硬编码 Chrome，若要在这台 Edge-only 机器跑需逐脚本加候选，属后续待办。
+
+### 涉及文件
+`gallery_src/index.html`（L1214 Live2D resolution/autoDensity、L1685/1688 Spine resize 乘 DPR、
+L2070-2075 帧循环每帧校正）；`scripts/diag/l2d_spine_dpr_verify.py`（新增画质验收探针）；
+做法与判据见 `docs/WORKFLOWS.md` WF-31。
+
