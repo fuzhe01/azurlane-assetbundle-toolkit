@@ -2714,3 +2714,37 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 `face_gate_flip_scan` / `face_overlay_cmp` / `painting_swap_in`。
 相关：**§114**（本轮取证全过程）、WF-15（备份换入 runbook）、WF-27（层序取引擎层级）、
 §48（判据演进必须配带标签回归集）、§85（两份语义必然漂移）。
+### WF-30: 单模型 Live2D 目视页（l2d_visual.html）的 motion 播放与资源重写（2026-10-16）
+
+场景：想快速看「某个 Live2D 模型 × 某条动作 clip」在浏览器里到底播成什么（诊断/抽查用），
+页面 `Output/l2d_visual.html?m=...model3.json&clip=<group>&idx=<n>`。
+
+#### 判据（红 = 不许算过）
+1. **clip 请求 = 实际播放组**：`clip=main_1` 页面就播 `main_1`，绝不回落 idle。无头用
+   `vis_auto_l2d.py` 采样（只走页面启动路径、**不手动调 play**），量参数振幅>0.05 的那批是不是在动。
+2. **资源不 404**：以 model3 完整 URL 为 base 的 moc3 / 贴图 / physics3 / motion3 必须 200，否则黑屏。
+   验证 `ensure_server_l2d.py` 的自验清单全 `[200]`。
+3. **选组只认键存在性**：`clip in definitions`，播放 `model.motion(clip, idx)`（默认 priority=2）。
+   禁止用 `definitions[g].length` 判组存在、禁止 FORCE(3)、禁止遍历/定时重试/自选 idx。
+
+#### 步骤
+1. 起 server：`py -3 scripts/diag/serve_live2d.py`（端口 8777、根=`Output/`；要杀端口+自验证用
+   `ensure_server_l2d.py`）。
+2. 打开 `http://127.0.0.1:8777/l2d_visual.html?m=Live2D/<name>/<name>.model3.json&clip=<group>&idx=0`。
+3. 无头验证：`py -3 scripts/diag/vis_auto_l2d.py <name>:<clip> ...`，看输出 `group=` 与参数振幅列表。
+4. 实机**硬刷或无痕**确认对应（headless 过≠实机过，中间只差缓存）。
+
+#### 踩坑记录
+- `definitions[group].length` **懒加载前恒 0** → 当「组存在」判据会把真实组（`main_1`/`idle3`）判缺失，
+  走 fallback 播成 `idle6`/`idle2`。**只看键集存在性，不数组长度**。
+- 动作源在 model3 的 **`FileReferences.Motions`**（`{组名:[{url}]}`），**不在顶层 `motions`**；运行时读
+  `motionManager.definitions`。
+- FORCE(3) 强制打断当前动作、整个换行为，被用户拒；直呼默认 priority 即对。
+- pixi 把 model3 **完整 URL（含文件名）当资源 base 目录** → 请求 `<dir>/<name>.model3.json/<res>`，
+  server 要 rewrite 回 `<dir>/<res>`，另加尾斜杠兜底（`serve_live2d.py` 两处）。
+- 实机仍不对应：先硬刷/无痕（疑缓存旧 model3），再考虑 `?v=` 或 server 加 no-cache。
+
+#### 涉及文件
+`Output/l2d_visual.html`、`scripts/diag/serve_live2d.py`、`ensure_server_l2d.py`、`vis_auto_l2d.py`；
+根因与排除假设见 `docs/TROUBLESHOOTING.md` §117。
+

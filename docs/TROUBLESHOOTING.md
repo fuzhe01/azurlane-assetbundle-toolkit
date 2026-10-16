@@ -6440,3 +6440,129 @@ git show 12eb0db^:scripts/compose_paintings_v2.py > .diag/oldpipe/compose_painti
 `painting_three_probe` / `baixue2_seam_probe`。
 相关：**WF-29**（这类改动怎么验）、§9.3 第 6 条（mesh 越框）、§48（叠脸门控判据演进）、
 §55（激活位过滤）、§110（层序按名字猜翻车）、WF-15（备份换入）、WF-28。
+## §115. `load_key()` 抛「unpack requires a buffer of 76 bytes」的**真根因**：不是 Python bug，是写死的 metadata 记录索引漂移 + `struct.unpack` 要求缓冲恰好等于格式大小（2026-10-16）
+
+**背景**：`tools/sharecfg_re/34_www_four_modes.py scripts64` 第一步 `load_key()`（来自
+`30_www_endtoend_reproduce.py`）在新取的 `files/il2cpp/Metadata/global-metadata.dat` 上永远抛
+`struct.error: unpack requires a buffer of 76 bytes`，整条 gamecfg 再生链卡死。
+
+**第一层误判要排除**（别让下个会话原样重跑）：
+- `struct.unpack` 要求缓冲**字节数恰好等于** `calcsize(fmt)`。`d[bo+c:bo+nx]` 切片是 1080B、而 `<19I` 只需 76B ⇒ 抛错**是标准行为，不是 Python 3.14 的 bug / 被 hook 的环境**。想从一个更大的缓冲里按偏移取 19 个 uint32，正解是 `struct.unpack_from('<19I', d, bo+c)`。
+
+**第二层才是真根因**：旧代码读的是 `fieldDefaultValues` 表里**写死的两个相邻记录索引 17654/17655**，取二者 `dataIndex` 之差当密钥区（原假设恰好=19 个 uint32=76B）。但 `global-metadata.dat` **LastWriteTime 2026-10-08（比发布 gamecfg 的 10/5 快照新）** ⇒ 同版本号 9.7.385 下该表记录布局已变，`17654` 不再指向那个字段（实测两索引之差漂移成 1080≠76），密钥取错 → `unpack_from` 修好后 34 依然过不了已知明文自证。
+
+**修法（只认这一个判据的通用方案，比写死索引健壮）**：`load_key()` 不再信任任何固定记录号——扫 **全部相邻字段**，凡 `dataIndex[i+1] - dataIndex[i] == 76`（正好 19 个 uint32）的都是密钥候选，逐个用 `one('scripts64', key)` 做 A1~A4 已知明文自证（块0=`UnityFS\0`），命中即返回。本次候选只有 **2 个**（索引 10632、17655），`10632` 自证失败、**`17655` 命中**。改完即能解开，34 全链路自证通过（A1~A4 + 块 0/1/2/3 全部命中，UnityPy 可开 45969 对象，头部 2022.3.62f3）。
+
+**修复所在**：`30_www_endtoend_reproduce.py::load_key()`。**击破所在**：`34_www_four_modes.py scripts64` 不再报错、`scripts64.full.ab` 成功解开。
+
+## §116. Live2D 肢体抖动的「重构版 vs AssetStudioModCLI 版」对比定位：moc3/physics3 全是好料，病根在 model3 接线与动作曲线完整性（2026-10-16）
+
+**问题**：画廊里 aersasi_2 / ougen_8 的 Live2D 模型肢体抖动；此前结论（替换 .cdi3/.moc3/.physics 就好）需要**可复现证据**。
+
+**对比工具**（已入库，可复跑）：
+```
+py -3 scripts/diag/l2d_rec_vs_assetstudio_diff.py aersasi_2|ougen_8
+之前先出 AS 版（扩到 .diag/l2d_as_<舰>/）：
+  AssetStudioModCLI.exe <files/AssetBundles/live2d/<舰>> -m live2d -o .diag/l2d_as_<舰>
+```
+注意 `--log-level` 的合法值是 `warning`（不是 `warn`）。
+
+**两样本实测（aersasi_2 + ougen_8）结论**：
+
+| 文件 | aersasi_2 | ougen_8 | 判定 |
+|---|---|---|---|
+| .moc3 | md5 一致 | md5 一致 | ✅ reconstruct 抠得完美，**不是抖动源** |
+| .physics3.json | 9组/68条目，逐字段数值一致 | 34组/142条目，逐字段数值一致 | ✅ 内容一致（文件大小差只是浮点 JSON 格式位数），**不是抖动内容源** |
+| .model3.json | **错** | **错** | ❌ 病根之一 |
+| motion 曲线数 | rec 126 vs AS 241 | rec 64~173 vs AS 582 | ⚠️ rec 明显偏少 |
+
+**`.model3.json` 三处确定缺陷**（reconstruct 版 vs AssetStudioModCLI 版）：
+1. `FileReferences` **缺 `Physics` 引用**（`'Physics': '<舰>.physics3.json'`）→ 运行时根本不加载物理，物理/副段运动全丢。
+2. `Groups` 被写成了 `AngleX/AngleY/AngleZ`（单参组），**应为标准 `EyeBlink`(Params) / `LipSync`** → 眨眼/口型联动失绑。
+3. 无 `Name`、`DisplayInfo` 内联 `{Size}` 而非引用 `.cdi3.json`、纹理/动作路径 `texture_00.png`/`motion/` 与 AS 的 `textures/`/`motions/` 不一致（路径不一致会让加载端按相对路径找不到纹理/动作）。
+
+**动作曲线**：rec 只用「真正被该 clip 动画到的参数」（曲线数少）；AS 会给**每个** moc3 参数都铺一条（包括背面手 `Beimian_Hand_A/B`、`Black`、`BondEyes/BondMouth` 等真参数），曲线数大。**仅凭数量分不出谁对**——AS 可能是在铺全量（多余），rec 可能漏读容器（缺真动画）。要定论需跑 `live2d-motion-extraction-audit` 的「三容器绑定数求和 + 绑定集 vs moc3 参数集」断言。
+
+**已排除的假设（别重跑）**：
+- 抖动来自 moc3 提取错误 ⇒ 否证：两样本 moc3 与 AS 版逐字节一致。
+- 抖动来自 physics3 数值 ⇒ 否证：physics3 逐字段/逐值/组级都一致，仅 JSON 格式位数不同。
+- 「替换 .moc3/.physics 就修好」⇒ 这两个文件本就和 AS 一致，疗效必然来自 **.model3.json（+ 可能的动作）**，不是它们本身。
+
+**下一步修法（待确认后动刀）**：改 `reconstruct_live2d.py` 的 model3 生成 —— 补 `FileReferences.Physics`、`Groups` 用标准 `EyeBlink/LipSync`、补 `Name`、`DisplayInfo` 引用 `.cdi3.json`、统一 `textures/`/`motions/` 相对路径；随后对样本跑 `live2d-motion-extraction-audit` 的三容器绑定数断言决定动作是否需要补读。
+
+**只读动作曲线审计结论（2026-10-16 补，`scripts/diag/l2d_dense_audit.py`）——`m_DenseClip` 假设被否证**：
+- 实测 aersasi_2（28 clip）+ ougen_8（55 clip）**`m_DenseClip.m_CurveCount` 全部为 0** ⇒ 这两个模型动画数据存在 **StreamedClip + ConstantClip**，不存在 dense 漏读。
+- rec/AS 曲线数差距的真因有两层：① AS **每个 moc3 参数都铺一条曲线**（含 flat/定值），rec 只出「该 clip 真动画到的参数」——**仅凭曲线数无法判谁对**（AS 属铺全量，多余）；② `extract_motions.py` **默认丢弃 `m_ConstantClip` 定值曲线**（`L2D_MOTION_EMIT_CONST=1` 才导出，见源码 408~452 / 63 行）。ougen_8 的 constant 合计 **18839** 条、aersasi_2 共 **2329** 条。
+- **constant 曲线正是「切动作时的复位指令」**（技能 Pitfalls 已列）——丢弃它 = 部件在切段/切动作时可能**不回位/各动各的**，这比「抖动」症状更贴近现存问题；而「真抖动（振荡）」更可能是贝塞尔控制点/参数错位，需靠 `l2d-motion-extraction-audit` 第 4 步基准比对或 CDP 目视验收才能定论。
+- **行动方向**：不是补读 dense（不存在），而是评估全库换入时是否 `L2D_MOTION_EMIT_CONST=1` 补 constant 复位曲线，并关注「真抖动」那道单独的 CDP 目视判定。
+
+**A/B 换入验证（2026-10-16 补，`scripts/diag/l2d_jitter_probe.py`）：`L2D_MOTION_EMIT_CONST=1` 修复了 Idle 内抖动吗？—— 否证（测错轴，但结论有意义）**
+- 做法：先按序号 `aersasi_2 / ougen_8` 各自出基线快照（参数名 + 逐帧波形 + `dirFlips`/`amp`），再 `L2D_MOTION_EMIT_CONST=1 py -3 scripts/extract_motions.py --name <舰> --out .diag/l2d_a2/<舰>` 重建，备份后换入 `Output/Live2D/<舰>/motion/`，复探针比对，完毕即复原（ougen_8 idle 回 64 条、aersasi_2 回 126 条无常量）。
+- **结果**：idle 循环内**波形几乎不变**。ougen_8 `#516 Param4` 仍作 `0.58,-0.01,…,0.97,0.40,…,1.00,0.01,…,1.00,…` 的近二值 0↔1 脉冲；整体 `avgDirFlips` 仅 10.41→9.08、`maxFlips` 22→21（毛刺量级）。aersasi_2 依旧是 `ParamQianFa*` 前发物理摆动（amp 4~6.5、dirFlips 18），常量曲线动不了它（这些参数不在 const clip）。
+- **为何不变（原理，不是巧合）**：`m_ConstantClip` 的常量曲线是「**切动作时**把参数显式拉回定值」的复位指令；idle **单次循环内部不发生切换/复位**，所以常量曲线对 idle 循环波形本就不该有影响。⇒ 之前把「抖动=常量曲线缺失」这条假设落在了 idle 循环轴线上，**轴选错了**。
+- **新增已排除假设**：idle 内真抖动（振荡）**并非** constant 曲线缺失所致 ⇒ `L2D_MOTION_EMIT_CONST=1` 对「真抖动（振荡）」**无疗效**。它在唯一条轴（**切段/切动作时部件不回位/各动各的**）上才有价值，要验收须按「切换轴」测（idle→touch→idle 复位是否到位），而不是在 idle 循环里看波形。
+- **探针可复用要点**：`scripts/diag/l2d_jitter_probe.py` 读参数名用 `cm._parameterIds`（`getParameterName` 在该运行时不存在）；曾因 `names` 没写进 `series` 导致永远打 `#N`，现已修正并入参显示参数名。
+**运行时 A/B 终判（2026-10-16 本会话补，`scripts/diag/l2d_jitter_probe.py`）：连 `.model3.json` 也被排除 → 抖动病根在「浏览器运行时 × 该 moc3 物理装置」，不在任何单个模型文件**。**这条推翻了上方两条旧结论**：
+- ~~「疗效必然来自 .model3.json（+ 可能动作）」~~ → 否证：**完整铺 AS model3 + AS motions + AS cdi3 + AS physics3 + AS textures/ 布局**，avgDirFlips 仍 9.85（基线 9.76），无改善。
+- ~~「下一步修法 = 改 reconstruct_live2d.py 的 model3 生成」~~ → **作废**：改它发出 AS 同款 model3 也**修不了抖动**，白动刀。别再去改生成器。
+
+**A/B 实测表（aersasi_2，每次只换一类、其余不动，探针测 idle 循环 8s 的 avgDirFlips/maxFlips）**：
+
+| 版本身份 | avgDirFlips | maxFlips | 抖动部位 |
+|---|---|---|---|
+| 原始 rec（当前 Output 基线） | 9.76 | 21 | `ParamQianFa*` 前发 / `ParamOPRX*` 胸 / `ParamTuiRou*` 腿肉 |
+| 只换 AS **physics3** | 9.58 | 19 | 同上（无改善） |
+| 只换 AS **motion***（28 clip） | 9.51 | 19 | 同上（无改善） |
+| **整套 AS**（model3+cdi3+physics3+motions+textures/） | 9.85 | 20 | 同上（无改善） |
+
+**判定（可复跑的判据）**：抖动部位全是 **physics 变形部件**（前发/胸/腿肉，属 physics3 的 `前发组*`/`胸*`/`腿肉` 组）。moc3 逐字节一致、physics3 仅组显示名差异（`前发组1/胸X/水` vs `Dummy1..9`，纯命名无行为影响）、cdi3 从不加载（无 DisplayInfo→运行时未引）、motions 换了 28 个无效 → **四类文件全排除后仍抖 ⇒ 病灶在这一 moc3 的物理装置在浏览器运行时下的固有行为**。
+
+**怀疑方向（未验证，别当结论）**：`CubismBreath` 无条件每帧 ADD `ParamAngleX/Y/Z/BodyAngleX/Breath`，若 motion 又驱动同批参数 → 头部/躯干双驱动，再经 physics 末梢放大 → 前发/胸/腿肉振荡（这正是技能 `live2d-web-runtime-integration` 已列「头部双驱动」的同源现象）。**这是运行时侧（`gallery_src/index.html` renderLive2D 的呼吸/阻尼/熔断），不是 model3/moc3/physics3/motion 文件侧**。修法应先做「关掉 Breath 或对 physics 输入参数做熔断/低通」的运行时 A/B，而不是再改任何文件。
+
+**新增已排除假设（别再重跑）**：抖动来自 `.model3.json` / `.cdi3.json` / `.physics3.json` / `.moc3` / `motion/*.motion3.json` 任一 ⇒ 全部否证（上表）。**改 generate 端文件对「物理部件高频振荡」无疗效**；generate 端仍值得修的是 §116 上半段那些 model3 接线缺陷（缺 Physics 引用/EyeBlink·LipSync/HitAreas），但那是「还原完整性」问题，**不是**这条抖动。
+
+**已还原**：A/B 全程 Output 恢复到 rec 基线（model3=4687 / physics3=26107 / motion idle=142051 动量图自 `.diag/l2d_a2/backup_prod/`），终测 avgDirFlips=10.97 落回基线噪声带，部署健康。
+
+
+
+## §117. 单模型目视页（l2d_visual.html）：模型加载正常但动作播不到所请求的 clip（2026-10-16）
+
+### 症状
+`Output/l2d_visual.html?m=...model3.json&clip=idle3` 等：模型能渲染、资源全 200，
+但页面上动作**不响应对应的 clip**——早期实现拿「`definitions[group].length`」当组是否存在的判据，
+真实组 `main_1`/`idle3` 被当成缺失，走 fallback 播成 `idle6`/`idle2`。
+
+### 根因链
+1. model3.json 的 motions 在 **`FileReferences.Motions`**（`{ "组名": [ {url,file,meta} ] }`），
+   **不在顶层 `motions`**。前端要拿到合法动作组只有两个来源：`FileReferences.Motions` 或运行时的
+   `motionManager.definitions`（键即组名）。
+2. **`definitions[组].length` 在懒加载前恒为 0** —— pixi-live2d 只有真正播放过某组才 fetch 并填该组
+   definition。所以拿 length 当「组存在」判据会把真实组判成「缺失」，而**键集里明明有它**。
+3. **修法**：选组只认「**组名在不在 definitions 键集**」（`clip in defs`），**不查 length**；选中后
+   **直接 `model.motion(clip, idx)` 直呼**（priority 默认 2）——不做多候选组遍历、不做定时重试、
+   不自己挑 idx。
+4. **不要用 FORCE(3)**（`model.motion(g, idx, 3)`）：它强制打断当前动作、把行为整个换了一种、
+   被用户明确拒绝。直呼、不设 priority 就是正解。
+5. 资源侧配套：pixi 把 model3 的**完整 URL（含文件名）当成资源 base 目录**，于是请求形如
+   `.../<dir>/<name>.model3.json/<res>`，只靠 `SimpleHTTPRequestHandler` 拿不到真实资源、全 404 → 黑屏。
+   server 要两处 rewrite（`scripts/diag/serve_live2d.py`）：① 把 `.../<dir>/<name>.model3.json/<res>`
+   改写回 `.../<dir>/<res>`；② 尾斜杠、去斜杠后是真实文件就 serve 它。改写后资源 200、模型立显。
+
+### 验证（无头，只走页面启动路径）
+`scripts/diag/vis_auto_l2d.py` **不手动调 play**，只等页面 `setTimeout(700ms)` 自动播，再轮询采样参数看
+「真在动」：ougen_8:idle3 → group=idle3（23 参数，`ParamAngleY=13.54`）；ougen_8:main_1 → group=main_1
+（119 参数，`Beimian_Hand_A=39.91`）；aersasi_2:idle3 → group=idle3（132 参数，`Paramwuli=56.94`）。
+三组各不相同、参数都在播 ⇒ 数据层齐全、运行时正常，问题只在「前端选组判据」。
+
+### 已排除的假设（别再重跑）
+- **动作不对 = 数据层缺某 clip** → 否：`_groups.py` 证 `FileReferences.Motions` 里 ougen_8/aersasi_2
+  都含 `idle3`/`main_1`/`home`。
+- **需要 FORCE 强推才播** → 否：直呼 `model.motion(clip, idx)`（优先级默认 2）即对，FORCE 只是换表现。
+- **`definitions[g]`（对象/数组）是可靠存在判据** → 否：**数组长度**懒加载前恒 0 会误判；只看**键存在性**。
+- **headless 过 = 实机一定过** → 未定因果：两侧成功与否只差缓存；若实机仍不对应，先硬刷/无痕，
+  再考虑给 `?v=` 或 server 加 no-cache（本项目其它 server 已统一 `Cache-Control: no-cache`）。
+
+### 涉及文件
+`Output/l2d_visual.html`（第 34-35 行 `model.motion(CLIP, IDX)`）；
+`scripts/diag/serve_live2d.py`（model3 URL 资源 rewrite）、`ensure_server_l2d.py`（可靠重启+自验证）、
+`vis_auto_l2d.py`（无头播放采样）。一次性诊断探针已归档 `.diag/cleanup/orphans_20261016.zip`。

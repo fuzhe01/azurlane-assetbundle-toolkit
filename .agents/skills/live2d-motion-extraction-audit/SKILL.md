@@ -5,7 +5,7 @@ name_zh: Live2D 动作提取完整性与保真审计
 description: Integrity and fidelity audit for re-exporting Live2D motions from Unity AssetBundles (AnimationClip to motion3.json). Covers enumerating all three clip containers (m_StreamedClip / m_DenseClip / m_ConstantClip) with a binding-count assertion, constant-curve emission checks against moc3 defaults with audio-driven exemptions, unfalsifiable-anchor tests for key field layout, diffing against an external authoritative motion3.json baseline with ceiling-calibrated thresholds, and an env-switch plus byte-identical control-group protocol for removing legacy guardrails. Use when extracting or re-exporting Live2D motion data, when curves go missing, or when users report parts moving independently, unnatural transitions, jittering limbs, wrong easing. Trigger words include motion3.json audit, ConstantClip, genericBindings, bezier control point, tangent field layout, guardrail removal. Not for browser runtime playback (live2d-web-runtime-integration) or static painting restoration (unity-assetbundle-painting-restore).
 description_en: Integrity and fidelity audit for re-exporting Live2D motions from Unity AssetBundles (AnimationClip to motion3.json), covering three-container curve enumeration, constant-curve decisions, field-layout anchor tests, authoritative baseline diffing, and byte-identical control-group guardrail removal.
 description_zh: 从 Unity AssetBundle 重导 Live2D 动作（AnimationClip → motion3.json）时的完整性与保真审计流程。覆盖三容器曲线枚举（m_StreamedClip / m_DenseClip / m_ConstantClip，只读 streamed 会丢 60%+ 绑定）+ 绑定数求和断言、定值曲线可否补入（逐条比 moc3 默认值，音频驱动参数一律豁免）、键记录字段布局的不可钻空子锚点自证（附两个已被推翻的无效判据）、外部权威 motion3.json 基准比对与天花板校准阈值、以及拆历史护栏的 env 开关 + 逐字节对照组协议。当需要重导/校验 Live2D 动作数据、或用户反馈"部件各动各的/过渡像刚学建模的/小臂乱摆/动作太快/曲线少了/像抽一帧"时使用。触发词：Live2D 动作重导、motion3.json 审计、AnimationClip 丢曲线、ConstantClip、DenseClip、genericBindings、贝塞尔控制点、切线字段、参考版比对、拆护栏、A/B 逐字节、空壳动作。不适用：网页侧运行时播放集成（live2d-web-runtime-integration）、静态立绘/Spine 还原（unity-assetbundle-painting-restore）、通用管线安全落地方法论（safe-pipeline-fix-targeted-rerun，本技能第 5 步是它在动作数据场景的特化）。
-version: 1.0.0
+version: 1.3.0
 argument-hint: Point at the model/motion output directory and the clips to audit
 argument-hint-en: Point at the model/motion output directory and the clips to audit
 argument-hint-zh: 给出模型/动作产物目录与要审计的 clip 名
@@ -128,12 +128,15 @@ StreamedClip 的每条键记录是 `index(int32) + 4×float`。**谁是值、谁
 - **给音频/外部驱动参数补常量**：口型补成 1 = 嘴永久张开。豁免清单必须来自 MonoBehaviour 组件清单。
 - **用无效判据自证**：越量程判据、密集 plateau 差分斜率判据、恒零字段判据——三者都会把正确解释判成错误。
 - **护栏未验先拆 / 拆了就全量换入**：护栏可能在掩盖格式错误；跳过逐字节对照组 = 拿全量产物赌运气。
+- **权威基准首选 `AssetStudioModCLI -m live2d`**（本地可复现，比社区录屏可靠）：`AssetStudioModCLI.exe <live2d bundle 文件> -m live2d -o <目录> --log-level warning`（合法值是 `warning` 不是 `warn`）。四物证判据：① `.moc3` 应**逐字节一致**（md5 全等，不一致才怀疑 moc3 抠取）；② `.physics3.json` 应**逐字段/逐值/组级一致**（文件大小差一两成通常只是浮点 JSON 格式位数，别当内容差异）；③ `.model3.json` 是运行时接线，**必须**有 `FileReferences.Physics`、`Groups` 含 `EyeBlink`/`LipSync`、真实 `HitAreas`——裸 reconstruct 常缺这三样，靠管线里 `fix_model3.py` 补（不动 moc3/physics3）；④ `motion3.json` 曲线数：rec 只出"该 clip 真动画到的参数"，AS 会给每个 moc3 参数都铺一条 ⇒ **仅凭数量定不了谁对**，要按绑定数 + 绑定集 vs moc3 参数集断言。配套工具 `scripts/diag/l2d_rec_vs_assetstudio_diff.py`。
+- **别默认漏读的是 `m_DenseClip`**：碧蓝 Live2D（实测 aersasi_2 28 clip / ougen_8 55 clip）`m_DenseClip.m_CurveCount` **全部为 0**，动画数据在 **StreamedClip + ConstantClip**。所以曲线数差距优先怀疑两处：AS **铺全量参数** vs rec 只出真动画参数；以及 `extract_motions.py` **默认丢 `m_ConstantClip` 复位曲线**（`L2D_MOTION_EMIT_CONST=1` 才导出）。dense 是否真存在，先用 `scripts/diag/l2d_dense_audit.py`（只读）实测三容器曲线数，别直接动刀。
 - **拿自己的求值器判自己的保真度**：采样求值必须复刻运行时语义（`AreBeziersRestricted` 等）。
 - **把天花板当 bug 长期攻**：阶梯段、源数据硬翻、不可推的贝塞尔控制点这三项都无收益。
 - **阈值拍脑袋**：判据阈值要从实测可达上限反推，不要默认 5%。
 - **本地一直猜而不要基准**：第 3 步之后仍两难就该向用户要实录，别连开第三条猜想。
 - **"列表少了"往往是排序不是缺失**：动作组集合 104 vs 104 零差异，只因参考版按字母排而 bundle 里是乱序，主动作沉在下面。先比集合再谈缺失，前端排序即可，不要动数据。
 - **无头验证偶发 `Execution context was destroyed`**：多为无头实例冲突的假失败，重跑一次再下结论（同批次探针已通过时尤其可疑）。
+- **常量曲线没有「idle 循环内」疗效 —— 轴选错会否证误杀**：定值曲线只在「**切动作/切段复位**」轴生效；idle 单次循环内部不触发任何复位，所以加常量曲线**不会改变 idle 循环内的波形**。2026-10-16 A/B 实测 aersasi_2/ougen_8 用 `L2D_MOTION_EMIT_CONST=1` 重建后 idle 内波形几乎不变（`dirFlips` 仅 10.4→9.1），在 idle 轴上看着像「常量曲线无用=否证」——**不是**，是测错轴。要验收常量曲线必须按**切换轴**（idle→touch→idle 后部件是否回到该 clip 未驱动的静止断言位）测；要定位「真抖动（振荡）」则跟常量无关，往贝塞尔控制点/参数错位查。判定工具 `scripts/diag/l2d_jitter_probe.py`。
 - **解析失败时留占位空壳**：结构合法的 `"Curves": []` 会让下游"能播但不动"，且能通过一切外壳检查。失败必须显式报错 + 非零退出（见 `safe-pipeline-fix-targeted-rerun` 分支 C）。
 
 ## Verification

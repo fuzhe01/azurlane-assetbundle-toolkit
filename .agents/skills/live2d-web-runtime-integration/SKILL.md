@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.6.1
+version: 1.7.0
 ---
 
 # Live2D 网页运行时集成
@@ -420,3 +420,19 @@ after **53（与 before 相等）**，且位移 >0.3 的判定区数 = **0**。
    造假。分开它要用**两条互相独立的事实**：表里那一行的主键（→ 包号）逐号去源包目录与已解码目录各查一次。
    ⚠️ 两个代理指标都不许当证据：`voice_actor=-1` 在剧情/变体实体上是哨兵值（不等于无 CV）；"整个号段都不在"是
    按前缀归纳，同一个大段里往往有别的号是下发的 ⇒ 只能**逐包号**判。
+
+## 10. 单模型目视页（l2d_visual.html）的 motion 播放 与 model3 资源重写（2026-10-16，version 1.7.0）
+
+- **动画组来源**：model3 的 **`FileReferences.Motions`**（`{组名:[{url}]}`）**不在顶层 `motions`**；运行时读
+  `motionManager.definitions`（键即组名）。
+- **选组只认键集存在性**（`clip in definitions`）。⚠️ **`definitions[g].length` 懒加载前恒 0**，拿它当
+  「组存在」判据会误杀真实组（`main_1`/`idle3`）→ fallback 播成 `idle6`/`idle2` → 表现成「动作不对应
+  所请求 clip」。**切勿用 length/返回值判「组是否存在」，只看键在不在。**
+- **播放直呼** `model.motion(group, idx)`（priority 默认 2）；不要遍历候选组 / 定时重试 / 自选 idx。
+  **不要 FORCE(3)**：强制打断当前动作、整体换行为，常被用户拒。
+- **资源 404 → 黑屏**：pixi 把 model3 **完整 URL（含文件名）当资源 base 目录**，请求
+  `<dir>/<name>.model3.json/<res>`；server 需 rewrite 回 `<dir>/<res>` + 尾斜杠兜底（`scripts/diag/serve_live2d.py`）。
+- **验证走页面启动路径**：`scripts/diag/vis_auto_l2d.py` 不手动调 play，只等页面 `setTimeout` 自动播、
+  再轮询参数振幅；**headless 过 ≠ 实机过**，中间只差缓存（实机硬刷/无痕后再判）。
+- 完整根因、排除假设与三链接验收见 `docs/TROUBLESHOOTING.md` §117、操作流程见 WORKFLOWS WF-30。
+

@@ -48,17 +48,20 @@ LIVE2D_DIR = P.LIVE2D_SRC
 OUTPUT_DIR = os.environ.get("L2D_OUT_DIR") or P.LIVE2D_OUT
 ERROR_LOG = P.ERRORS_LOG
 
-USE_LINEAR = bool(os.environ.get("L2D_MOTION_LINEAR"))
-# 贝塞尔控制点裁剪阈值（历史护栏，2026-09-23 定性：**它是在掩盖下面的格式错误，不是优化**）
-#   旧实现把控制点写成归一化分数，运行时按绝对(时间,值)直读 → 每个贝塞尔都失控；
-#   当时观察到"贝塞尔抖"，于是加这条 >3 拉直的护栏，误打误撞把大部分坏段降级成了线性。
-#   现状：默认仍保持 3.0（保证既有产物逐字节不变，对照组实测 104/104 一致），
-#   但**已验收的正确配方是 L2D_MOTION_LINEAR=1（关键帧+线性）**，见下面 ABSOLUTE_CP 的说明。
+# 默认启用线性插值（关键帧 + 线性），**已验收的正确配方**——消灭贝塞尔，杜绝肢体乱摆。
+#   ⚠️ 历史根因（2026-09-23 定性、2026-10 由 aersasi_2/3 对照实锤）：旧默认把贝塞尔控制点写成
+#      归一化分数 (1/3,2/3)，Cubism Web 运行时按**绝对 (时间,值)** 直读 → 每条贝塞尔先猛蹿到
+#      0.6/0.8 再跳回目标 → 肢体乱摆（用户报的"像刚学建模的人做的"）。
+#   ⚠️ 原默认保持归一化贝塞尔是为了"既有产物逐字节不变"，但那产物本身就是乱摆的坏产物，已作废。
+#   显式关闭方式：L2D_MOTION_LINEAR=0（且未开 ABSOLUTE_CP 时，统一退化为绝对贝塞尔）。
+USE_LINEAR = os.environ.get("L2D_MOTION_LINEAR", "1") not in ("0", "false", "False")
+# 贝塞尔控制点裁剪阈值（历史护栏）：仅在显式关闭线性后仍对贝塞尔幅度 >3 的段退回线性。
+#   注意：它过去是"掩盖归一化分数格式错误"的补丁，如今默认线性不用它；保留只为显式实验时代护栏。
 BEZIER_CLIP = float(os.environ.get("L2D_MOTION_BEZIER_CLIP", "3.0"))
-# 绝对控制点开关：置 1 时按 Cubism 规范写**绝对 (时间,值)** 控制点并忽略上面的裁剪护栏。
-# ⚠️ 格式上这才是对的写法，但**未通过权威基准验收**：安土实测它对参考版有 88/278 条曲线
-#    偏差>0.5、最甚 296 个参数单位（Unity 密集键的切线本身就不该当 Hermite 切线用）。
-#    已验收并换入的是 L2D_MOTION_LINEAR=1（关键帧+线性）。本开关仅留作后续实验。
+# ⚠️ 兼容说明：ABSOLUTE_CP=1 曾用于"Cubism 规范绝对 (时间,值) 控制点"的实验开关，但实测未过已被
+#   权威基准验收（安土 88/278 偏差>0.5，Unity 密集键切线本就不该当 Hermite 切线用）。
+#   现在的无条件规则：**只要没走 USE_LINEAR，贝塞尔一律按绝对 (时间,值) 控制点写**（见下方生成段），
+#   绝不再产生归一化分数。故本开关保留仅为向后兼容、无损语义（真值都由下方生成逻辑统一处理）。
 ABSOLUTE_CP = bool(os.environ.get("L2D_MOTION_ABSOLUTE_CP"))
 # 是否把 m_ConstantClip 里的「整段定值」曲线也导出（参考版 idle 曲线数 278 = 98 动画 + 180 定值）。
 # 作用：切动作时这些参数会被显式拉回该 clip 的定值，而不是停在上一个动作留下的值上。
@@ -259,7 +262,7 @@ def build_motion(clip, targets, verbose=False, const_info=None):
                 total_seg += 1
                 n_pts += 1
                 continue
-            # Unity 切线(值/秒) → Cubism 归一化贝塞尔控制点。
+            # Unity 切线(值/秒) → Cubism **绝对 (时间,值)** 贝塞尔控制点。
             # ⚠️ 官方段序（实测校验运行时 pixi-live2d-display 的解析器）：
             #    [type=1, 控制点1x, 控制点1y, 控制点2x, 控制点2y, 终点time, 终点value]
             #    运行时按 points[base+1..base+3] = (c1, c2, dest) 取 3 个点对、l+=7，
@@ -275,7 +278,8 @@ def build_motion(clip, targets, verbose=False, const_info=None):
             #    正确写法 = Unity 三次 Hermite 的精确等价控制多边形：
             #        c1 = (t0 + dt/3, v0 + outSlope0*dt/3)
             #        c2 = (t1 - dt/3, v1 - inSlope1 *dt/3)
-            if ABSOLUTE_CP:
+            # 无条件按 Cubism 规范写**绝对 (时间,值)** 控制点（不再有归一化分数分支）。
+            if True:
                 c1x = t0 + dt / 3.0
                 c1y = v0 + outs0 * dt / 3.0
                 c2x = t - dt / 3.0
@@ -290,12 +294,6 @@ def build_motion(clip, targets, verbose=False, const_info=None):
                 n_pts += 3
                 total_bezier += 1
                 continue
-            bx1 = min(0.999, max(0.001, 1.0 / 3.0))
-            bx2 = min(0.999, max(0.001, 2.0 / 3.0))
-            segs.extend([1, bx1, by1, bx2, by2, t, v])
-            total_seg += 1
-            n_pts += 3
-            total_bezier += 1
 
         if len(segs) < 4:
             continue
@@ -484,9 +482,11 @@ def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     print(f"[*] 输出目录: {OUTPUT_DIR}" + ("  (临时)" if os.environ.get("L2D_OUT_DIR") else ""))
     if USE_LINEAR:
-        print("[*] L2D_MOTION_LINEAR=1 → 线性插值")
+        print("[*] L2D_MOTION_LINEAR=1 → 线性插值（默认，关键帧+线性，杜绝贝塞尔乱摆）")
+    else:
+        print("[*] L2D_MOTION_LINEAR 未置1 → 非线性：贝塞尔按绝对(时间,值)控制点写（Cubism 规范）")
     if ABSOLUTE_CP:
-        print("[*] L2D_MOTION_ABSOLUTE_CP=1 → 贝塞尔控制点写绝对(时间,值)【Cubism 规范】")
+        print("[*] L2D_MOTION_ABSOLUTE_CP=1 → 兼容提示：贝塞尔已无条件按绝对(时间,值)写，本开关保留无损语义")
     if EMIT_CONST:
         print("[*] L2D_MOTION_EMIT_CONST=1 → 一并导出 m_ConstantClip 定值曲线")
 

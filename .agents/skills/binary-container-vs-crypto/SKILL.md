@@ -1,7 +1,7 @@
 ---
 name: binary-container-vs-crypto
 description: 判定未知二进制载荷到底是"加密"还是"自定义/压缩格式"的判死流程，核心是每条假设都必须配零假设或阴性对照，防止把统计巧合当破口。当遇到解析器读不出的文件（UnityPy/标准格式解析出 0 对象、无 magic、熵偏高但不到 8.0、"打不开但能列出文件名"）、既有逆向小项目卡在"要不要先拿密钥"、用户问"这到底是加密还是格式"、或需要复核上一轮"已排除的假设"是否真的有对照时使用。触发词：未知二进制、是加密还是格式、熵、IC、重合指数、共密钥流、两时间垫、many-time-pad、差分签名、周期攻击、重复块、ECB、已知明文攻击、fieldDefaultValues、LuaConfDataReader、sharecfgdata、假绿灯、判死、IL2CPP 反汇编、exec-out。
-version: 1.0.0
+version: 1.1.0
 ---
 
 # 未知二进制载荷：加密 vs 自定义格式
@@ -204,6 +204,12 @@ for r in range(p):
   实际零假设预测值是 1.904%。这是"假绿灯"家族里最隐蔽的一种，因为它有数字、看起来很像判据。
 - **词表跨样本误用**（见核心纪律 2）。
 - **只在文件头 0..63 试过压缩就宣布"非压缩"**（见第 5 步）。
+- **`struct.unpack('<NI', d[a:b])` 抛"requires a buffer of N*4 bytes" ≠ Python 异常**：`struct.unpack` 要求缓冲**恰好**等于
+  `calcsize(fmt)`，超长也抛（2026-10-16，§115）。从大缓冲按偏移取 N 个 uint32 要用 `struct.unpack_from('<NI', d, off)`。
+- **解密密钥别写死 metadata 记录索引**（2026-10-16，§115）：`load_key()` 旧用 `fieldDefaultValues` 写死索引对 17654/17655，
+  换到新 `global-metadata.dat`（同版本号但表记录布局漂移）后取错的密钥区，且 `struct.unpack` 还因切片≠76 抛错。
+  通用解法：扫**全部相邻字段**，凡 `dataIndex[i+1]-dataIndex[i] == 密钥字节数(76)` 的都是候选，逐个用**已知明文自证**
+  （解出的块 0 == `UnityFS\0`）判定；本次候选中 17655 命中。别用"单块固定模式"去搜（不可靠，要整链 A1~A4 自证）。
 
 ## 交付与落档
 
