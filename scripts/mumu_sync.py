@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -378,6 +379,41 @@ def cmd_diff(args):
     return 0
 
 
+def _ensure_dir_only(path):
+    """确保 path（含各级父目录）都是目录。
+
+    版本更新可能出现「文件 → 目录」的类型变化：本地某旧文件现在变成了一个目录
+    （例：dorm3d/.../res/common 原是单文件，新版本变成 common/ 目录，含 ani 子项）。
+    此时 mkdir(parents=True) 会在「已存在同名文件」的位置建目录而抛 EEXIST
+    （2026-10-18 用户全量前样本测试命中：WinError 183）。
+    处理：把挡路的文件**备份到 WORK 备份区**再建目录，绝不直接删（防误删唯一旧资产）。
+    注意不能读到「第一个已存在」就停：已存在的可能是**文件**（common），它下面的
+    组件 mkdir 时照样失败，所以从根到叶子逐级检查，任何一级是文件就先备份。
+    """
+    if path.is_dir():
+        return
+    stack = []
+    cur = path
+    while cur.parent != cur:
+        stack.append(cur)
+        cur = cur.parent
+    for m in reversed(stack):            # 根 → 叶子，父先就绪子才能 mkdir
+        if m.exists() and m.is_file():
+            rel = os.path.relpath(m, LOCAL_ROOT)
+            backup = os.path.join(P.WORK, 'mumu_sync_file_shadow', rel)
+            n = 1
+            b = backup
+            while os.path.exists(b):
+                b = f'{backup}.{n}'
+                n += 1
+            os.makedirs(os.path.dirname(b), exist_ok=True)
+            shutil.move(m, b)
+            print(f'  ⚠️ 文件挡目录: {rel} → 已备份到 '
+                  f'{os.path.relpath(b, LOCAL_ROOT)}')
+        if not m.exists():
+            m.mkdir()
+
+
 def cmd_sync(args):
     if not connect():
         print(f"✗ 连不上模拟器（已扫端口 {ADB_PORT_RANGE.start}-{ADB_PORT_RANGE.stop - 1}），"
@@ -426,7 +462,7 @@ def cmd_sync(args):
                 shutil.rmtree(local_path)
             except Exception:
                 pass
-        local_path.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_dir_only(local_path.parent)
         # 不预先删除本地旧文件：adb pull 会直接覆盖，删除反而可能被安全策略拦截
         rc, out, err = run(["pull", "-a", f"{REMOTE_ROOT}/{rel}", str(local_path)], timeout=900)
         if rc == 0:

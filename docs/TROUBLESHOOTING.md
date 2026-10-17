@@ -6688,3 +6688,20 @@ L2070-2075 帧循环每帧校正）；`scripts/diag/l2d_spine_dpr_verify.py`（�
 **验证**：`scripts/diag/l2d_motion_chain_verify.py` 14 case 全 PASS（touch_idle* 读表 best、长动画→idle、
 drag→自身、`#l2Curr` 同步）；`deploy_gallery.py --check` 6/6 同 inode 漂移 0；三样本（aersasi_2/3、ougen_8）
 用户目视通过。
+
+---
+
+## §121. 先手动 `sync --apply` 把设备差异拉平 → `update_pipeline` 第 1 步 detect 失效、增量范围被清空（2026-10-18）
+
+**问题**：想让「一键更新」先同步再重导，先手动跑了 `mumu_sync sync --apply`（拉回 391/391），随后 `update_pipeline.py --plan` 报「第 1 步的 detect 还没跑过」，`--only pull` 实测判「设备与本地完全一致（新增 0/变更 0）⇒ 本轮没有要重算的东西；要整库重算请 --full」，整轮 9 秒结束、13 档全部未跑、`affected.txt` 0B。
+
+**原因**：`update_pipeline.py` 第 1 步 `st_pull` 靠「设备 vs 本地」的 `mumu_sync diff` 生成增量范围 `affected.txt`（`write_scope`，`L417-444`）。手动 `sync --apply` 把差异**拉平** → detect 得「新增 0/变更 0」→ 走 `st_pull` 空分支（`L476-487`）→ `write_scope([],0,0)` 把 `affected.txt` **清空**（首次跑没有非空旧清单可沿用）→ 下游 `scope_state` 判 `missing` → 各导出阶段「增量范围不可用 ⇒ 拒绝按全量兜底」判红/跳过。**增量范围的唯一生成点是第 1 步 detect，它在编排器之外被手动同步绕过，范围就无从写起。**
+
+**修法**：正确顺序 = **直接跑 `update_pipeline.py`**（或控制台一键），让第 1 步自己「diff → 写范围 → 拉包」；遇到「未签字，请 --approve pull」再放行。本次因已拉平且范围已被冲空：要么 `--full`（需交互手输 `FULL`，数十小时），要么下次走对流程。**若本次差异不含画廊美术源包，`--full` 收益极低**（见 WF-34 判据 5）。
+
+**已排除的假设**：
+- **「用 mtime 反推这轮拉了哪些包来重建 `affected.txt`」** —— 否证：`adb pull` 写文件**保留设备侧时间戳**，`files/AssetBundles` 近 60 分钟修改数 = 0，全部落在更早，找不到这轮拉的 391 个。
+- **「`affected.txt` 空白后下游会当作全量兜底」** —— 否证：`scope_state` 对 `missing` 明确**不当作全量**（宁可判红停，不许偷偷扩大写入面），所以症状是「判无重算/判红」，不是「偷偷全量」——这正是防错设计，只是被手动同步提前触发了。
+
+**涉及文件**：`scripts/update_pipeline.py`（`st_pull`/`write_scope`/`scope_state`）、`scripts/mumu_sync.py`、`.diag/pipeline/{affected.txt,affected.meta}`。相关：WF-34（正确顺序）、WF-23（阶段机）。
+

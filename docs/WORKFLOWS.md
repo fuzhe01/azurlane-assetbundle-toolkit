@@ -2874,3 +2874,41 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 #### 涉及文件
 `gallery_src/index.html`（回落接管 / createMotion / bar / `#l2Curr`）、`scripts/build_motion_chain_map.py`、
 `scripts/diag/l2d_motion_chain_verify.py`、`Output/gallery_v2/motion_chain.json`。
+
+---
+
+### WF-34: 资产一键更新的正确顺序（先 detect、别先手动 sync — 2026-10-18）
+
+**场景**：想「一键更新」—— 通过模拟器 adb 桥把新版本美术资产同步回本地，再跑 `update_pipeline.py` 完成 13 阶段重导。本条是"怎么跑才对"的判据 + 一条实测踩坑实录。机制细节见 WF-23（阶段机 / 三档），本条的**独有知识 = 增量范围（`affected.txt`）的唯一生成点与顺序约束**。
+
+#### 判据（红 = 做不到就重来）
+
+1. **`update_pipeline.py` 第 1 步 `st_pull` 本身就是 detect。** 它内部先 `mumu_sync diff --list-out`（`L451`）得到「设备 vs 本地」差异，再 `write_scope(paths, new, changed)`（`L417-444`）把差异源包相对路径（形如 `AssetBundles/<top>/<file>`）写进 `.diag/pipeline/affected.txt`。**`affected.txt` 是增量范围的唯一生成点** —— 下游所有导出阶段（paintings/spine/live2d/cg/audio…）都读它，范围不可用就判红 stop（`scope_or_stop`）。
+
+2. **正确用法 = 直接跑 `update_pipeline.py`（或控制台一键），让第 1 步自己 detect + 拉包 + 写范围。** 它会输出「范围清单 N 个源包 → M 个皮肤 stem 已落盘 · 未签字，请 --approve pull」→ 签字放行 `pull` 才拉包。**不要先手动跑 `mumu_sync sync`**。
+
+3. **⛔ 先手动 `mumu_sync sync --apply` 再跑 `update_pipeline` = 增量范围永久丢失。** 手动 sync 会把「设备 vs 本地」差异**拉平** → 第 1 步 detect 得「新增 0/变更 0」→ 走 `st_pull` 空分支（`L476-487`）→ `write_scope([],0,0)` 把 `affected.txt` **清空**（若无非空旧清单可沿用）→ 下游 `scope_state` 判 `missing` → 各导出阶段「增量范围不可用 ⇒ 拒绝按全量兜底」判红/跳过。
+
+4. **验证一条已发生的实录（2026-10-18）：**
+   ```
+   py -3 scripts/update_pipeline.py --plan   # 第 1 步 report 第 1 步 detect 还没跑过 / affected.txt 不存在
+   py -3 scripts/update_pipeline.py --only pull
+   # 实测: [pull] 设备与本地完全一致（新增 0/变更 0）⇒ 本轮没有要重算的东西；要整库重算请 --full
+   # 整轮 9 秒结束，13 档全部「未跑」；affected.txt 0B、affected.meta paths:0/new:0/changed:0
+   ```
+   根因正是第 3 条：先用 `mumu_sync sync --apply` 拉平了差异，范围无源可写。
+
+5. **这不等于「这次更新没有东西」。** 手动 sync 已把包拉到本地 = 本地与设备一致。若**本次差异不含画廊美术源包**（`painting/`/`spinepainting/`/`live2d/`/`cg`），则 paintings/spine/live2d/cg 阶段**本就会空跑**，受影响的只有 deps/meta/audio 等派生产物 → **不值得 `--full` 数十小时**。判据：`mumu_sync diff` 输出的「差异最大若干」若全是 `dorm3d/scripts*/sharecfgdata/dependencies/cue/hashes`，说明无美术更新。
+
+6. **范围是否被冲空，以 `.diag/pipeline/` 两枚章为准**：`affected.txt` 的 `paths` 字段 + `affected.meta` 的 `new/changed` 都应为 0 时，且你确实手动同步过 → 就是被冲空；`write_scope` 的空分支**只**在有非空旧清单时才沿用旧清单（`kept_from_prev`），首次跑没有旧清单可沿用。
+
+#### 踩坑记录
+
+- ⚠️ **mtime 不可用于反推「这轮拉了哪些」重建 `affected.txt`**：`adb pull` 写文件**保留设备侧时间戳**（实测 `files/AssetBundles` 近 60 分钟 0 个、全部落在更早）。所以不能靠「近 N 分钟修改」找回被冲空的差异清单。
+- ⚠️ **手动 sync 是 `pull` 的 live 半程**：`pull` 本来要 `--approve` 才拉包；先手动拉等于绕过签字，但第 1 步 detect 需要「设备 ≠ 本地」才写得出范围，拉平后无法回溯。
+- ⚠️ **别把判绿当「没有东西要做」**：`pull` 判“设备与本地完全一致”是**同步已完成**的陈述，不是“产物已重导”的陈述。产物重导与否看后续导出阶段，而它们因范围丢失全被跳过。
+
+#### 涉及文件
+
+`scripts/update_pipeline.py`（`st_pull`/`write_scope`/`scope_state`/`scope_or_stop`）、`scripts/mumu_sync.py`（`diff`/`sync`）、`.diag/pipeline/{affected.txt,affected.meta,pipeline_state.json}`。相关：WF-23（阶段机）、WF-15（权威 runbook）、§121（本条踩坑的 TROUBLESHOOTING 版）。
+

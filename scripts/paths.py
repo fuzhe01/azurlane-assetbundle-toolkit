@@ -78,6 +78,9 @@ FFMPEG = tool('AL_FFMPEG', 'ffmpeg',
               os.path.join(_USER, 'AppData', 'Local', 'ffmpeg', 'bin', 'ffmpeg.exe'),
               os.path.join(_USER, 'AppData', 'Local', 'Microsoft', 'WinGet', 'Links', 'ffmpeg.exe'))
 MUMU_ADB_CANDIDATES = [
+    # 2026-10-17 用户本机：MuMu 15（nx_device 版式，16.x 版 adb 在
+    # nx_device/<ver>/shell/ 下，与 MuMu12 的 nx_main 不同）→ 放首位优先命中
+    'D:' + os.sep + 'Program Files' + os.sep + 'Netease' + os.sep + 'MuMu' + os.sep + 'nx_device' + os.sep + '15.0' + os.sep + 'shell' + os.sep + 'adb.exe',
     'C:' + os.sep + 'Program Files' + os.sep + 'Netease' + os.sep + 'MuMu' + os.sep + 'nx_main' + os.sep + 'adb.exe',
     'C:' + os.sep + 'Program Files' + os.sep + 'Netease' + os.sep + 'MuMuPlayer' + os.sep + 'nx_main' + os.sep + 'adb.exe',
 ]
