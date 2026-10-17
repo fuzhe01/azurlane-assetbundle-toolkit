@@ -6647,3 +6647,44 @@ L2070-2075 帧循环每帧校正）；`scripts/diag/l2d_spine_dpr_verify.py`（�
 **待办（前端，未动）**：TO 回落接管点（`_startMotion` 的 onFinished 回调 / 只改 `mm.groups.idle`）
 尚未拍板；`idleGroup` 目前是单一组硬编码，若动态回落需泛化为「待机组集合」，并同步影响残留复位
 （L1358 `currentGroup!==idleGroup` 判断）、Loop 标记（L1314）、`play()`（L1347）的判断口径。
+
+## §120. 方案B前端回落落地：idle 变体判定、`SAMPLE_ONLY=[]` 禁用全库、启发式 best 随候选集漂移（2026-10-17）
+
+**问题**：§119 的数据侧映射表已生成，落到前端 `gallery_src/index.html` 时踩了四个坑（含用户目视反馈修正）：
+
+**① idle 变体判定正则误把 home/main_*/login 当循环待机变体——用户实测它们自循环**
+- 原 `scripts/build_motion_chain_map.py` 的 `IDLE_RE=^(idle\d*|main_\d+|home|login)$` 把 home/main_*/login
+  也归进 `idle_groups` → 前端 `idleSet=chainModel.idle_groups` 含它们 → `createMotion` 的 `setIsLoop`
+  把它们当循环待机无限自循环（用户播 home、main_1/2/3 停不下来，反馈「应该是长动画才对」）。
+- **根因**：home/main_*/login 是「场景/长动画」（宿舍、主界面左右滑、登录），不是循环站姿变体；只有
+  纯 `idle*` 组（idle2/3/5、idle1~21）才是待机变体（也是 touch_idle* 启发式回落的目标）。
+- **修法**：`IDLE_RE` 改 `^(idle\d*)$`，重建 `motion_chain.json`；前端回落 ② 分支对
+  `!idleSet.has(lg) && !/^touch_idle/` 判为「长动画」回默认 `idleGroup`。
+- **数据判据**：全库 262 模型 `idle_groups` 零混入（非 idle\d* 检出数=0）；150 模型仅 1 个 idle 组、
+  112 个 ≥2、77 个 ≥8（覆盖独立变体/编号变体/仅 1 组三类组织）。
+
+**② `SAMPLE_ONLY=[]` 用 `.includes(sk.key)` 恒 false → 全库链被禁**
+- CTX：`SAMPLE_ONLY` 是「样本闸」，改 `[]` 意为「全库启用」。但代码 `if(SAMPLE_ONLY.includes(sk.key))`
+  在空数组下**恒 false** → `chainSrc=null` → `chainModel=null` → `idleSet` 只剩 `idleGroup` →
+  全库所有 touch_idle* 回落退化成默认 idle（抽查 zhangwu_2 touch_idle26、zhenzhuhao_2 touch_idle25、
+  aersasi_3 touch_idle2 全落 idle，且 `#l2Curr` 停在播放动作名——回落没走 best 分支）。
+- **修法**：条件改 `location.protocol!=='file:' && (SAMPLE_ONLY.length===0 || SAMPLE_ONLY.includes(sk.key))`。
+
+**③ 启发式 best 随 idle_groups 候选集漂移**
+- IDLE_RE 收窄（去 home/main_*/login）后，aersasi_2 的 touch_idle1 best 从旧表 `idle3` 漂到 `idle`
+  （候选集 10→4，norm 重排）。这是启发式对候选集的**正常响应**，非 bug；但**手写 expected 的探针**会
+  因 best 漂移而误报——探针应**从 motion_chain.json 动态读 best** 作 expected，而非死记一个会漂的值。
+
+**④ 动态标签（UI 显示当前循环组）**
+- 回落发生在 update() 每帧 → 在 `mm.startRandomMotion` 接管回调里同步更新 `#l2Curr`（回落组名）；
+  `play()` 里也更新为当前播放组名（播动作显示动作名、回落后显示待机名）。bar 新增 `<span id="l2Curr">`，
+  初始填 `idleGroup`。
+
+**已排除的假设**：
+- **「home/main_*/login 是循环待机变体」**：否证（用户实测自循环不符合预期，属场景长动画）。
+- **「IDLE_RE 只认 idle\d* 会破坏某类模型」**：数据侧 262/262 build 成功，抽查覆盖编号多变体
+  （zhangwu_2、zhenzhuhao_2）与仅 1 idle 组（z46_4）三类组织，14 case 全 PASS。
+
+**验证**：`scripts/diag/l2d_motion_chain_verify.py` 14 case 全 PASS（touch_idle* 读表 best、长动画→idle、
+drag→自身、`#l2Curr` 同步）；`deploy_gallery.py --check` 6/6 同 inode 漂移 0；三样本（aersasi_2/3、ougen_8）
+用户目视通过。

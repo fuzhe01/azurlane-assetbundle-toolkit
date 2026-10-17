@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.8.0
+version: 1.9.0
 ---
 
 # Live2D 网页运行时集成
@@ -456,4 +456,32 @@ after **53（与 before 相等）**，且位移 >0.3 的判定区数 = **0**。
 - **踩坑**：本机可能没 Chrome（只有 Edge），项目多数无头脚本硬编码 Chrome 路径 →
   `FileNotFoundError [WinError 2]`（wf16 全挂）。**别当成产品缺陷**；自建探针带 Chrome/Edge 候选列表。
 - 完整判据/步骤/排除假设见 `docs/TROUBLESHOOTING.md` §118、操作流程见 WORKFLOWS WF-31。
+
+## 12. 动作回落语义：idle 变体判定与映射表（2026-10-17，version 1.9.0）
+
+场景：非 idle 动作播完，想回落「最衔接的待机变体」（方案 B），而不是固定回落 idle。要点在三层回落语义 +
+idle 变体判定。
+
+- **idle 待机变体 = 只认 `^(idle\d*)$`**。home/main_*/login 是**场景长动画**（宿舍/主界面滑/登录），
+  **不是**循环站姿变体——别把它们塞进 idleSet：用户实测播 home/main_1/2/3 会「无限自循环停不下来」。
+  数据侧 `scripts/build_motion_chain_map.py` 的 `IDLE_RE` 决定此判定，写进 `motion_chain.json` 的
+  `idle_groups`，前端 `idleSet = new Set(idle_groups)` 直接用。
+- **三层回落语义**（在 `mm.startRandomMotion` 接管回调里，按 `lastGroup` 分类）：
+  ① `touch_drag*` → 回落 drag 自身（配合 `createMotion` 对 idle/drag 组 `setIsLoop` 持续循环）；
+  ② 长动画（`!idleSet.has(lg) && !/^touch_idle/`）→ 回默认 `idleGroup`；
+  ③ `touch_idle*` → 查 `chainModel.chain[lg].best`（末帧 vs 待机首帧差异度，口径见 WF-32）。
+  回落目标确定后同步更新 bar 的 `#l2Curr` 动态标签（播动作显示动作名、回落后显示待机组名）。
+- **回落必须直接 `mm.startMotion(best, idx, IDLE优先级)`**，**不能**调库 `startRandomMotion`：它只在
+  「已加载进 motionGroups」的条目里筛（见 §3），变体组从未播过 → motionGroups 空 → 静默返回 false，
+  回落永不触发，currentGroup 卡在动作组。
+- **`.includes` 空数组恒 false**：全量启用闸若写成 `SAMPLE_ONLY.includes(sk.key)`，在 `SAMPLE_ONLY=[]`
+  时**全库禁用**（`[].includes(x)` 恒 false → chainSrc=null → idleSet 只剩 idleGroup，所有 touch_idle
+  退化成默认 idle）。正确写法 `SAMPLE_ONLY.length===0 || SAMPLE_ONLY.includes(sk.key)`。
+- **启发式 best 会随候选集漂移**：idle_groups 候选数一变（如剔除 home/main_*/login），norm 重排后 best
+  可能改变（aersasi_2 touch_idle1：idle3→idle）。因此**验证探针的 expected 必须从表动态读 best**，
+  别手写一个会漂的值。
+- **无头验证回落**：headless 软渲染帧率低（1~2fps），长动画墙钟播不完 → `isFinished` 永不 true →
+  自然回落不触发（**非产品 bug**，真机 60fps 正常）。探针用 `mm.queueManager.stopAllMotions()` 模拟
+  动作结束，触发与自然播完**完全一致**的 complete→shouldRequestIdleMotion→startRandomMotion 回调链。
+- 完整判据/踩坑：docs/TROUBLESHOOTING.md §120、操作流程见 WORKFLOWS WF-33。
 

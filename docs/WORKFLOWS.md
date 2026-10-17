@@ -2829,3 +2829,42 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 #### 涉及文件
 `scripts/build_motion_chain_map.py`、`Output/gallery_v2/motion_chain.json`；根因与排除假设见
 `docs/TROUBLESHOOTING.md` §119；前端回落改造另行跟进。
+
+### WF-33: 方案B前端回落（映射表 → 三层回落语义 + 动态标签 + 全库推广）（2026-10-17）
+
+场景：§119/WF-32 已产出 `motion_chain.json` 映射表。本 WF 是它的前端落地：非 idle 动作播完按
+**三层回落语义**选择回落目标 + bar 动态标签显示当前组。数据侧口径见 WF-32，踩坑见 §120。
+
+#### 判据（红 = 不许算过）
+1. **idle 待机变体 = 纯 `^(idle\d*)$`**。home/main_*/login 是场景长动画（用户实测自循环不符合预期），
+   播完回默认 idleGroup；不参与循环、不进 idleSet（但要兜底 `idleSet.add(idleGroup)` 保默认待机可循环）。
+2. **回落语义三层**（在 `mm.startRandomMotion` 接管里）：
+   ① `touch_drag*` → 回落 drag 自身（配合 `createMotion` 对 idle/drag 组 `setIsLoop` 持续循环）；
+   ② 长动画（`!idleSet.has(lg) && !/^touch_idle/`）→ 回默认 `idleGroup`；
+   ③ `touch_idle*` → 查 `chainModel.chain[lg].best`（启发式，用户确认保留）。
+3. **回落必须直接 `mm.startMotion(best,idx,优先级)`**：库的 `startRandomMotion` 只在「已加载进
+   motionGroups」的条目里筛（技能 §3），变体组从未播过 → motionGroups 空 → 静默不触发；直接 startMotion
+   让库走 loadMotion+state.reserve(IDLE) 正常路径。
+4. **`.includes` 空数组恒 false**：全量启用闸必须是 `SAMPLE_ONLY.length===0 || SAMPLE_ONLY.includes(key)`；
+   直接用 `SAMPLE_ONLY.includes(key)` 在 `[]` 下全库禁用（§120 ②）。
+5. **动态标签**：回落回调里更新 `#l2Curr`=回落组名；`play()` 里更新为当前播放组名；初始填 idleGroup。
+
+#### 步骤
+1. 数据侧：`py -3 scripts/build_motion_chain_map.py --write`（`idle_re` 收窄 `^idle\d*$`）→ 全库 262 表
+   （`idle_groups` 零混入：非 idle\d* 检出=0）。
+2. 前端：SAMPLE_ONLY 闸 + chainSrc 拉取 → `idleSet` 泛化（idle_groups ∪ idleGroup）→ `createMotion`
+   对 idle/drag 组打 setIsLoop → `mm.startMotion` 记 lastGroup → `mm.startRandomMotion` 三层回落 → bar 加
+   `#l2Curr` 动态标签。
+3. 无头抽查：`scripts/diag/l2d_motion_chain_verify.py`（forceEnd 用 `stopAllMotions` 模拟回落 + 从表
+   **动态读 best** 作 expected + warmup 消首 case 冷序）。抽查覆盖：编号多变体（zhangwu_2、zhenzhuhao_2）、
+   仅 1 idle 组（z46_4）与样本三模型。
+4. 实机目视：三样本（aersasi_2/3、ougen_8）逐项验证长动画回 idle、drag 循环、touch_idle 回变体、标签显示。
+
+#### 踩坑记录
+- home/main_*/login 被旧 IDLE_RE 当循环待机 → 用户播它们自循环停不下来（§120 ①）。
+- `SAMPLE_ONLY=[]` 后 chainSrc 走 `[].includes` 恒 false → 全库所有 touch_idle 退化成默认 idle（§120 ②）。
+- 启发式 best 随候选集漂移（aersasi_2 touch_idle1：idle3→idle）→ 手写 expected 探针会误报，必须动态读表（§120 ③）。
+
+#### 涉及文件
+`gallery_src/index.html`（回落接管 / createMotion / bar / `#l2Curr`）、`scripts/build_motion_chain_map.py`、
+`scripts/diag/l2d_motion_chain_verify.py`、`Output/gallery_v2/motion_chain.json`。

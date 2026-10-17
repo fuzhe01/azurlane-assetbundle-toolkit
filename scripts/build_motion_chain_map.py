@@ -12,10 +12,10 @@
     → dict: 组名 -> [{File, FadeInTime?, FadeOutTime?}]，File 形如 'motion/<组>.motion3.json'
   Output/Live2D/<model>/<File> 对应 motion3.json，Segments 解析规则见 parse_curve_ends()。
 
-待机候选组的判定（覆盖两类实测组织）
-  - 独立组变体（aersasi_2）：idle / idle2 / idle3 / idle5 / home / login / main_1~4
-  - 同前缀编号变体（aersasi_3）：idle / idle1~idle21（另有 home / login / main_1~4）
-  正则：^(idle\\d*|main_\\d+|home|login)$
+待机候选组的判定（仅纯 idle 变体；home/main_*/login 归「场景/长动画」，播完回默认 idle，不参与循环）
+  - 独立组变体（aersasi_2）：idle / idle2 / idle3 / idle5
+  - 同前缀编号变体（aersasi_3）：idle / idle1~idle21
+  正则：^(idle\d*)$
 
 差异度
   raw_sse  = Σ_{公共参数p} (动作末帧值[p] - 待机首帧值[p])²   —— 量纲不归一，仅供诊断
@@ -39,7 +39,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 from paths import LIVE2D_OUT, GALLERY_OUT  # noqa: E402
 
-IDLE_RE = re.compile(r'^(idle\d*|main_\d+|home|login)$')
+IDLE_RE = re.compile(r'^(idle\d*)$')
 
 # 前端 idleGroup 的既定优先序（落到候选排序并列时的次选依据；首选项永远是"差异度最小"）
 LEGACY_PREF = ['idle', 'main', 'home']

@@ -1283,6 +1283,54 @@ async function renderLive2D(s, sk){
     const mm=mdl.internalModel.motionManager;
     const MP=(PIXI.live2d&&PIXI.live2d.MotionPriority)||{IDLE:1,NORMAL:2,FORCE:3};
     const idleGroup=['idle','main','home'].find(g=>groups.includes(g))||groups[0]||null;
+    /* ---------- 方案B 动作回落（2026-10-17，WF-32 §119）----------
+       非 idle 动作播完 → 按 motion_chain.json 落到「最衔接的 idle 待机变体组」，而不是固定 idle。
+       ① 库的回落点在动作播完的下一次 update()：startRandomMotion(this.groups.idle, IDLE)。
+          调用前 state.complete() 已把 currentGroup 清空 → 拿不到"刚播完的动作组"，
+          故在 mm.startMotion 层记录 lastGroup，再包一层 startRandomMotion 把回落目标换成映射表 best。
+       ② 凡"固定 idle"的判断全部换成 idleSet（= 映射表 idle_groups ∪ idleGroup）：
+          变体组同样是循环待机、同样参与残留复位，不再只认单个 idleGroup。
+       ③ 样本闸：本阶段只对 aersasi_2/aersasi_3 生效；目视通过后把 SAMPLE_ONLY 改成 [] 即全量。 */
+    const SAMPLE_ONLY=[];
+    const chainSrc=(location.protocol!=='file:' && (SAMPLE_ONLY.length===0 || SAMPLE_ONLY.includes(sk.key)))
+      ? await fetch('./motion_chain.json').then(r=>r.ok?r.json():null).catch(()=>null) : null;
+    const chainModel=(chainSrc&&chainSrc.models&&chainSrc.models[sk.key])||null;
+    const idleSet=new Set(chainModel?chainModel.idle_groups:[]);
+    if(idleGroup) idleSet.add(idleGroup);
+    let lastGroup=null;
+    const _origStartMotion=mm.startMotion.bind(mm);
+    mm.startMotion=(g,i,p)=>{ lastGroup=g; return _origStartMotion(g,i,p); };
+    const _origRandomMotion=mm.startRandomMotion.bind(mm);
+    mm.startRandomMotion=(g,i,p)=>{
+      /* ⚠️ 不能用库的 startRandomMotion 转参直接播：该函数只在「已加载进 motionGroups」的条目里筛
+         （null===motionGroups[t][e] 跳过未加载项），idle2/idle3 等变体组从未播放过 → motionGroups[best]
+         全空 → s=[] 静默返回 false，回落永远不触发；motionGroups[best] 若连索引都没初始化，遍历还抛
+         TypeError 卡死 update 循环（实测 currentGroup 停在动作组 25s+）。绕开它，直接 startMotion(best)
+         让库走正常 loadMotion+state.reserve(IDLE) 播放路径，未加载的变体组自动补加载。
+       —— 2026-10-17 方案B追加（用户判据，三样本目视）：
+         · touch_drag*（拖拽短动画）→ 循环播放：回落回 drag 自身，配合 createMotion 的 setIsLoop；
+         · 长动画（非 drag、非 touch_idle 的 action）→ 回默认 idleGroup，不再按启发式漂到变体；
+         · touch_idle* → 仍走 motion_chain 启发式 best（保留原判定）。
+         回落目标确定后同步更新 #l2Curr 显示当前循环组名（如回落 idle8 就显示 idle8）。 */
+      const ret=(dst)=>{ const defs=mm.definitions[dst]||[]; if(defs.length){
+          const idx=Math.floor(Math.random()*defs.length);
+          const pr=(i===undefined||i===null)?1:i;
+          try{ const h=document.getElementById('l2Curr'); if(h) h.textContent=dst; }catch(e){}
+          return mm.startMotion(dst,idx,pr); } return _origRandomMotion(g,i,p); };
+      try{
+        const lg=lastGroup, low=((lg||'').toLowerCase());
+        if(lg && /^touch_drag/.test(low)) return ret(lg);               // ① 拖拽循环
+        if(lg && !idleSet.has(lg) && !/^touch_idle/.test(low)) return ret(idleGroup); // ② 长动画回默认 idle
+        const c=chainModel&&lg&&chainModel.chain[lg];                   // ③ touch_idle* 启发式 best
+        const best=c&&c.best&&mm.definitions[c.best]?c.best:null;
+        if(best){ const defs=mm.definitions[best]||[]; if(defs.length){
+          const idx=Math.floor(Math.random()*defs.length);
+          const pr=(i===undefined||i===null)?1:i;
+          try{ const h=document.getElementById('l2Curr'); if(h) h.textContent=best; }catch(e){}
+          return mm.startMotion(best,idx,pr); } }
+      }catch(e){}
+      return _origRandomMotion(g,i,p);
+    };
     /* ---------- 动作语音 ----------
        ⚠️ 不要走库的 `definitions[g][0].Sound`：那条通道由 SoundManager 托管，
        下一条动作一 startMotion 就把上一条 dispose 掉。而 idle 播完会自动回落 idle，
@@ -1311,7 +1359,11 @@ async function renderLive2D(s, sk){
     const curveId=(c)=>{ const i=c&&c.Id; return typeof i==='string'? i : (i&&i.string)||null; };
     const origCreateMotion=mm.createMotion.bind(mm);
     mm.createMotion=(json,group,def)=>{ const m=origCreateMotion(json,group,def);
-      if(group===idleGroup&&json&&json.Meta&&json.Meta.Loop&&m.setIsLoop){
+      /* drag 与 idle 变体是循环待机/拖拽：采纳 Meta.Loop 让它们在播完时不触发回落（库检测到 loop 就持续回绕）。
+         长动画（touch_head/touch_body/complete 等）虽 Meta.Loop 恒 True，但 vendored 库从不据此自动 loop——
+         setIsLoop 必须手动调用；这里只给 idle/drag 组合调，长动画不 setLoop → 播完由 complete→
+         shouldRequestIdleMotion 逐帧接管回落（①drag ②长动画→idle ③touch_idle→best），就是方案B的行为。 */
+      if((idleSet.has(group)||/^touch_drag/.test(group))&&json&&json.Meta&&json.Meta.Loop&&m.setIsLoop){
         m.setIsLoop(true); if(m.setIsLoopFadeIn) m.setIsLoopFadeIn(false); }
       try{ if(json&&json.Curves){ const s=paramSets[group]||(paramSets[group]=new Set());
           for(const c of json.Curves) if(c.Target==='Parameter'){ const id=curveId(c); if(id) s.add(id); } } }catch(e){}
@@ -1343,8 +1395,10 @@ async function renderLive2D(s, sk){
     const played=new Set();
     const play=g=>{ if(!g) return false;
       try{ playVoice(g);
+        /* 动态标签：播出即同步显示当前组（非待机动作播放中显示动作名，便于回落前后对照） */
+        const _l2c=document.getElementById('l2Curr'); if(_l2c) _l2c.textContent=g;
         mm.startMotion(g,0,MP.FORCE);
-        if(g!==idleGroup) played.add(g); return true; }catch(e){ return false; } };
+        if(!idleSet.has(g)) played.add(g); return true; }catch(e){ return false; } };
     /* ---------- 非 idle 动作的参数残留复位（docs/TROUBLESHOOTING.md §21 末段） ----------
        touch_idle1（安土「午夜的瑰色电梯」）动画 252 条曲线，其中 15 条 idle 从不驱动；clip 播完
        没有任何曲线把它们写回去 → 整体位移停在末帧 → 57 个判定区全部被甩出画布，用户「进去就出不来」。
@@ -1355,8 +1409,8 @@ async function renderLive2D(s, sk){
     const REST_DELAY=400, REST_MS=700, cm=im.coreModel;
     let rest=null;
     const restTick=()=>{ const cg=mm.state&&mm.state.currentGroup;
-      if(cg&&cg!==idleGroup){ rest=null; return; }
-      if(!rest){ const idleS=paramSets[idleGroup]; if(!idleS||!played.size) return;
+      if(cg&&!idleSet.has(cg)){ rest=null; return; }
+      if(!rest){ const idleS=paramSets[(cg&&idleSet.has(cg))?cg:idleGroup]||paramSets[idleGroup]; if(!idleS||!played.size) return;
         const want=new Set(); played.forEach(g=>{ (paramSets[g]||new Set()).forEach(p=>{ if(!idleS.has(p)) want.add(p); }); });
         played.clear();
         const items=[];
@@ -1370,12 +1424,13 @@ async function renderLive2D(s, sk){
       if(k>=1) rest=null; };
     app.ticker.add(restTick);
     const bar=document.getElementById('l2bar');
-    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
+    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
     const sel=document.getElementById('l2Motion');
     const fillSel=()=>{ const cur=sel.value;
       sel.innerHTML=groups.map(g=>`<option value="${g}">${g}${voice[g]?'（语音）':''}</option>`).join('');
       if(cur) sel.value=cur; };
     fillSel();
+    { const _l2c=document.getElementById('l2Curr'); if(_l2c) _l2c.textContent=idleGroup; }
     /* 表是异步来的（本地小文件），回填后只刷新下拉标签与语音计数，不阻塞模型加载主流程。
        计数只算「模型里真的有的组」，否则会把表里其它类别（战斗/强化…）算进来说话数虚高。 */
     Promise.all([loadVoiceMap(), loadWords()]).then(([m])=>{ const e=m[sk.key]||{}, map=e.l2d||{};
