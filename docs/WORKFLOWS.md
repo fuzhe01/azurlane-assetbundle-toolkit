@@ -2681,6 +2681,12 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 `scripts/build_gallery_index.py`、`scripts/run_v2_full.py`（引导文案与批调用）。取证全过程 **§111**。
 相关：WF-15（第 9 步备份换入）、WF-16（回归六件套）、§78（台账）、§46（备份瘦身先例）、§110。
 
+**临时区（`.diag/`）最后一查——目录名像"中间产物"，里面可能住着唯一源 + 产物（2026-10-17）**：
+清 `sharecfg_re` 这类名带"解析中间"的目录前，先逐目录看**里面有没有源类文件 + 有没有 `inputs/` 没收录的表**，不要凭名删：
+- 实证：`sharecfg_re/` 里同住 `scripts64.full.ab`（**已解出的 sharecfg AssetBundle 源**，37.9MB）与几百张解析配置表 json（`furniture_data_template` 1.2MB / `word_template_*` / `equip_skin_template` 818KB… 共 28.9MB）。整目录删 = **源与产物一起丢**——本机再无 sharecfg 源（重导需设备侧 sharecfgdata，WF-15 已注记加密）。
+- `lua_json/name_code.json` 的 `.diag` 版是**更完整视图**（48.8KB/3197 行，含 `id/nation/type` + `#456` 头），`inputs/gamecfg/` 版是**精简版**（26.9KB/1826 行，只留 code/name）——**`check_inputs.py` [PASS] 只证明 inputs 台账内部一致，不代表 `.diag` 旧副本可删**；完整性视图可能只在 `.diag`。
+- WF-15 承重白名单只护 `inputs/` 权威；`.diag` 里可能藏着**尚未迁出的唯一数据**。注意 `check_disk_footprint.py` 只统计 `files/` + `Output/*`，**不含 `.diag`**——别把 `.diag` 当"可再生中间件"整目录删，不确定就先留或先 `--archive`（AGENTS 收尾第 4 条）。
+
 ---
 
 ### WF-29: 改「渲染政策函数」（合成算子 / 画布口径 / 取景规则）怎么验到能放心全量（2026-10-06）
