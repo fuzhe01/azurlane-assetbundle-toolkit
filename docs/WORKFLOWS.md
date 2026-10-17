@@ -2949,3 +2949,34 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 
 `scripts/mumu_sync.py`（`ONLY_TOP`/`wanted`/`cmd_diff`/`cmd_sync`/`run`）、`scripts/paths.py`（`P.FILES`）。相关：WF-34（一键更新顺序）、WF-23（阶段机）、§22/§33（sharecfgdata 文法）。
 
+
+### WF-36: 更换 gallery vendor 第三方库源（spine-all.js 案例 + 三层可复现验证 — 2026-10-18）
+
+**场景**：gallery 前端 vendor 台账 `gallery_src/vendor/MANIFEST.json`（4 个第三方 JS）需要**换源/补源**。本案例 `spine-all.js` 此前是唯一「无可下载源」的一个（本机副本来自被 gitignore 的 `tools/spine-viewer/`，git 0 份、无版本记录）。本例把它换成上游官方 `EsotericSoftware/spine-runtimes@3.8` 构建。
+
+#### 判据（红 = 换错会长篇排查）
+
+1. **换源前先探源，只有「下载后哈希命中台账」才可用**：
+   `py -3 scripts/diag/probe_vendor_source.py --expect-hash <sha> --expect-bytes <n> <url1> <url2>...`
+   它逐个下候选并比对 sha256/bytes；命中打 `★命中`。实测 `cdn.jsdelivr.net/gh/...` 可下（499623B/sha7304a0b7）、`raw.githubusercontent` 本机 HTTP000、`unpkg`/npm 的 spine-player 无此文件（404）。
+2. **台账一份文件只有一个期望哈希**（`fetch_gallery_vendor.py` 按 sha256 校验后才落盘）。所以：
+   - 若新源命中**旧哈希** → 前端加载内容不变，**零回归**；
+   - 若只找到**不同构建**（bytes/sha 都变，却是同版本系列）→ 前端加载内容会变，**必须回归**。本案例走这条（官方 499623B vs 旧本机份 501448B，但同为 3.8.75）。
+3. **更新 MANIFEST**：`sources` 放 verified=true 主源 + 多路 CDN fallback（本案例 `cdn`/`fastly`/`gcore` 三路）；`bytes`/`sha256` 同步改成新构建；**被替换的 local 旧副本若哈希不符就直接删掉勿再当源**（否则首次 fetch 会打「本机副本哈希不符」）。`gap` 字段从「无源」改「已解决」。
+4. **落盘 + 指纹**：`py -3 scripts/fetch_gallery_vendor.py` → `--check` 应 **N/N 就位**（指纹=台账）。本案例 4/4。
+5. **回归三层（可复现，不需要浏览器渲染时就到这一层）**：
+   ① **指纹**：`--check` 通过、落盘文件 sha256/bytes=台账。
+   ② **版本**：读文件内部版本串，确认与旧份同系列（spine 是文件内 `"3.8.75" == skeletonData.version` 校验 → 承重值 3.8.75）。
+   ③ **API 面**：列出前端实际依赖的库符号，逐一生效确认在新构建里**全存在**（缺一个都按退化处理）。本案例 9/9（见 §122）。
+
+#### 踩坑记录
+
+- ⚠️ **机器没有 Google Chrome，只有 Edge；Edge 的 headless CDP 启动即报**
+  `Multiple targets are not supported in headless mode` 且调试端口不监听；`node` 也不在 PATH ⇒ **本机跑不了真实渲染的像素级回归**。换源验证降级用上面「三层」，真实渲染回归留待 Chrome/CDP 环境就绪（`scripts/diag/verify_spine_vendor.py` 已把回归逻辑写好可直接跑）。详见 §122。
+- ⚠️ **工具废弃线索正中换源的紧迫性**：本机 `tools/spine-viewer` 已被清（旧 501448B 副本没了）。若没换源，`spine-all.js` 只剩 `Output/gallery_v2/vendor/` 一份旧副本、git 0 份、无可下载源 ⇒ Spine 标签彻底不可复现。换官方源恰好补上。
+- ⚠️ **License 别凭「文件内无许可头（无 Copyright/(c)/License）」推断可自由再分发**：上游 spine-runtimes 受 Spine Runtimes License 约束；本例只是「换一个有官方可校验的下载源」，不是「把 501KB 提交进仓库」。要提交仍须先确认 License。
+
+#### 涉及文件
+
+`gallery_src/vendor/MANIFEST.json`（台账）、`scripts/fetch_gallery_vendor.py`（按 sha256 落盘/校验）、`scripts/diag/probe_vendor_source.py`（探源工具）、`scripts/diag/verify_spine_vendor.py`（渲染回归，待 Chrome 就绪）。相关：WF-14（Spine 播放）、§122（Edge headless CDP 限制）、`docs/TROUBLESHOOTING.md` §42/§98（Spine 渲染取证）。
+

@@ -6705,3 +6705,21 @@ drag→自身、`#l2Curr` 同步）；`deploy_gallery.py --check` 6/6 同 inode 
 
 **涉及文件**：`scripts/update_pipeline.py`（`st_pull`/`write_scope`/`scope_state`）、`scripts/mumu_sync.py`、`.diag/pipeline/{affected.txt,affected.meta}`。相关：WF-34（正确顺序）、WF-23（阶段机）。
 
+
+## §122. Edge 的 headless CDP 报「Multiple targets are not supported in headless mode」—— 机器只有 Edge、无 Google Chrome / node 不在 PATH（2026-10-18）
+
+**问题**：想用无头 Edge 驱动 `cg_export.html` 做像素级渲染回归（验证把 gallery vendor 的 `spine-all.js` 换成上游官方 3.8 构建后 Spine 播放不退化）。用
+`msedge --headless[=new] --remote-debugging-port=<p> --remote-allow-origins=* --user-data-dir=<独立> [about:blank|URL]` 启动后，`http://127.0.0.1:<p>/json` **拒绝连接**，stderr 报：
+`[ERROR:chrome\app\chrome_main.cc:321] Multiple targets are not supported in headless mode.`
+
+**原因**：环境限制，不是脚本/布局问题。
+- 本机**没有 Google Chrome**（`scripts/paths.py` 的 `CHROME` 候选只命中 `msedge.exe`）——只有 Microsoft Edge。
+- Edge（该版本）在 **headless 模式下不支持并发多 target**（即使传独立 `--user-data-dir`、不传 URL、单独调试端口也一样），调试端口**始终不监听**。
+- `node` 不在 PATH ⇒ 想用 node 加载 spine 核心做「解析层替代回归」也走不通。
+
+**修法/处理**：这本是环境限制，非本次改动引入。spine vendor 换源的验证改走**可复现的三件套**：① `py -3 scripts/fetch_gallery_vendor.py --check` 指纹 4/4（官方构建落盘、哈希=台账）；② 官方构建内部版本串同为 3.8.75（同版本系列）；③ 前端依赖的全部 spine 符号（ManagedWebGLRenderingContext / SceneRenderer / SkeletonBinary / SkeletonJson / TextureAtlas / AtlasAttachmentLoader / GLTexture / Skeleton / AnimationState）在官方构建里 **9/9 全覆盖**。真实渲染像素回归**留待装好真 Google Chrome / CDP 环境就绪**；`scripts/diag/verify_spine_vendor.py` 已把回归逻辑备好，环境就绪即可直接跑。
+
+**已排除的假设**：换 `--headless=new` ↔ `--headless`、传独立 `--user-data-dir`、不带 URL、加/去 swiftshader 参数——全部仍是同一报错且端口不监听 ⇒ **不是参数写法问题**，是 Edge headless CDP 的环境级限制。
+
+**涉及文件**：`scripts/diag/verify_spine_vendor.py`（渲染回归工具，本机受此限制暂不可运行）、`scripts/paths.py`（CHROME 候选）、`docs/WORKFLOWS.md` WF-36（vendor 换源三层验证判据）。
+

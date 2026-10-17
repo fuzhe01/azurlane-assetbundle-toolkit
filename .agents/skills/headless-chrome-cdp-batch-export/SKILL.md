@@ -1,7 +1,7 @@
 ---
 name: headless-chrome-cdp-batch-export
 description: 无头 Chrome + CDP 批量驱动本地网页完成渲染/截图/资产导出。当任务需要用浏览器前端运行时（如 Spine/WebGL/Canvas/JS 库）批量产出图片或数据文件时使用——触发词：无头浏览器批量导出、CDP 驱动网页、headless chrome 批量截图、浏览器渲染落盘、autostart 参数自动化。不适用于单次网页截图和 QwenWork 内置媒体生成工具。
-version: 1.8.0
+version: 1.8.1
 ---
 
 # 无头 Chrome + CDP 批量导出
@@ -395,6 +395,18 @@ version: 1.8.0
     别只看"导出完成 N/N"（脚本会把空作业算完成，`cg_exists` 也可能跳过但无内容）。
     全量带 `--timeout` 覆盖默认值，用 `Start-Process` 脱宿主运行 + 记 PID 到 `.diag/`，
     长时批处理三分法判定"真跑完/崩了/被截断"，别拿 `exit 0` 当完成证据。
+
+40. **机器只有 Edge / 无 Google Chrome 时，headless CDP 起不来（2026-10-18 实测）**：
+    `msedge --headless[=new] --remote-debugging-port=<p> --remote-allow-origins=* --user-data-dir=<独立>`
+    启动后 `http://127.0.0.1:<p>/json` **拒绝连接**，stderr 报
+    `[ERROR:chrome\app\chrome_main.cc:321] Multiple targets are not supported in headless mode.`
+    即使传独立 --user-data-dir、不带 URL、加/去 swiftshader 参数都一样 ⇒ **不是参数写法问题，是 Edge
+    headless 的环境级限制**（本机没装 Google Chrome，`scripts/paths.py` 的 `CHROME` 只命中 msedge）。
+    ⇒ 渲染回归判据**降级为可复现三件套**：① vendor 台账 `--check` 指纹；② 文件内部版本串（spine 为
+    `"3.8.75"==skeletonData.version`，确认与旧份同系列）；③ 前端依赖符号在新构建里逐一生效全覆盖
+    （ManagedWebGLRenderingContext/SceneRenderer/SkeletonBinary/SkeletonJson/TextureAtlas/
+    AtlasAttachmentLoader/GLTexture/Skeleton/AnimationState）。真实渲染回归留待装真 Chrome 或 CDP
+    环境就绪（验证脚本先备好）。详见 docs/TROUBLESHOOTING.md §122 与 docs/WORKFLOWS.md WF-36。
 
 
 ## 验证
