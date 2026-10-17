@@ -5,7 +5,7 @@ name_zh: Live2D 动作提取完整性与保真审计
 description: Integrity and fidelity audit for re-exporting Live2D motions from Unity AssetBundles (AnimationClip to motion3.json). Covers enumerating all three clip containers (m_StreamedClip / m_DenseClip / m_ConstantClip) with a binding-count assertion, constant-curve emission checks against moc3 defaults with audio-driven exemptions, unfalsifiable-anchor tests for key field layout, diffing against an external authoritative motion3.json baseline with ceiling-calibrated thresholds, and an env-switch plus byte-identical control-group protocol for removing legacy guardrails. Use when extracting or re-exporting Live2D motion data, when curves go missing, or when users report parts moving independently, unnatural transitions, jittering limbs, wrong easing. Trigger words include motion3.json audit, ConstantClip, genericBindings, bezier control point, tangent field layout, guardrail removal. Not for browser runtime playback (live2d-web-runtime-integration) or static painting restoration (unity-assetbundle-painting-restore).
 description_en: Integrity and fidelity audit for re-exporting Live2D motions from Unity AssetBundles (AnimationClip to motion3.json), covering three-container curve enumeration, constant-curve decisions, field-layout anchor tests, authoritative baseline diffing, and byte-identical control-group guardrail removal.
 description_zh: 从 Unity AssetBundle 重导 Live2D 动作（AnimationClip → motion3.json）时的完整性与保真审计流程。覆盖三容器曲线枚举（m_StreamedClip / m_DenseClip / m_ConstantClip，只读 streamed 会丢 60%+ 绑定）+ 绑定数求和断言、定值曲线可否补入（逐条比 moc3 默认值，音频驱动参数一律豁免）、键记录字段布局的不可钻空子锚点自证（附两个已被推翻的无效判据）、外部权威 motion3.json 基准比对与天花板校准阈值、以及拆历史护栏的 env 开关 + 逐字节对照组协议。当需要重导/校验 Live2D 动作数据、或用户反馈"部件各动各的/过渡像刚学建模的/小臂乱摆/动作太快/曲线少了/像抽一帧"时使用。触发词：Live2D 动作重导、motion3.json 审计、AnimationClip 丢曲线、ConstantClip、DenseClip、genericBindings、贝塞尔控制点、切线字段、参考版比对、拆护栏、A/B 逐字节、空壳动作。不适用：网页侧运行时播放集成（live2d-web-runtime-integration）、静态立绘/Spine 还原（unity-assetbundle-painting-restore）、通用管线安全落地方法论（safe-pipeline-fix-targeted-rerun，本技能第 5 步是它在动作数据场景的特化）。
-version: 1.3.0
+version: 1.3.1
 argument-hint: Point at the model/motion output directory and the clips to audit
 argument-hint-en: Point at the model/motion output directory and the clips to audit
 argument-hint-zh: 给出模型/动作产物目录与要审计的 clip 名
@@ -138,6 +138,7 @@ StreamedClip 的每条键记录是 `index(int32) + 4×float`。**谁是值、谁
 - **无头验证偶发 `Execution context was destroyed`**：多为无头实例冲突的假失败，重跑一次再下结论（同批次探针已通过时尤其可疑）。
 - **常量曲线没有「idle 循环内」疗效 —— 轴选错会否证误杀**：定值曲线只在「**切动作/切段复位**」轴生效；idle 单次循环内部不触发任何复位，所以加常量曲线**不会改变 idle 循环内的波形**。2026-10-16 A/B 实测 aersasi_2/ougen_8 用 `L2D_MOTION_EMIT_CONST=1` 重建后 idle 内波形几乎不变（`dirFlips` 仅 10.4→9.1），在 idle 轴上看着像「常量曲线无用=否证」——**不是**，是测错轴。要验收常量曲线必须按**切换轴**（idle→touch→idle 后部件是否回到该 clip 未驱动的静止断言位）测；要定位「真抖动（振荡）」则跟常量无关，往贝塞尔控制点/参数错位查。判定工具 `scripts/diag/l2d_jitter_probe.py`。
 - **解析失败时留占位空壳**：结构合法的 `"Curves": []` 会让下游"能播但不动"，且能通过一切外壳检查。失败必须显式报错 + 非零退出（见 `safe-pipeline-fix-targeted-rerun` 分支 C）。
+- **把「读首末帧」复杂化成解析贝塞尔**：不必。Segments 首帧=`seg[1]`、末帧=`seg[-1]`（布局决定：首对 `(time,value)` 2 元素、各段类型码后终点在最后）。要算「动作 A 末帧 vs 待机 B 首帧」的衔接差异度直接取这两个值即可，不用碰控制点。
 
 ## Verification
 
@@ -159,6 +160,18 @@ StreamedClip 的每条键记录是 `index(int32) + 4×float`。**谁是值、谁
 - [ ] 根因 / 已排除假设 / 天花板 / 未决 四类分开归档
 - [ ] 交接命令里的 env 配方 == 实际换入并通过验收的配方
 ```
+
+## 读取 Segments 的首末帧（衔接选组 / 复位目标）
+
+不用解析贝塞尔控制点，就能拿到一条曲线的首末帧值——规则由 Segments 布局直接保证（见 reference.md §3）：
+
+- 首对 `(time, value)` = 2 元素（无类型码）⇒ **首帧值 = `seg[1]`**
+- 其后每段先一个类型码：`0=Linear/2=Stepped` 3 元素、`1=Bezier` 7 元素（终点在最后）⇒ **末帧值 = `seg[-1]`**（任何段型）
+
+用途：比较「动作 A 播完的末帧姿态」与「待机变体 B 播起来时的首帧姿态」，即可两两算衔接差异度，
+给「动作播完回落哪个待机组」选最平滑的目标。差异度口径 + 待机候选判定见 WF-32 与 `scripts/build_motion_chain_map.py`。
+实测（2026-10-17，aersasi_2/3）：touch_*/complete 类动作都能对应到唯一合理的待机变体（aersasi_3 的
+touch_idleN→idleN 一一对应）。
 
 ## Additional Resources
 

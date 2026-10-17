@@ -6619,3 +6619,31 @@ wf16 各脚本仍硬编码 Chrome，若要在这台 Edge-only 机器跑需逐脚
 L2070-2075 帧循环每帧校正）；`scripts/diag/l2d_spine_dpr_verify.py`（新增画质验收探针）；
 做法与判据见 `docs/WORKFLOWS.md` WF-31。
 
+## §119. Live2D 动作播完「固定回落 idle」是否该换成「按差异度选最优待机变体」——方案 B 数据侧（2026-10-17）
+
+**问题**：画廊里非 idle 动作（touch_*/complete/mission…）播完后，`mm.groups.idle=idleGroup` 让运行时
+固定回落 `idle` 组。但模型往往有多个待机变体组（`idle2/idle5/home/login/main_1~4`，或 aersasi_3 的
+`idle1~idle21`），固定回落 idle 可能在动作末帧姿态与 idle 首帧姿态差很远时造成明显跳变。
+
+**方案**：预计算「动作末帧曲线 vs 各待机候选首帧曲线」的差异度，选最衔接的待机变体回落。数据落地为
+`Output/gallery_v2/motion_chain.json`（262 模型 / 5008 动作）。判据/口径见 WF-32。
+
+**关键结论（本家数据自证）**：
+- **Segments 首帧=seg[1]、末帧=seg[-1]，与段型无关**：首对 `(time,value)` 后每段先类型码，Linear/Stepped
+  3 元素、Bezier 7 元素且终点在最后 ⇒ 任何运动曲线的末帧值 = 该曲线 Segments 的最后一个元素。
+- **两样本映射高度自洽**：aersasi_2 的 touch_head→idle2、touch_drag→idle3、touch_idle5→idle5、
+  mail→main_1、mission→main_3、touch_special→login；aersasi_3 的 touch_idleN→idleN 一一对应。
+- **norm 分布（全量 5008 动作）**：无缝<0.01 占 36.6%、平滑<1 占 31.1%、明显跳<10 占 9.9%、大跳≥10 占
+  20.3%、n/a 2.2%（110 个 fallback）。约三分之二的动作回落差异极小，方案 B 价值集中于此。
+
+**已排除的假设**：
+- **「model3 顶层 `Motions` 键」**：不存在（顶层只有 Version/FileReferences/Groups/HitAreas），
+  组清单在 `FileReferences.Motions`。读错层级会得到 None 被误判成模型失败。
+- **「原始 SSE 足够」**：角度参数（±30°）与位移参数（±0.4）量纲悬殊，不归一化会让大参数主导选组；
+  归一化用全体待机候选首帧的 max-min 作量纲后结果才合理。
+- **「leak 参数（idle 不驱动的参数）影响选组」**：否证。切换期间这些参数停在动作值、与回落到哪个
+  待机无关，不产生额外跳变 ⇒ 差异度只统计「两边都覆盖」的参数在数学上已等价于完整向量夹角。
+
+**待办（前端，未动）**：TO 回落接管点（`_startMotion` 的 onFinished 回调 / 只改 `mm.groups.idle`）
+尚未拍板；`idleGroup` 目前是单一组硬编码，若动态回落需泛化为「待机组集合」，并同步影响残留复位
+（L1358 `currentGroup!==idleGroup` 判断）、Loop 标记（L1314）、`play()`（L1347）的判断口径。

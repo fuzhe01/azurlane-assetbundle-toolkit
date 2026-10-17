@@ -78,6 +78,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 > ✅ 四条已闭环事故注记（判定区幽灵标签 **§51**｜语音被掐 **§41**｜代理指标假绿灯 **§40**｜全量重导覆写事故 **§25**）已外迁 A15 段；目视覆盖 26/269 见上表同一行，不重复。
 > ⚠️ **动效验证必须在播放窗口内高频采样**：运行时把每条 idle 解析成 `isLoop:false`（全 269 模型一致的既有特性），idle 只播一次即回静；等 ~12s 后两次快照比对会因短 idle(5~8s) 已播完而假报 `moved=0`。
 > ⚠️ **aersasi_2/ougen_8 肢体抖动（§116，进行中）**：重建版 .moc3/.physics3 与 AS 版逐字节/逐字段一致已**否证**「提取/物理数值」两条；`L2D_MOTION_EMIT_CONST=1` 换入 A/B 实测 **idle 内波形不变** ⇒ **否证**「真抖动=constant 曲线缺失」（常量曲线只在**切动作复位**轴上生效，idle 循环内部无复位）。待办：真抖动按「切换轴」CDP 目视、动作复位按「切段复位」另测；改用 `scripts/diag/l2d_jitter_probe.py`（读参数名走 `_parameterIds`）。
+> ▸ **方案 B 数据侧（2026-10-17，§119 / WF-32）**：动作播完「按差异度回落最优待机变体」的映射表已落地——`scripts/build_motion_chain_map.py` → `Output/gallery_v2/motion_chain.json`（**262 模型 / 5008 动作 / fallback 110**）。解析要点：Segments 首帧=`seg[1]`、末帧=`seg[-1]`（与段型无关，末端价值即终点 value）；组清单在 **`FileReferences.Motions`**（model3 顶层无 `Motions`）。norm 分布：无缝+平滑 **67.7%** ⇒ 方案 B 价值集中于此；大跳 20.3%（有 2s 淡入兜底）。前端回落改造待用户定接管点后再动（`idleGroup` 需泛化为待机集合，并同步残留复位/Loop/play 判断）。
 
 ### 2.6 Spine 动态立绘 ✅（v2 提取 + 全屏 CG 导出 + viewer 修复，2026-09-19）
 > ✅ **2026-09-29 分层改认权威清单**：每个 `Output/Spine_v2/<目录>/parts.json` 由 prefab 的

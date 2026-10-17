@@ -2791,3 +2791,41 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 `Output/l2d_visual.html`、`scripts/diag/serve_live2d.py`、`ensure_server_l2d.py`、`vis_auto_l2d.py`；
 根因与排除假设见 `docs/TROUBLESHOOTING.md` §117。
 
+### WF-32: Live2D 动作回落选组映射表——Segments 首末帧差异度口径（2026-10-17）
+
+场景：想让「非 idle 动作播完后回落到哪个待机变体最自然」（方案 B），而不是固定回落 idle。
+先按「动作末帧曲线 vs 各待机首帧曲线的差异度」产出映射表，再据此改前端回落。本 WF 只落数据侧。
+
+#### 判据（红 = 不许算过）
+1. **Segments 首帧=seg[1]、末帧=seg[-1]，与段型无关**。首对 `(time, value)` 占 2 元素（无类型码）；
+   其后每段先一个类型码：`0=Linear/2=Stepped:[type, t, v]` 3 元素、`1=Bezier:[type, c1t, c1v, c2t, c2v, t, v]`
+   7 元素（终点在**最后**）⇒ 两种段型的最后一个元素都是终点 value。
+2. **组清单只认 model3 的 `FileReferences.Motions`**（`{组名:[{File,...}]}`）；读顶层 `Motions` 必返回 None
+   （实测 aersasi_2 顶层只有 `Version/FileReferences/Groups/HitAreas`）。
+3. **待机候选正则** `^(idle\d*|main_\d+|home|login)$`：同时覆盖「独立组变体」（aersasi_2 的
+   idle/idle2/idle5/home/login/main_1~4）与「编号变体」（aersasi_3 的 idle1~idle21）两种组织。
+4. **差异度只统计动作与待机都覆盖的参数**（运行时缺曲线的参数停在上一动作值，无差异可算）；
+   `norm = Σ(Δp/range_p)² / N`，`range_p` 取该参数在全部待机候选首帧中的 max-min——否则角度 0~30 与
+   位移 0~0.4 量纲悬殊，大参数主导选组。
+5. **零公共参数 → fallback**：`best=null`、`fallback=true`，不许把 `inf` 当 best 写入
+   （`Infinity`/`NaN` 不是合法 JSON）。
+
+#### 步骤
+1. `py -3 scripts/build_motion_chain_map.py --diag --models <m1> <m2>` 先看样本
+   （打印每动作 best + 候选排行）。
+2. 确认映射符合直觉后再 `--write` 全量 → `Output/gallery_v2/motion_chain.json`（262 模型 / 5008 动作）。
+3. 校验 JSON：无 `Infinity`/`NaN`、抽查 norm 分布（2026-10-17 实测：无缝<0.01 占 36.6%、平滑<1 占 31.1%、
+   明显跳<10 占 9.9%、大跳≥10 占 20.3%、n/a 2.2%）。
+
+#### 踩坑记录
+- **model3 顶层没有 `Motions`**：读错层级 → 加载返回 None，被误算成「模型失败」。正确层级 `FileReferences.Motions`。
+- **量纲不归一化会大参数主导**：角度参数（±30°）天然比位移参数（±0.4）差异平方大几个量级。
+- **`leak_n_params` 大 ≠ 选组错**：动作驱动 idle 从不驱动的参数（aersasi_3 的 touch_idle22~39 达 101），
+  切换期间保持动作值、不产生跳变，不影响选组；但会让「公共参数」变小、区分度降低，用该字段标注低置信度。
+- **同族姿态→同族待机客观存在**：aersasi_2 的 touch_head→idle2、touch_drag→idle3、touch_idle5→idle5、
+  mail→main_1、mission→main_3 高度自洽；aersasi_3 的 touch_idleN→idleN 一一对应。
+- **动作 `effect` 等只有寥寥几条曲线**：与所有待机候选零公共参数 → 必须 fallback，别硬挑一个 best。
+
+#### 涉及文件
+`scripts/build_motion_chain_map.py`、`Output/gallery_v2/motion_chain.json`；根因与排除假设见
+`docs/TROUBLESHOOTING.md` §119；前端回落改造另行跟进。
