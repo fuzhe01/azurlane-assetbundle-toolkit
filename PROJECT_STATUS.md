@@ -1,6 +1,12 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
 > **生成时间**: 2026-10-18
+> **环境安装（换机器复刻先做）**：
+>   1. 装 Python ≥3.13（本机实测 3.14，UnityPy 1.25.4 可跑；项目约定 3.13）
+>   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`
+>   3. 校验依赖齐全：`py -3 scripts/diag/scan_build_deps.py`（应报 6 个第三方；capstone/pycryptodome 仅为 tools/sharecfg_re 逆向辅助，可选）
+>   4. 外部工具走 `scripts/paths.py`（adb/vgmstream/ffmpeg/chrome；env 或已知安装位兜底）
+
 > 历轮会话流水（2026-09-20 ~ 10-17 逐轮记录）已逐字外迁 `docs/archive/PROJECT_STATUS_2026-10-17_逐字外迁.md`（A30 段）；本文只留当前状态。
 > **用途**: 跨会话对接。**v1 时代历史已外迁 `docs/archive/PROJECT_STATUS_历史归档.md`**，本文只保留当前状态与主线。当前待办见 §6。
 >

@@ -1,0 +1,19 @@
+# 画廊/逆向管线 运行依赖（Python >= 3.13；本机实测 3.14 + UnityPy 1.25.4 可跑，项目约定 3.13）
+#
+# 安装（在仓库根）：
+#   py -3 -m pip install -r requirements-v2.txt
+# 校验本次改动后依赖是否齐全 / 有无漏列：
+#   py -3 scripts/diag/scan_build_deps.py
+#
+# 核心 6 个（2026-10-18 实测版本，主画廊 + 主管线必需）。
+# 可选（纯 il2cpp/逆向辅助脚本才用到，需要时单独装）：
+#   capstone          # 仅 tools/sharecfg_re/08_disasm_method.py（L38 import）；无则它打印提示，不硬崩
+#   pycryptodome      # 项目刻意不引入：AES 走 openssl 子进程（见 03_try_block_ciphers.py L13 注释）；
+#                     # 仅 tools/sharecfg_re/33_asm_key_scan.py 的 from Crypto.Cipher import AES 需要
+
+UnityPy==1.25.4
+Pillow==12.3.0
+numpy==2.5.3
+lz4==4.4.5
+requests==2.34.2
+websocket-client==1.9.2
