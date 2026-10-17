@@ -1,11 +1,7 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
 > **生成时间**: 2026-10-17
-> 历轮会话流水（2026-09-20 ~ 09-27）已**逐字**外迁 `docs/archive/2026-09-26_PROJECT_STATUS_外迁归档.md`（A1~A15 段），§6 里已闭环的待办条目（★块第 1/2/3/4/6 条 + 既有待办第 9/11/16/17/18/19 条）于 2026-10-02 逐字外迁 **A21 段**（原位各留一行桩，编号不动）；2026-10-05 又把头部执行快照与 §6 第 13/14/22/25/26 条逐字外迁 **A22 / A22b 段**（`docs/archive/PROJECT_STATUS_条目13-26_逐字外迁_2026-10-05.md`），本文回到 400 行红线以内；
-> 结论性知识在 `docs/TROUBLESHOOTING.md` §25~§67 与 `docs/WORKFLOWS.md` WF-14~WF-23。本文只留当前状态。
-> **最近三轮**：天津风皮肤2「少了空中那份」真根因 = **层绘制序按名字后缀猜**（**§110** / **WF-27**）｜磁盘盘点定口径 + 换入备份闸落地（**§111** / **WF-28**）｜**静态立绘两处系统性偏差：Pillow 把 alpha 缩放两次（全库柔边偏淡 + 白雪皮肤2 细缝 + `gezi_2` 发错表情）、画布只取 max 不减 min（≈90 张被裁掉一块）** —— 4496 张全量重渲换入、换入四道检查全绿、索引逐字节不变（**§114** / **WF-29**）。逐轮流水已逐字外迁 A22 / A22b 段。
-> **最近本轮（2026-10-16）**: `inputs/**` 本机再生**收官**。① 修 `tools/sharecfg_re/30_www_endtoend_reproduce.py` 的 `load_key()`：`struct.unpack` 要求缓冲**恰好**=格式大小（76B）；旧写死记录索引 17654 在 10/8 的 9.7.385 metadata 里已漂移；改为扫「相邻字段偏移差=76」候选 + 已知明文自证，命中索引 **17655**（见 **§115**）。② gamecfg 链 `34→35(777 导出)→41(775 JSON)→37→42/45/46/47/48` 全跑通，`inputs/gamecfg` **8 文件 + 台账**（meta_group_bridge 本版本 0 条=无需补桥）。③ `37 --scalar-all`（32 表）→ `scripts/diag/publish_azdata_local.py` 发布 `inputs/azdata` 三表（skin **2870**、statistics **4123**、template **3972**，设备侧比社区 381 快照新）+ `azdata_version.json`。`scripts/diag/check_inputs.py` 两个台账**全部一致**。④ 消费级闸门：`test_pipeline_gating.py` 全绿；`skin_table.load()` 合并 azdata 2870 + 设备侧 2870 → 2870（零丢行零改名，`aierdeliqi_9`=金月桂香/`mile_3`=幽幽桥上，坏坏来袭！均在）。⑤ **Live2D 抖动取证**（aersasi_2+ougen_8，见 **§116**）：moc3 **逐字节一致**、physics3 **逐字段数值一致**（差 9KB 只是浮点 JSON 格式）、model3 裸 reconstruct 病（缺 Physics 引用/无 EyeBlink·LipSync/无真实 HitAreas）→ 管线里 `fix_model3.py` 一通全补上；**唯一未决嫌疑 = 动作曲线**（rec 曲线数仅 AS 零头，AS 带 `Beimian_Hand`/`Black`/`BondEyes` 等真参数 rec 没有）。新入库诊断工具 `scripts/diag/l2d_rec_vs_assetstudio_diff.py`（AssetStudioModCLI `-m live2d` 作基准）。⑥ **动作审计（只读，`l2d_dense_audit.py`）**：两样本共 83 clip **`m_DenseClip` 全部为 0** → **dense 漏读假设否证**；rec/AS 曲线差距 = AS 铺全量 + rec 默认丢 `m_ConstantClip` 复位曲线（ougen_8 达 18839 条，`L2D_MOTION_EMIT_CONST=1` 才导出）。「复位不回位」比「抖动」更贴近现存症状，尚待 CDP 目视定论。⑦ **Live2D 动作播放「clip 播错组」已修复（2026-10-16）**（**§117** / **WF-30**）：`l2d_visual.html` 部分皮肤动作不对应所请求 clip 的根因 = 拿 `definitions[group].length`（懒加载前恒 0）当「组存在」判据 → 误判真实组 `main_1/idle3` 缺失 → fallback 到 `idle6/idle2`；改回**直呼 `model.motion(clip, idx)`** 且只认「组在不在键集」，配套 server 加 model3 URL 资源 rewrite（防黑屏）。正本入库 `scripts/diag/serve_live2d.py` / `ensure_server_l2d.py` / `vis_auto_l2d.py`，`.diag` 顶层 37 个一次性探针已归档 `orphans_20261016.zip`（md5 回读通过）。
-> **最近本轮（2026-10-17）——画廊重建推进**：静态立绘全量 **4452/4452 零失败**完工（`[04:19:55] STATIC-DONE`）；`skin_voice.json` 1134 键全部落在 `gallery_keys()`(4458) 内**无需增量重建**；重建链依次跑通 **`build_ship_meta.py --write`**（4458 条，ship 4217 全齐、仅 type 缺 13 可接受）→ **`build_skin_words.py`**（`skin_words.json` 5.9MB + 改派超时 21 行）→ **`build_gallery_index.py`**（单体内 `index.js`：ship 961 / skin 4408 / spine 235 / live2d 262 / with_faction 855——从中残留样条翻新）→ **`make_thumbs.py`**（4452 全首）→ **CG 全量导出 235/235**（233 新 + 2 样本，`--size 2400`，零失败，客观像素判据通过：角色占满、色彩丰富非黑屏）。`deploy_gallery.py --check` 6/6 断链（同 inode 0，漂移 0）→ 默认模式刷平 → 待 `--relink` 补链。`scripts/paths.py` 已补 ffmpeg `bin` 路径 + Edge 路径（`P.CHROME` 落 msedge.exe），是 CG 导出能跑通的承重改动。｜**Live2D 方案B 动作回落已落地 + 全库推广（§120 / WF-33）**：非 idle 动作播完按三层语义回落——drag 循环、长动画(home/main_*/login/complete/touch_head 等)回默认 idle、touch_idle 按 motion_chain.json 启发式 best；idle 待机变体判定收窄到 `^idle\d*$`（home/main_*/login 从循环待机改判场景长动画，**修复它们自循环停不下来**）+ bar `#l2Curr` 动态标签显示当前组；三样本（aersasi_2/3、ougen_8）目视通过 + 14 case 抽查（覆盖编号多变体/仅1组 fallback）全 PASS。`SAMPLE_ONLY=[]` 已全量启用。
+> 历轮会话流水（2026-09-20 ~ 10-17 逐轮记录）已逐字外迁 `docs/archive/PROJECT_STATUS_2026-10-17_逐字外迁.md`（A30 段）；本文只留当前状态。
 > **用途**: 跨会话对接。**v1 时代历史已外迁 `docs/archive/PROJECT_STATUS_历史归档.md`**，本文只保留当前状态与主线。当前待办见 §6。
 >
 > **【其它待办】**~~§6.11 HitAreas 生成规则漏了 `touch_*` 组名~~ **已于 2026-09-22 修复落地**（13 模型真实判定区、全库 806/807）｜**官方交互层**：用 `CubismRaycastable` 真点击区替换现在猜的 `Touch*` drawable HitAreas、以及 `CubismExpressionController` 表情还原（注意运行时不读 pose3.json/exp 需验证）｜§6 待办 7「晶环联盟阵营码」三选一（A 逆向 sharecfgdata 加密 / B 走 381 旁路 / C 搁置）｜**剧情 CG 混进 `Paintings_v2/`** 的识别与分离（用户指出"脸黑的基本都是剧情 CG"，与缺脸是两类问题，见 §6.8）｜**结构隐患**：~~`azdata_*.json` 权威元数据源仍住在可被清理的 `.diag/`~~（**2026-09-24 已迁 `inputs/azdata/` + sha256 台账 `MANIFEST.json` + 校验 `scripts/diag/check_inputs.py`；数据本体仍不入库**，理由：9.2MB 游戏配置属资产、zlib 后 0.67MB 虽小但仓库原则是「只承载可复现的工具与知识」）——剩余一项：**21 个脚本硬编码 `D:\Azur Lane Assets` / `C:\Users\KLLM` 绝对路径**，其中 **13 阶段调用链上 9 个**
@@ -167,11 +163,6 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 5. 若视觉再被否：**要外部参照物**（参考站/录屏）逐帧对齐，不要自己猜第 7 版。
 6. ✅ **服务器"半死"已取证到底并堵掉一条无界泄漏**（已证死 `socketserver.handle_error` 往 stderr 打 traceback 时**每次客户端取消永久楔死一个 handler 线程**：2600 次掐断 ⇒ 线程 5→2605；修法落 `_gallery_server.py` 并配对照组证明没咽掉真异常，预检红路径已桩测）。**剩余靠现场不靠赌**：预检判红时会打一行进程外部 `pid/threads/handles/parentAlive`。两条否证 + 剂量学在 **§63**，流水外迁 **A21 段**。
 
-> 1~4、6~12. ✅ 已闭环，细节与结论在 `docs/archive/`（A4/A5 段）与 §13~§20；其中含 5 处手抄表错名纠正记录（hdn101/lafeiii/i13/missr/haixiao）。
-5. ✅ **元数据重建（A/B/C/D 全部落地，2026-10-04 销账）**：
-    - **脚本** `scripts/build_ship_meta.py`（`--diag` 只读 / `--write` 产 `Output/ship_meta.json`）；**闸门** `scripts/diag/ship_meta_authority_diff.py`（退出码即结论）。
-    - 桥接路径、数值码→中文标签表（NATIONALITY/RARITY/TYPE）、`voice_actor` 只存数字 id 等决议已写进脚本常量与 docstring；A/B/C/D 四步与 `name_via=npc_table:*` 唯一放行口径见 docs/TROUBLESHOOTING.md §39。
-> 6~12. ✅ 已闭环（细节见归档 A5 段、结论 §13~§20）。**接手前端先读 WF-16 六条硬规则**。
 
 > 诊断产物/缓存均在 `.diag/`（不入库，本机可继续用）。画廊前端**直接改 `gallery_src/` 里的正本即生效**（与 `Output/gallery_v2/` 已硬链，2026-09-26 起 4/4）；`py -3 scripts/deploy_gallery.py --check` 查有没有静默断链，`--relink` 补链，默认模式是断链后的 copy 回退。换机器/清过 `Output/` 后先 `py -3 scripts/fetch_gallery_vendor.py` 补运行时库（只双击 `Output\gallery_v2\` 里的 bat）。
 
@@ -181,23 +172,9 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 **优先级低**
 5. UI/图标批量导出（~2 万）、3D 宿舍资源、资源分类整理 `organize.py`。⚠️ 前两项的源包（`ui/` 除 `commonui_atlas`、`dorm3d`、`island`、`char`）已于 2026-10-06 按裁定删除 ⇒ 开工前要先重拉，且**必须先撤销 `pruned.json` 里的对应登记**（否则 `mumu_sync` 会按"已归档"跳过它们，`--only ui` 也拉不回来；工具还没有 `--revive`，见 WF-28 已知缺口）。
 6. ✅→⏳ **声优中文姓名补全（答案表已到手，回填待放行；2026-09-25）**：用新解析出的 `voice_actor_cn` 已拿到 **525 条 `code → 中文声优`**（`.diag/sharecfg_re/voice_actor_cn.json`）；对 `ship_skin_template` 实际用到的 499 个 `voice_actor` 值，**只缺哨兵 `-1`/`0`，真实 id 覆盖率 100%** ⇒ "CV 姓名表未缓存"这个前提作废。**已完成并写盘（2026-09-25 E1）**：`Output/ship_meta.json` 重写，逐字段比对 **既有值变化 0 / 字段消失 0**，**4041/4495 条带 `voice_actor_name`**（库尔斯克→衣川里佳、泛用型布里→下田麻美）；无名 454 = 427 剧情角色 + 27 个 voice_actor 为 0/-1。备份 `Output/_OLD_bak/ship_meta_pre_25.json`。见 §36。
-7. ✅ **阵营「晶环联盟」= nationality 12 已定（2026-09-25）**；`12/99/101/104/117` 五个码已定名并写进 NATIONALITY。
-   顺带把 `sharecfgdata` 整条线打通：**容器 = 记录帧 `ULEB(len)` + 假 LuaJIT BC 头 + 平铺 kgc 常量流；
-   字符串 = `ULEB(长+5)` + 逐字节 `^(255-i)`，i 每串归零**。32 张表 140 MB / 220,568 条记录**帧覆盖残差 0**，
-   `ship_skin_template` 标量一致率 **99.974%**（2863/2865 条 id 命中基准）、台词中文 **2601 行 / 40,897 个含中文字段值**到手。
-   ⏭️ **剩余缺口 = 21 个容器字段**（`smoke`/`bound_bone`/`couple_encourage`）的装配关系在假 BC 指令区，二选一：
-   **(a)** 解那套 4 字节栈码（一次通吃 21 个）或 **(b)** 只给要用的表人写字段表（便宜够用，参考实现走的正是 (b)）。
-   攻关全过程（含 5 次改判、每条否证都配了对照）见归档 A6 段 + `TROUBLESHOOTING.md` §30~§37 + **WF-19 / WF-20**。
 8. ⏳ **磁盘优化仅剩一项**：`Output/Raw/` 2.02 GB（09-16 冻结层、零引用、可重导）⇒ 补完 `organize.py` 或承认它没用。✅ 本轮已收：BGM 改 FLAC 无损档并删净 wav 与 opus（回收 12.81 GB，见 §113）。
    ⚠️ **规模结论已过期，要重量**：并发会话今天为 4496 张立绘重渲换入新建了 `Output/_OLD_bak/paintings_v2_alpha_canvas_20261006/`（**16.1 GB**），使 `_OLD_bak` 从 §111 量到的 2.99 GB 涨到 **18.8 GB**；`.diag/paintings_rerun_20261006/` 另有 16.5 GB。两者都是**别人的在制品/其换前唯一备份，本轮一行没碰**——等那批收尾再跑一次 `check_disk_footprint.py` 才能谈清理。
    ✅ 本轮已做：① 按类目删 `dorm3d/island/char/ui` 共 **21,286 个源包 / 7.53 GB**，删除与登记同时落 `ledger/pruned.json`（依赖闭包闸门独立拦下 `ui/commonui_atlas`，与用户裁定一致；阴性对照 `--cat painting` 全拦、`artresource` 按深层传递依赖拦 105 个）；② **换入备份闸落地**：`extract_spine_v2.py` 写正式区必须带 `--bak`（覆写前逐份取前身字节 + md5 全等 + `MANIFEST.json`），顺带修掉 `main()` 丢返回值造成的"拒绝覆写也 exit 0"。判据 **WF-28** / 取证 **§111**。
-8. ✅ **ship_meta `{namecode:XX}` 占位符名（已于 2026-09-20 随 B 根因修复关闭）**：根因=`build_ship_meta.py` 舰名取 `ship_skin_template.name`（皮肤名，含占位符）——**改取 `ship_data_statistics.name`（0 占位符）**后，237 个 ship 级占位符全归零、名称与阵营自洽（`weizhang`→尾张、`xinzexi`→新泽西 等）。残余 ~52 占位符全为 `story` 类（NPC/剧情/2b 联动变体，本就无 stats 舰名，非缺漏）。**2026-09-25 追加**：`name_code` 表已可读（456 行）**且 `{namecode:NNN}` ↔ `name_code.id` 已证成**（自称率 2.13% vs 随机重分配零假设 0.03% = 80×；1760/1760 码可查；替换后语义自洽：拉菲→[比叡]、布里→[明石]）⇒ 需要真名时可直接解占位符，不必再靠 stats 绕。见 §36。详见 §6 第 5 条 B 已完成。
-9. ✅ **Live2D 动作数据全量重导已落到 269 个模型（2026-09-24）**：`clips 8154 / shell 7（=资产层真为空的 7 条）/ misassign 0 / PartOpacity 79 模型`、曲线总数 **944,136→2,662,615**、`l2d_sweep` 全量 **269/269 失败 0**；`hit_verify` 全库基线已重标定（269 模型 / 3309 部位，**判据 = WIRING 必须为 0**，旧「806/807」口径作废，见 §27）。⚠️ **数据源天花板（别再攻）**：约 **7% 的贝塞尔段无法从 Unity 数据还原**（四种切线候选最高只拟合 16.7%，且那是平凡情形）→ 只能用线性弦近似。过程含一次原地覆写事故与三道闸门加装 → **§25** 与 WF-16；已完成 runbook 与旧基线讨论见归档 **A7 段**，本轮流水 **A21 段**。
-10. ✅ **Live2D 动作语音：全量导出 + 出声验收 + 技能沉淀（2026-09-23）**
-   管线与判据见 **`docs/WORKFLOWS.md` WF-17**，命令语义与实测证据见 **`docs/TROUBLESHOOTING.md` §23**。
-   **✅ 全线完成**：v1 `--all` 覆盖 270 皮肤 → 253 命中 ACB（5914 ogg / 323 MB）；**语音 v2（2026-09-27）**按船级包去重解码 → `Audio/CV2/` + `skin_voice.json`，**889 包 / 41,193 音频 / 2424.5 MB / 可定位 4140 皮肤**，零回退闸门 + 三格实播全过。
-   修掉的系统性语义错：cue 尾部 `_N` 是**皮肤序号**（旧脚本当随机变体全导、前端 `Math.random()` 抽一条 ⇒ 三皮肤船 2/3 概率播到**别的皮肤**的台词，§47）。剩余 354 无解的构成与裁定见 **§57**，「走设备补取」已否证（§49）。过程流水外迁 **A15 段**。
-11. ✅ **已闭环**：摩尔曼斯克「皮肤2」脸上盖着不透明灰梯形（2026-09-26 用户报，09-27 查清并换入 13 张）—— 根因是**判据演进留下的隐形漏检**（旧判据下该值 1.000 → 判"已烤好"根本没进候选；收紧后只重渲了旧清单 35 张、全库从未重扫）。判据已换成两段式 `洞 = 脸谱落笔处不透明占比<0.5 或 MAD(底图 vs 脸谱)>30`，闸门 `scripts/diag/face_gate_labels_check.py` 在 47 个目视裁定样本上 **47/47 全对**；**全库 4488 张「盘上 == 当前管线」不变式已恢复，可当每次系统性修复的回归闸门**。全过程见 **§48 / §52**，流水外迁 **A13 / A21 段**。
 12. ⏳ **一批"静止态就在画面内、却没登记"的判定区（2026-09-27 §51 顺带查出，另起一轮）**：
      `fix_model3.py` 登记 `Touch<X>` 的硬前提是"存在同名 `touch_<x>` 动作组"，于是**画面内、不透明度 1、
      但没有同名组**的标记被整批漏掉——实测 `yuanchou_3` 的 `TouchDrag20~23`、`qiershazhi_2` 的
@@ -207,74 +184,15 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
      「moc3 里所有 `Touch*` drawable × 是否登记 × 此刻在不在视口内」。
      已知的相关机制（供下一轮起点）：换装状态是**各 clip 用定值曲线锁住 `TouchSiwa`/`Paramaixin` 这类开关参数**，
      所以只要找到"哪条 clip 锁成 1"，就能反推该按钮该播哪条。
-13. ✅ **台词字幕 / 两个全局开关 / 索引新口径全部落地（2026-09-27 立项 → 10-03 换入）**：详情页底部字幕条 +
-     顶部「点击出声 / 显示台词」两开关（localStorage 持久化、互相独立）已上线；档位规则换入后
-     `sibling-tier` 25→**0**、索引 counts 未动、WF-16 五件全绿 112s、备份 `Output/_OLD_bak/tier_rule_20261003/`。
-     逐轮流水外迁 **A22 段**。
-14. ✅ **天津风皮肤2「少了空中那份」真根因 = 层绘制序按名字后缀猜**（**§110** / **WF-27**，五条结论已并入该节）。原文逐字见 **A23 段**。
-
 15. ⏳ **4 张「整张画的每一层都是关闭态」的皮肤**（2026-09-27 §55 顺带查出）：
      `qiye_4` / `kelifulan_4`（各只有一层且它是关的）、`qiye_dark_memory` / `unknown2_memory`
      （`frame_0..3` 四层全关，游戏按剧情逐层激活）。过滤会把它们**清空**，所以规则是"一层不剩就原样保留"
      并记进 `C.INACTIVE_ALL`。要修得先知道游戏在哪一刻激活哪一层，**没有权威依据不许猜**。
      取证：`py -3 scripts/diag/painting_inactive_scan.py`（只读全库扫）+ `painting_inactive_rerun.py`（定向重渲+对照表）。
 
-16. ✅ **「有表行、主包未下发」的 44 张皮肤补上「仅台词」档 + `{namecode:NN}` 占位符展开**（2026-09-27 落地）—— 词表第二趟 44 张/565 条正文、索引 `voiceText`、前端 tab 判据 `voiceCount>0 || voiceText>0`、台词行不带播放器。见 **§60**、做法 **WF-22**、流水外迁 **A21 段**。
-17. ✅ **Spine 分层不再按目录 glob 猜，改认 prefab 权威清单 `parts.json`**（2026-09-29 落地）—— 234 目录多画 30→0 / 少画 0 / 缺文件 0，15 对本体与 `_hx` 的 CG 全部拉开。见 **§64**、做法 **WF-14 追加**、原五步清单在 **A16 段**。
-
-18. ✅ **画廊「按钮 / 交互反馈」层重做（2026-09-27 立项 → 2026-09-29 关闭）**：五条真缺陷（同一"选中"语义 5 种颜色 / 两条控制条其实是 UA 原生按钮 / 零 `:active` / 零 `:focus-visible` / toggle 与瞬时动作外观不可区分）**已全部关闭**，定稿见 §6 顶部 ★ 块与 **WF-16 追加（2026-09-29）**，踩坑 **§62**。⚠️ **一条否证别重走**：同日做过一整版**视觉语言重做**（暖墨底 + 单一铜金强调、字阶、卡片三行化、查看器底换掉棋盘格），样板页 `index_b.html` 给用户看过并**被否** ⇒ **整体换色这条路已试且被拒**，方向改为只动按钮与交互反馈。流水外迁 **A21 段**。
-19. ✅ **WF-16 第 5 件 `hit_verify` 已补跑通过（2026-09-27 当晚）**：等并发会话的全库任务结束、端口空出后 `--only antu_2,ninghai_4,lafeiii_3` 干净跑：**85 部位 HIT 54 / INGROUP 25 / WIRING 0 / 不可点 6**，随机抽查 3 模型全合格 ⇒ 确认上一轮那 38 条 WIRING 是**探针侧污染**（§60 末段），不是产品回退。成因根治 = **第 20 条**；流水外迁 **A21 段**。
-20. ✅ **CDP 探针的端口与 profile 走 env（根治第 19 条的成因）——2026-10-03 已清，见 §89**：新增一份出口
-     `scripts/cdp_slot.py`（端口由 OS 挑空闲的，`AL_CDP_PORT` 可钉死但**被占即拒绝启动**；profile 变成
-     `.diag/chrome_<tag>_<pid>`），迁了 7 个探针。验收：两个探针并发 → 端口 56183/56182 各自、都 exit 0；
-     红路径（钉死被占端口）→ exit 1 并打出说明；WF-16 五件全绿 107s。顺带回收旧的固定名 profile 1.65 GiB。
 21. ⏳ **变体包按条切分，让 44 张「仅台词」皮肤也能点播**（用户未拍板，先不做）：那 36 张的 `voiceExtra`
      是 v1 时代**整包**导出的单个 wav（`Audio/CV/cv-<n>-<battle|gift>.wav`），对不到具体类别 ⇒
      现在只能整包听、配不上逐句正文。要修得重新解码 `-battle/-gift` 包并按 cue 切分（约 10 分钟 + 一次零回退比对）。
-22. ✅ **`yuanchou_2_hx` 的 CG 细条已修（2026-10-04，§96 / §97）**：根因是**和谐版专有的 `BG_desk` 槽位顶点飞出**
-     （bbox 30593×4834428，本体无此槽位）⇒ 取景层加「离群槽位剔除」，结果 **64×2400 → 2400×1331**
-     （本体 2400×1332，画面复核完整）；**全库 234 个目录只有它命中、零误伤**，`inksOf` 判据未动。
-     三层取证法已另存 **WF-25**，逐轮流水外迁 **A22 段**。
-23. ✅ **静默降级改成响亮失败（2026-10-03 傍晚，§91）**：新增降级台账 `scripts/diag/check_degradation.py` + `ledger/degradation.json`（四类：号段偏移不认识 / 借同船别人的包 / 档位靠空档分配 / 表里查无行；今天存量 `0/8/0/366`；**逐条点名、不记计数**，判据是"新增即红"，红路径实测过）。接进控制台 `audio` 档。同时修掉一条更坏的洞：`voice_gap_audit` 被标注"恒 exit 0 只作参考"之后**没人读它的 rc**，于是它 `ValueError` 崩了一整天、阶段照绿（崩因是我 `28cc193` 换三元组时漏改它一处解包）⇒ audio 档现在消费 `rcg/rc2/rc3`，`test_pipeline_gating` 56→63 条。
-24. ✅ **画廊皮肤名已换成游戏真名（2026-10-04 换入）** —— label 变化 3891 条、非 label 字段零变化、键集合增删 0、counts 零变化；4368/4397 = 99.4% 有真名，残余 29 条 = 24 条 `npc` 前缀（用户拍板不管）+ 5 条真换不了（占位符指向别的实体 / 展开后等于舰名 / 表里只有本体）。根因三条（`NOT_A_NAME` 误杀英文真名 / 表盘 `painting` 键大小写不一致 1843 条 stem / 罗马数字二型）与占位符展开见 **§92–§94**、做法 **WF-24**；本条 22 行原文**逐字归档**在 `docs/archive/PROJECT_STATUS_条目24_逐字外迁_2026-10-04.md`。
-25. ✅ **形态族（`_alter`/`_memory`/`_dark`）从皮肤区外迁（2026-10-03 立项 → 10-04 换入）**：判据是**归属**不是后缀——
-     `E.form_root(key)` 剥完画法层后仍带形态后缀、且不等于卡 id 才搬（全库 147 条里 45 条属后者）。
-     ⚠️ **档位形态已被 §102 改判**；2026-10-05 用户再点名 **`_dark` 一律进「其他」档**（正本判据
-     `gallery_buckets.py` 的 `_dark(?:_memory)?$`，10 条全改），剩 27 条按各自 root 的自机与否落舰船/剧情角色。流水外迁 **A22 段**。
-26. ✅ **探索者连线关卡 NPC 迁到剧情剪影（2026-10-04 拍板，§93）→ 已被 §102 改判**：三族 45 条当时因「权威表里
-     一行都没有」被整体搬进剪影档；10-05 查明它们是**彩色皮肤、各有配音包**，已并回 3 张角色卡（见 §6.29/§6.30）。
-     留下的可复用判据：族名正则须按**实际键完整形态**枚举（漏 `_1/_2/_3` 序号与 `npc` 前缀会静默匹配 0 条）。
-27. ✅ **一个角色被拆成多张同名卡片（2026-10-04 截图报，§95）**：标题重复 **55 组** ⇒ 28 个**假组键**消除、
-     32 张皮肤归位真船，`ships` 987→961 而 `skins` 恒 4397（**皮肤键零增删、label 零变化**）。根因两层：
-     ① `normalize()` 剥离白名单**不含 `_tolove`/`_ger`/`_doa`**（只在 `SOURCE_SUF` 里）⇒ 造出
-     `gushouchuan_tolove`、`na_doa` 这种**表里不存在的 id** 当组键；② 手抄表 `SHIP_NAME_MAP` 里混着
-     非舰名条目 ⇒ 加 `_is_real_entity()`（带 `SOURCE_SUF` 的 key 一律不是实体），**手抄表本身不动**。
-     剩 40 组不是这类：31 组 `npc*` 前缀 + 9 组中文名真相同的舰。
-28. ✅ **11 张已自机化的 META 卡「无阵营 + 无语音」已修（2026-10-05，§101 / §107 / §108）**：根因 = 皮肤表同一 painting 两行、`setdefault` 让迭代序首行胜出；四道闸与两轮追加修法见对应节。原文逐字见 **A23 段**。
-29. ✅ **画廊改三档制 + 秘书舰三族并回 3 张卡（2026-10-05，§102）**：类别只留 舰船/剧情角色/其他，「其他」判据抽成唯一正本 `scripts/gallery_buckets.py`。原文逐字见 **A23 段**。
-30. ✅ **秘书舰三族的语音与台词已接线（2026-10-05，§103）**：那 13 个包从未被解码过；修法 = 发 `npc_voice.json` + `extract_cv_voice.npc_entry()` + `merge_npc_words()`。原文逐字见 **A23 段**。
-31. ✅ **配置表链并进资产更新台 = 台子五步主线（2026-10-05，§104 / WF-23 追加）**：`preflight` 加新鲜度判据、`cfg.disk` 新增行喂 `--expect-added`。原文逐字见 **A23 段**。
-
-32. ✅ **静态立绘两处系统性偏差修复 + 4496 张全量重渲换入（2026-10-06，§114 / WF-29）**：
-     用户报的三条症状里两条是真 bug——① `paste(img,box,img)` 把 alpha 缩放两次（全库柔边偏淡、
-     白雪皮肤2 脖子细缝、`gezi_2` 正式产物一直在发被误叠的错表情）；② 画布只取 max 不减 min
-     （贝尔水花缺左半、`jinluhao_2` 整张下半截没了，抽样实测影响 **2.0% ≈ 90 张**）。
-     第三条（伴尔维皮肤2「缺背景」）**不是合成 bug**：立绘原件有房间，是画廊对 Spine 皮肤
-     默认给 CG、而该骨架没有背景槽位（全库 191/234 是单层）——见下条待办。
-     两条修法各收敛成正本里**一个函数**（`canvas_frame()` / `over()`），于是回归闸门只需
-     临时替换这两个函数就能渲出"旧行为"，不必复刻仿射算术；闸门本身带两条保真断言
-     （旧侧逐字节复现在盘产物、新侧逐字节等于正本产物），缺一条就是在比空气。
-     - **全绿**：4496/4496 重渲失败 0；换入四道检查全过（nlink 全 1 / 4496 份备份 md5 全等 /
-       换入后与渲染 md5 全等 / **全目录快照清单外被动 0**）；缩略图 ok=4498 err=0；
-       `index.json` 重建后**逐字节相同**、`gallery_index_diff_check` PASS；
-       服务器实测新 `beier.png` 200 / 3,855,276 字节。备份 `Output/_OLD_bak/paintings_v2_alpha_canvas_20261006/`。
-     - **两条否证别重走**：「抬 `FACE_MAD_MAX` 到 40 能同时保住 xinzexi_h 和 gezi_2」——会把
-       `yunlong_3`（face 槽是 1924×2048 全身正面图、底图是背面）判成不叠、发一张后脑勺出去；
-       「alpha 修法会毁掉看着没问题的立绘」——两版差异只在 `0<a<255` 上，300 张普查里
-       实心区(离半透明≥2px)可见变化**恒为 0**、内容丢失**恒为 0**。
-     - 顺带修掉：`run_v2_full.py` 静态阶段写死正式目录 + 跳过已存在 ⇒ 整批重渲会 todo=0 空跑，
-       已加 `--out/--redo/--limit/--manifest`。
-
 33. ⏳ **本轮查出来、与本轮改动无关的待办**：
      ① ~~`face_gate_labels_check.py` 那 4 条既有标签债~~ **已结案（2026-10-06 用户实见）**：
        `makeboluo`/`missd`/`feiteliedadi`/`dunkeerke` 四张对照图用户看过后判"没什么问题"
