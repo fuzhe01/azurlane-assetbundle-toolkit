@@ -2912,3 +2912,40 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 
 `scripts/update_pipeline.py`（`st_pull`/`write_scope`/`scope_state`/`scope_or_stop`）、`scripts/mumu_sync.py`（`diff`/`sync`）、`.diag/pipeline/{affected.txt,affected.meta,pipeline_state.json}`。相关：WF-23（阶段机）、WF-15（权威 runbook）、§121（本条踩坑的 TROUBLESHOOTING 版）。
 
+
+---
+
+### WF-35: `mumu_sync` 的同步范围（`ONLY_TOP` 顶层白名单 vs 整棵 `files/` — 2026-10-18）
+
+**场景**：想让 `files/` 下的**任何**文件（不只 `AssetBundles`）都能靠模拟器 `sync` 下载/更新；
+缺 `files/il2cpp/Metadata/global-metadata.dat` 这类关键文件时也能从设备拉回。本条是范围怎么定的判据。
+
+#### 判据（红 = 缺了会漏）
+
+1. **`mumu_sync` 真正限宽的是 `ONLY_TOP`**。`REMOTE_ROOT`（设备）与 `LOCAL_ROOT`（本地 `files/`）本身遍历整棵树；
+   但 `wanted(rel, only_top)` 里「顶层名必须以白名单项**开头**才进范围」。历史上 `ONLY_TOP=["AssetBundles","hashes","version"]`
+   ⇒ `il2cpp`/`imgCache`/`Unity` 等顶层被**整体排除**，缺了 sync 拉不回。
+2. **设备侧 `files/` 顶层其实是平铺文件**：既有目录（`AssetBundles`/`il2cpp`/`imgCache`/`Unity`），也有
+   `hashes-*.csv`、`version-*.txt` 一坨平铺文件（**不是** `hashes/`、`version/` 目录）。所以白名单用 `startswith`
+   前缀匹配（`hashes-cv.csv` 命中 `hashes`、`version.txt` 命中 `version`）。**定范围时顶层名 = 目录名 或 平铺文件的公共前缀**。
+3. **默认放开为整棵 `files/`**：`ONLY_TOP=[]`（空=全部顶层），`wanted()` 改为「`--only`（`ONLY_SUB`）始终优先，
+   仅 `only_top` 非空时才做顶层收窄」。这样缺哪个文件都进同步范围。
+4. **改范围后看 `diff` 的「新增/独有」实测，别信注释**：放开后 `diff` 应报新增 0/变更 按实际/独有 0 或「设备已删的本地缓存」。
+   实测（2026-10-18）：放开后新增 0、仅 1 个 `Unity/.../Analytics/values`（-2B，本地旧）、1 个 `imgCache/notice_138_1/common_cn.png`
+   本地独有（设备已删，`mumu_sync` 设计上从不删本地）。`sync --apply` 拉平后差异归 0 ⇒ 本地与设备在整棵 files 上对齐。
+
+#### 踩坑记录
+
+- ⚠️ **别把「只同步 AssetBundles」当唯一真相**：`ONLY_TOP` 是一组顶层**前缀**，不是目录黑名单；例子里 `il2cpp` 不在其中，
+  于是 `files/il2cpp/...` 全部被 `wanted()` 判「不在范围」→ `diff`/`sync` 全程跳过，缺了拉不回。
+  排查先 `adb shell ls -1 $REMOTE_ROOT` 拿真实顶层，再与白名单做**集合差**，看哪些本地顶层缺了同步能力。
+- ⚠️ **解锁 `il2cpp` 不等于能逆向**：`files/il2cpp/Metadata/global-metadata.dat` 是 `tools/il2cpp_*/31_decrypt_scripts_bundle.py`
+  等工具的**逆向输入**（il2cpp 元数据，魔数 `FAB11BAF` 当阳性对照）。它**确实也在设备侧 `files/il2cpp/` 下**（实测
+  `il2cpp_dir=Y`）→ 放开后缺了能 `sync` 补；但它是**本机解密链**的输入，`sharecfgdata` 等我还需它。别把它当纯运行时缓存。
+- ⚠️ `wanted()` 早前实现 `if not only_top: return True` 会**绕过 `--only`**（`ONLY_SUB` 失效）；现改为 `--only` 优先、
+  `only_top` 收窄，二者不互斥。
+
+#### 涉及文件
+
+`scripts/mumu_sync.py`（`ONLY_TOP`/`wanted`/`cmd_diff`/`cmd_sync`/`run`）、`scripts/paths.py`（`P.FILES`）。相关：WF-34（一键更新顺序）、WF-23（阶段机）、§22/§33（sharecfgdata 文法）。
+

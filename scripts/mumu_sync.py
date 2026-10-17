@@ -54,8 +54,11 @@ HOST = None
 REMOTE_ROOT = "/sdcard/Android/data/com.bilibili.azurlane/files"
 LOCAL_ROOT = P.FILES
 
-# 只同步这些顶层子目录；留空表示全部
-ONLY_TOP = ["AssetBundles", "hashes", "version"]
+# 顶层白名单：空 = 同步整个 files/ 全部顶层（默认，含 il2cpp/imgCache/Unity）。
+# 历史只同步 AssetBundles/hashes/version，导致 files/il2cpp/... 缺文件时 sync 拉不回
+# （2026-10-18 用户要求「整个 files 都能靠模拟器下载/更新」，据此放开为整棵树）。
+# 需要收窄时在此列出顶层名；或运行期用 --only 做类型级过滤。
+ONLY_TOP = []
 
 
 def run(args, timeout=300):
@@ -270,14 +273,19 @@ def split_archived(cands, r_files, pruned):
 
 
 def wanted(rel, only_top):
-    """判断该文件是否在关注范围内。"""
+    """判断该文件是否在关注范围内。
+
+    --only 类型过滤（ONLY_SUB）始终优先：命中即要、不命中即不要。
+    其次看顶层白名单 only_top：为空 = 整个 files/ 全部顶层（默认，2026-10-18 放开），
+    非空 = 只有以这些顶层名开头的才算在范围内（历史收窄到 AssetBundles/hashes/version）。
+    """
+    if ONLY_SUB:
+        return any(rel.startswith(p) for p in ONLY_SUB)
     if not only_top:
         return True
     top = rel.split("/")[0]
     if not any(top.startswith(t) for t in only_top):
         return False
-    if ONLY_SUB:
-        return any(rel.startswith(p) for p in ONLY_SUB)
     return True
 
 
