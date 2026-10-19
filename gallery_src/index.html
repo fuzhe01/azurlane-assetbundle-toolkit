@@ -1677,10 +1677,8 @@ async function renderLive2D(s, sk){
       const _alt=n.replace(/^touchdrag(\d+)$/,'touch_drag$1');
       if(groups.includes(_alt)) return _alt;
       const k=parseInt((n.match(/(\d+)$/)||[])[1]||'1',10);
-      // TouchDragN 的真实动作组不一定是 touch_dragN（多数模型只有 drag1..3）：
-      // 按编号依次试 touch_dragN → touch_idleN → idleN → dragN（TouchDrag6 就是脱鞋 idle6）。
-      for(const c of ['touch_drag'+k,'touch_idle'+k,'idle'+k,'drag'+k]){
-        if(groups.includes(c)) return c; }
+      // TouchDragN 只是拖拽标记，不是 idleN（脱鞋由玩家拖动完成，不能改成播 idle6）。
+      // 有 touch_dragN 用同名组；没有则轮转到现有 drag 组。
       const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
       if(!ds.length) return null;
       return ds[(k-1)%ds.length]; };

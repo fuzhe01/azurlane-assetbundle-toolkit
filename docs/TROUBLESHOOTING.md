@@ -6914,7 +6914,7 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 
 **结果**：全库 38 个模型补 128 个 idle 映射（ougen_8 补 TouchIdle6→idle6）；ougen HitAreas 30→31，前端再加 14 个 TouchDrag*，共 45 个可见互动区。
 
-**TouchDragN 的真实动作组**：原始 AnimationClip 只有 `touch_drag1/2/3`，但 `TouchDragN` 可按编号映射到 `touch_idleN` / `idleN`。例如 `TouchDrag6 → idle6`（脱鞋），`TouchDrag4 → touch_idle4`。前端普通点击和 Ctrl 拖拽都走这条映射；没有同名/同号组的才轮转到现有 drag 组。
+**TouchDragN 只播拖拽动作**：它不是 idleN；`TouchDrag6` 点/拖都应该出 drag 动作。原始 AnimationClip 只有 `touch_drag1/2/3`，没有同名组时按编号轮转到现有 drag 组。脱鞋是玩家拖动鞋子部件完成的交互，不能靠改播 idle6 复刻。
 
 **脱鞋**：`idle6` 本身就是对应动作；也可以继续用参数/部件面板手动调 `PartOpacity`/参数验证。
 
