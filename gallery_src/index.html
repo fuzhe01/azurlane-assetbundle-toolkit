@@ -1689,7 +1689,9 @@ async function renderLive2D(s, sk){
       if(e.ctrlKey||e.metaKey){
         const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
         if(!ds.length){ dragPart=null; dragging=true; return; }
-        const dg=dragGroupOf((n && /^touch_drag/.test(n)) ? n : 'touch_drag1');
+        // n 可能是 touch_drag1（model3）或 touchdrag4（moc3 补区）；统一交给 dragGroupOf，
+        // 不能再写死 drag1，否则所有区域都只出 touch_drag1。
+        const dg=dragGroupOf(n || 'touch_drag1');
         if(!dg){ dragPart=null; dragging=true; return; }
         dragReturn=(mm.state && idleSet.has(mm.state.currentGroup))?mm.state.currentGroup:idleGroup;
         forcedLoop.add(dg); setGroupLoop(dg,true);

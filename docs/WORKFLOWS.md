@@ -3116,3 +3116,5 @@ mask 256→1024/2048 只能让阶梯变细；4x 超采样 + mask 4096 + 2D 降�
 
 - mask：`N` 取 2 的幂，`N ≥ 画布长边 × √maskCount`，上限 8192（ougen_8：maskCount=9、长边 2098 → 8192）；运行时按模型自动算，所有模型统一，无需逐模型配置。
 - 拖拽：把 moc3 里未登记的 `TouchDrag*` drawable 补成互动区（ougen_8 30 + 14 = 44 个）；**Ctrl/⌘ + 左键按住**才进互动（普通左键仍是平移）：按下即播 `touch_drag*` 并强制 loop（按住期间持续动），松手停 loop 并回拖拽前的 idle；`touchdragN` 优先映射 `touch_dragN`，没有该组再轮转到现有 drag 组。
+
+- 2026-10-19 修正：Ctrl 拖拽不再写死 touch_drag1；按点击命中的 `touch_dragN`/`touchdragN` 交给 dragGroupOf，缺失的组按编号轮转到现有 drag 组。
