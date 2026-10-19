@@ -2980,3 +2980,42 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 
 `gallery_src/vendor/MANIFEST.json`（台账）、`scripts/fetch_gallery_vendor.py`（按 sha256 落盘/校验）、`scripts/diag/probe_vendor_source.py`（探源工具）、`scripts/diag/verify_spine_vendor.py`（渲染回归，待 Chrome 就绪）。相关：WF-14（Spine 播放）、§122（Edge headless CDP 限制）、`docs/TROUBLESHOOTING.md` §42/§98（Spine 渲染取证）。
 
+
+### WF-37: 画廊画质（DPR）与动作回落的验收口径（2026-10-19）
+
+**场景**：改 `gallery_src/index.html` 的 Live2D/Spine 渲染分辨率，或改「动作播完回落到哪个待机」之后，
+怎么在**能抓住 bug** 的条件下验收。本条只写判据与踩坑，不重复 WF-16 的交互六件套。
+
+#### 判据
+
+1. **画质探针必须强制 DPR=2**：
+   `py -3 scripts/diag/l2d_spine_dpr_verify.py --only aersasi_2,yunlong_2 --dpr 2`
+   - Live2D 期望 `max(2,dpr)`，Spine 期望 `dpr`；看打印的 **ratio**，不要只看 PASS。
+   - 再跑一遍 `--dpr 1` 作对照：Live2D 应 2.00、Spine 应 1.00——否则说明代码把倍率写死了。
+2. **回落探针的 expected 必须从同一份表动态算**：
+   `py -3 scripts/diag/l2d_motion_chain_verify.py`
+   - 必须覆盖：伪最优（aersasi_2 touch_head→idle）、明确更优（jianye_4 mail→idle3）、
+     无候选（z46_4 mission→idle）、drag 自循环、touch_idle 变体、默认组不在候选（zhenzhuhao_2 touch_idle25→idle20）。
+3. **改完先刷平再验**：`py -3 scripts/deploy_gallery.py` → `--check` 6/6；
+   `Edit`/原子保存会**断硬链**，提交前必须刷平，提交后再 `--relink` 补链。
+4. **画质要看图**：同屏 1x/2x 截图对照（`.diag/spine_ab/`），别只信数值；数值对但取景/构图变了也是回退。
+
+#### 踩坑记录
+
+- 无头默认 `devicePixelRatio=1`：Spine 的 `want=dpr=1` 让 1x 也 PASS（**假绿灯**），旧版探针因此
+  连续多轮把「2x 屏仍 1x」判成通过（§123）。
+- `SceneRenderer.resize()` 会把刚乘过 DPR 的 buffer 改回 CSS 尺寸；且在每帧检查下会**每帧重设画布**（§123）。
+- 回落 expected 写死「长动作=idle」等于**测试照着实现写**：14 条全 PASS 也掩盖 810 个动作（§124）。
+- 15% 闸门是经验值：默认组不在 `runners_up` 时不能把 `nb=0` 当「完美匹配」；要看 `fallback` 与 `n_params`。
+- **回落竞态是真的，不是探针抖动**：目标变体未预加载时 `startMotion` 要 fetch，期间库每帧再请求随机待机，
+  默认 idle 会抢先 ⇒ label 已是 idle2、currentGroup 仍是 idle。修法三件套（§124）：`state.complete()` +
+  `startMotion(...,NORMAL=2)` + pending 目标最多 10s 内拒绝后续随机待机。
+- 探针的 `forceEnd` 必须先 `mm.state.complete()` 再 `stopAllMotions()`，否则优先级残留会造**假 FAIL**
+  （输出里的 `prio` 会是 3）。改完连跑 4 轮 17 case 全 PASS 才算过。
+
+#### 涉及文件
+
+`gallery_src/index.html`（`resize()` / `_pickFallback`）、`scripts/diag/l2d_spine_dpr_verify.py`、
+`scripts/diag/l2d_motion_chain_verify.py`、`scripts/deploy_gallery.py`、`Output/gallery_v2/motion_chain.json`。
+相关：§123/§124、WF-16（前端硬规则）、WF-33（回落语义）、WF-14（Spine 播放）。
+

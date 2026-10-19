@@ -6723,3 +6723,70 @@ drag→自身、`#l2Curr` 同步）；`deploy_gallery.py --check` 6/6 同 inode 
 
 **涉及文件**：`scripts/diag/verify_spine_vendor.py`（渲染回归工具，本机受此限制暂不可运行）、`scripts/paths.py`（CHROME 候选）、`docs/WORKFLOWS.md` WF-36（vendor 换源三层验证判据）。
 
+## §123. Spine「每帧 DPR 校正」是假绿灯：SceneRenderer.resize() 把 canvas buffer 改回 CSS 尺寸（2026-10-19）
+
+**问题**：用户要求 Spine 画质按显示器 DPR 提升。`index.html` 的 `resize()` 看起来已经算对了：
+`cv.width = wrap.clientWidth * devicePixelRatio`，随后 `scene.resize()` + `camera.setViewport`。
+但 2026-10-19 强制 `--force-device-scale-factor=2` 实测：canvas buffer **857×694**、CSS **857×694**（ratio **1.00**），
+仍是 1x；同一页 Live2D 是 **2.00x**。
+
+**根因**：`Output/gallery_v2/vendor/spine/spine-all.js` 的 `SceneRenderer.resize()` 无条件执行
+`canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight`（3.8 构建源码 L9881-9888）。
+调用顺序是「先乘 DPR 写 buffer → 再调 scene.resize()」⇒ 刚放大的 buffer 被改回 CSS 尺寸。
+并且每帧检查（`if(cv.width!==w*dpr) resize()`）因此恒真 ⇒ 2x 屏上**每帧重设一次画布**（是否掉帧未在真机量）。
+
+**修法**：`resize()` 中不再调 `scene.resize()`，改为自己做它唯一需要的那两件事：
+`gl.viewport(0,0,cv.width,cv.height); scene.camera.setViewport(cv.width,cv.height);`
+修后实测（Edge headless，`--force-device-scale-factor=2`）：Spine **2482×1772 / CSS 1241×886 = 2.00**；
+`--dpr 1` 对照仍 **1.00**（正确）。
+
+**为什么旧探针全绿**：`scripts/diag/l2d_spine_dpr_verify.py` 无头默认 `devicePixelRatio=1`，
+判据 `buffer >= CSS*want`、Spine 的 `want=dpr=1` ⇒ 1x 天然满足，**永远抓不到这个 bug**（假绿灯）。
+现在探针默认 `--dpr 2` 并打印 `ratio`；`--dpr 1` 保留旧口径做对照。
+
+**已排除**：不是 `SpineDpr()` 读不到 dpr（页面 `devicePixelRatio=2` 已断言）；不是 CSS 尺寸算错
+（`cv.clientWidth` 与 wrap 一致）；不是浏览器没应用缩放（同页 Live2D 2.00x）。
+
+**涉及文件**：`gallery_src/index.html`（`resize()`）、`Output/gallery_v2/vendor/spine/spine-all.js`（SceneRenderer）、
+`scripts/diag/l2d_spine_dpr_verify.py`。相关 WF-37。
+
+
+## §124. 长动作回落：为什么「最优待机」要加 15% 闸门，且黑屏/无候选必须回默认 idle（2026-10-19）
+
+**问题**：方案 B 已产出 `motion_chain.json`，但前端此前只对 `touch_idle*` 用 best；其余长动作在
+`startRandomMotion` 里直接回默认 `idle`。2026-10-19 改为「长动作也按 best 回落」，同时用户给出两条边界：
+末尾黑屏、或找不到能衔接的待机变体时，应回默认 idle，不要硬挑。
+
+**判据（落成前端 `_pickFallback`，与探针共用同一套）**：
+1. 条目不存在 / `fallback:true`（无待机候选）→ 默认；
+2. best 组不在 `definitions` 或长度为 0（懒加载前）→ 默认；
+3. 默认 idleGroup 也在 `runners_up` 时，必须 `best_norm < 0.85 × default_norm`，否则视为「伪最优」→ 默认；
+4. 默认组不在候选（无共同驱动参数）→ 允许 best（如 `zhenzhuhao_2 touch_idle25` → `idle20`，nb=0）。
+
+**实测（`l2d_motion_chain_verify.py`，17 case 连续 4 轮全 PASS）**：
+- `aersasi_2 touch_head`：best=`idle5` 只比 `idle` 好 **2%** → 实际回 `idle`（伪最优）；
+- `aersasi_3 touch_head`：best=`idle1` 与 `idle` 打平（0.1079）→ 回 `idle`；
+- `jianye_4 mail`：best=`idle3`（nb 0.0145 vs idle 8866.9）→ 实际 `idle3`；
+- `z46_4 mission`：`fallback=true` → `idle`；
+- `zhangwu_2 login`：best=`idle29`（4.8×）→ `idle29`。
+全库 3,688 个长动作，**810 个 best≠默认**；其中只有「明显更优」的会被采用，其余回默认。
+
+**「黑屏」这条**：全库 8,051 个 motion3 里 **0 条**以「所有 PartOpacity 归零」结束，1,033 条
+Model/Opacity 曲线也 **0 条**以 0 结束 ⇒ 数据层没有「淡出到黑」的 clip。「黑屏」更像旧逻辑回落到
+未加载/不存在的组后 `startRandomMotion` 静默失败、画面停在空状态；新闸门把「无定义/无候选」
+全部改成默认 idle，已堵住这条路径。
+
+**回落竞态（2026-10-19 实修，探针曾偶发 FAIL）**：回落到「未预加载的待机变体」时，`startMotion` 要先 fetch/parse motion3，
+这期间库里每帧还会再请求一次随机待机。三处一起改才稳：
+① 回落前 `mm.state.complete()`（自然播完本来就走，人工 `stopAllMotions` 不一定走），把优先级归零；
+② `startMotion` 用 **NORMAL(2)** 而不是库传进来的 IDLE(1)，避免被正在播的默认 idle 拒掉；
+③ 记 `_fallbackTo/_fallbackAt`，在目标真正生效前（最多 10s）拒绝后续 `startRandomMotion`，否则默认 idle 会抢先。
+探针的 `forceEnd` 也必须先 `mm.state.complete()` 再 `stopAllMotions()`，否则是**假 FAIL**（读到的 `prio` 仍是 3）。
+改完连跑 4 轮 17 case 全 PASS。
+
+**验证口径**：探针的 expected 由同一套闸门**动态算**（读表 + model3 组清单），不再把
+「长动作 = idle」写死——旧版就是照着实现写 expected，才会 14 条全 PASS 却掩盖 810 个动作。
+
+**涉及文件**：`gallery_src/index.html`（`_pickFallback`/`startRandomMotion`）、
+`Output/gallery_v2/motion_chain.json`、`scripts/diag/l2d_motion_chain_verify.py`。相关 WF-33/WF-37、§119/§120。
+

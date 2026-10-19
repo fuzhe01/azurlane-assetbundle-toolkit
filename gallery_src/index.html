@@ -1301,33 +1301,64 @@ async function renderLive2D(s, sk){
     const _origStartMotion=mm.startMotion.bind(mm);
     mm.startMotion=(g,i,p)=>{ lastGroup=g; return _origStartMotion(g,i,p); };
     const _origRandomMotion=mm.startRandomMotion.bind(mm);
+    /* 回落目标闸门（2026-10-19 用户判据）：
+       · 末尾黑屏 / 找不到能衔接的待机 idle* ⇒ 回默认待机 idleGroup，不硬挑一个"最优"；
+       · 只有"确实明显更优"的变体才用：默认组也在候选里时，best 必须好至少 15%，
+         差 1~2% 的伪最优一律回默认（那种选择只是在一帧几乎一样的姿态里抛硬币）。
+       判据（同一份 motion_chain.json）：
+         ① 条目存在、best 非空、不是 fallback（没有可用待机候选）；
+         ② best 组已经在 definitions 里且有动作（懒加载前 length=0 的组不能选）；
+         ③ 默认 idleGroup 也在候选里时，nb < 0.85×nd；
+         ④ 默认组不在候选里（这条动作与它没有共同驱动参数）时，允许 best。
+       —— 2026-10-17 的三层语义保留：drag 循环回自身；待机组由库自己 loop，不自触发回落。 */
+    const _normOf=(c,grp)=>{ const arr=(c&&c.runners_up)||[];
+      const r=arr.find(x=>x.group===grp); return r?r.norm:null; };
+    const FALLBACK_MAX_RATIO=0.85;   // best 至少要省 15% 的末帧差异，否则视为"没有明显更优"
+    const _pickFallback=(c)=>{
+      const b=c&&c.best; if(!b||c.fallback) return null;
+      const defs=mm.definitions[b]; if(!defs||!defs.length) return null;
+      const nb=c.best_norm; if(nb==null) return null;
+      const nd=_normOf(c,idleGroup);
+      if(nd!=null && nd>0 && nb > nd*FALLBACK_MAX_RATIO) return null;
+      return b; };
+    /* 回落目标加载是异步的（startMotion 先 fetch motion3 再切 currentGroup）。
+       这期间库的 update() 每帧还会再问一次 startRandomMotion —— 若不拦住，它会用默认 idle
+       抢先生效，出现「标签已是 idle2、画面却停在 idle」的竞态（2026-10-19 探针偶发复现）。
+       ⇒ 记一个 pending 目标，在它真正生效或超时前，拒绝后续的随机待机请求。 */
+    let _fallbackTo=null, _fallbackAt=0;
     mm.startRandomMotion=(g,i,p)=>{
+      if(_fallbackTo){
+        if(mm.state && mm.state.currentGroup===_fallbackTo){ _fallbackTo=null; }
+        else if(performance.now()-_fallbackAt<10000){ return false; }
+        else { _fallbackTo=null; }
+      }
       /* ⚠️ 不能用库的 startRandomMotion 转参直接播：该函数只在「已加载进 motionGroups」的条目里筛
          （null===motionGroups[t][e] 跳过未加载项），idle2/idle3 等变体组从未播放过 → motionGroups[best]
          全空 → s=[] 静默返回 false，回落永远不触发；motionGroups[best] 若连索引都没初始化，遍历还抛
          TypeError 卡死 update 循环（实测 currentGroup 停在动作组 25s+）。绕开它，直接 startMotion(best)
          让库走正常 loadMotion+state.reserve(IDLE) 播放路径，未加载的变体组自动补加载。
-       —— 2026-10-17 方案B追加（用户判据，三样本目视）：
-         · touch_drag*（拖拽短动画）→ 循环播放：回落回 drag 自身，配合 createMotion 的 setIsLoop；
-         · 长动画（非 drag、非 touch_idle 的 action）→ 回默认 idleGroup，不再按启发式漂到变体；
-         · touch_idle* → 仍走 motion_chain 启发式 best（保留原判定）。
          回落目标确定后同步更新 #l2Curr 显示当前循环组名（如回落 idle8 就显示 idle8）。 */
       const ret=(dst)=>{ const defs=mm.definitions[dst]||[]; if(defs.length){
           const idx=Math.floor(Math.random()*defs.length);
-          const pr=(i===undefined||i===null)?1:i;
+          /* 优先级不能沿用库传进来的 IDLE(1)：回落发生时往往已有一条默认 idle 占着 IDLE 优先级，
+             state.reserve(1) 会把它拒掉（探针里表现为「标签已是 idle2、currentGroup 仍是 idle」的偶发）。
+             NORMAL(2) 能压过 IDLE、又不会像 FORCE(3) 那样硬打断用户动作。 */
+          const pr=Math.max((MP&&MP.NORMAL)||2, (i===undefined||i===null)?0:i);
           try{ const h=document.getElementById('l2Curr'); if(h) h.textContent=dst; }catch(e){}
+          _fallbackTo=dst; _fallbackAt=performance.now();
+          /* 回落时先让库把上一条动作标记为 complete：自然播完本来就会走这一步（优先级归零），
+             但 stopAllMotions / 人工模拟结束不一定走到 ⇒ reserve 会把回落目标拒掉，表现为
+             「标签已是 idle20、currentGroup 仍是 idle」的偶发。 */
+          try{ if(mm.state && mm.state.complete) mm.state.complete(); }catch(e){}
           return mm.startMotion(dst,idx,pr); } return _origRandomMotion(g,i,p); };
       try{
         const lg=lastGroup, low=((lg||'').toLowerCase());
-        if(lg && /^touch_drag/.test(low)) return ret(lg);               // ① 拖拽循环
-        if(lg && !idleSet.has(lg) && !/^touch_idle/.test(low)) return ret(idleGroup); // ② 长动画回默认 idle
-        const c=chainModel&&lg&&chainModel.chain[lg];                   // ③ touch_idle* 启发式 best
-        const best=c&&c.best&&mm.definitions[c.best]?c.best:null;
-        if(best){ const defs=mm.definitions[best]||[]; if(defs.length){
-          const idx=Math.floor(Math.random()*defs.length);
-          const pr=(i===undefined||i===null)?1:i;
-          try{ const h=document.getElementById('l2Curr'); if(h) h.textContent=best; }catch(e){}
-          return mm.startMotion(best,idx,pr); } }
+        if(lg && /^touch_drag/.test(low)) return ret(lg);          // ① 拖拽短动画自循环
+        if(lg && idleSet.has(lg)) return _origRandomMotion(g,i,p); // ② 待机组：库 loop，不接管
+        const c=chainModel&&lg&&chainModel.chain[lg];
+        const best=_pickFallback(c);                                // ③ 明显更优的待衔接变体
+        if(best) return ret(best);
+        return ret(idleGroup);                                      // ④ 黑屏/无候选/伪最优 → 默认
       }catch(e){}
       return _origRandomMotion(g,i,p);
     };
@@ -1741,7 +1772,12 @@ async function startSpine(s, sk){
       // 画质：画布 buffer 乘 DPR（CSS 尺寸是 100% 由样式控制）→ 高 DPI 屏不糊。
       // fit()/pixelFit() 都用 cv.width/height 自身，乘完内部自洽，取景构图不变，只是分辨率提升。
       cv.width=Math.max(2,Math.round(wrap.clientWidth*d)); cv.height=Math.max(2,Math.round(wrap.clientHeight*d));
-      scene.resize(); scene.camera.setViewport(cv.width, cv.height); }  // 关键：scene.resize() 不更新相机视口（比例怪的根因）
+      /* ⚠️ 不能在这里调 scene.resize()：spine-all.js 的 SceneRenderer.resize() 会执行
+         `canvas.width = canvas.clientWidth`，把上面乘过 DPR 的 buffer 当场改回 CSS 尺寸
+         （2026-10-19 实测：DPR=2 时 buffer 仍 1x，页面一直是糊的；旧探针只在 DPR=1 下测，
+         1x 天然满足 want>=1，属假绿灯）。它只额外做两件事——gl.viewport 与 camera.setViewport——
+         这里自己做，顺序与它一致。 */
+      gl.viewport(0,0,cv.width,cv.height); scene.camera.setViewport(cv.width, cv.height); }
     /* ---------- 取景判据：附件"乘完 slot 颜色后有没有落下非近黑的笔" ----------
        两类巨幕会把包围盒撑到可见内容的 2~10 倍（弹窗里画面缩成中间一小块）：
          ① setup alpha=0 的整屏闪黑/白场 —— 一个像素都不落（实测最大 32967×29970 单位），判 alpha 就够；

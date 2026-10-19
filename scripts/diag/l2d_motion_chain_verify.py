@@ -68,30 +68,37 @@ JS = r"""(async(args)=>{ const key=args[0], action=args[1], expected=args[2], fo
   const started=mm.state.currentGroup;
   // headless 低帧率下动作播不完（aersasi_2 软渲染 ~1fps）：forceEnd 用 stopAllMotions 模拟动作结束。
   // 回落触发链与自然播完完全一致：isFinished→complete→shouldRequestIdleMotion→startRandomMotion。
-  if(forceEnd && started===action){ try{ mm.queueManager.stopAllMotions(); }catch(e){} }
+  if(forceEnd && started===action){
+    // 先走库自己的 complete()（自然播完也是这条）：它把 currentPriority 归零，
+    // 之后 startRandomMotion 才能正常 reserve；只 stopAllMotions 会留下优先级，造成偶发假 FAIL。
+    try{ if(mm.state&&mm.state.complete) mm.state.complete(); }catch(e){}
+    try{ mm.queueManager.stopAllMotions(); }catch(e){} }
   // 等回落（currentGroup===expected），最多 15s
   tm=performance.now();
   while(performance.now()-tm<15000){ await t(400); if(mm.state.currentGroup===expected) break; }
   const got=mm.state.currentGroup;
   const curr=(()=>{ const h=document.getElementById('l2Curr'); return h?h.textContent:null; })();
-  return JSON.stringify({key, action, expected, init, started, got, curr, forceEnd, patched,
+  const prio=(mm.state&&typeof mm.state.currentPriority!=='undefined')?mm.state.currentPriority:null;
+  return JSON.stringify({key, action, expected, init, started, got, curr, prio, forceEnd, patched,
     pass:(got===expected && (started===action || init===expected))});
 })"""
 
 cases = [
-  ('aersasi_2', 'touch_idle1',  None, True),    # touch_idle* 走启发式：expected 从表动态读 best
-  ('aersasi_2', 'touch_body',   'idle', True),  # 长动画 → 默认 idle
-  ('aersasi_2', 'home',         'idle', True),  # home 场景 → 回默认 idle（回归：修复被误当循环待机）
-  ('ougen_8',   'main_1',       'idle', True),  # main_* 场景 → 回默认 idle（回归修复）
-  ('aersasi_3', 'touch_head',   'idle', True),  # 长动画 → 默认 idle
-  ('aersasi_3', 'touch_idle2',  None, True),    # touch_idle* 启发式 best（动态读）
+  ('aersasi_2', 'touch_idle1',  None, True),    # touch_idle*：best 与默认差距 <15% → 回默认（两者都是 idle）
+  ('aersasi_2', 'touch_body',   None, True),    # best 就是默认 idle
+  ('aersasi_2', 'touch_head',   None, True),    # ⚠️ 2026-10-19 新语义：best=idle5 只比 idle 好 2% → 回默认 idle
+  ('aersasi_2', 'home',         None, True),    # home 场景 → 按同一闸门判定（回归：不得被当循环待机）
+  ('ougen_8',   'main_1',       None, True),    # main_* 场景 → 按同一闸门判定
+  ('aersasi_3', 'touch_head',   None, True),    # best=idle1 与 idle 打平 → 默认 idle
+  ('aersasi_3', 'touch_idle2',  None, True),    # best=idle2 好 6 倍 → 必须走变体
   ('aersasi_3', 'touch_drag1',  'touch_drag1', True),  # drag 循环 → 回落自身
+  ('jianye_4',  'mail',         None, True),    # best=idle3（norm 0.01 vs 默认 idle 8866）→ 必须走变体
+  ('z46_4',     'mission',      None, True),    # fallback=true（无候选）→ 默认 idle
 ]
 CHAIN = json.load(open(os.path.join(ROOT, 'Output', 'gallery_v2', 'motion_chain.json'), encoding='utf-8')) \
   .get('models', {})
 # 抽查：几类不同 idle 组织的代表性模型（编号多变体 / 仅1组 fallback），自动选取 action
-#   · touch_idle* → expected 用 None（循环里读表 best）
-#   · 长动画（非 touch_/idle 前缀）→ expected 'idle'（前端统一回默认待机）
+#   · 所有非 drag 组 → expected 用 None，由 expected_for() 按前端同一套闸门算
 #   · drag → expected 自身（循环）
 for m in ['zhangwu_2', 'zhenzhuhao_2', 'z46_4']:
     c = CHAIN.get(m, {}).get('chain', {})
@@ -101,8 +108,40 @@ for m in ['zhangwu_2', 'zhenzhuhao_2', 'z46_4']:
     longs = [a for a in c if not a.startswith('touch_') and not a.startswith('idle')]
     drags = [a for a in c if 'drag' in a]
     if tids: cases.append((m, tids[0], None, True))
-    if longs: cases.append((m, longs[0], 'idle', True))
+    if longs: cases.append((m, longs[0], None, True))
     if drags: cases.append((m, drags[0], drags[0], True))
+def _groups(key):
+    p = os.path.join(ROOT, 'Output', 'Live2D', key, key + '.model3.json')
+    try:
+        j = json.load(open(p, encoding='utf-8'))
+        return list(((j.get('FileReferences') or {}).get('Motions') or {}).keys())
+    except Exception:
+        return []
+
+def _default_idle(key):
+    gs = _groups(key)
+    for g in ('idle', 'main', 'home'):
+        if g in gs:
+            return g
+    return gs[0] if gs else 'idle'
+
+def expected_for(key, action):
+    """复刻前端 _pickFallback 的闸门（只读表 + model3 组清单），返回 (组, 理由)。"""
+    ig = _default_idle(key)
+    c = ((CHAIN.get(key) or {}).get('chain') or {}).get(action)
+    if not c or c.get('fallback'):
+        return ig, 'no-entry/fallback'
+    b = c.get('best')
+    if not b or b not in _groups(key):
+        return ig, 'best-missing'
+    nb = c.get('best_norm')
+    if nb is None:
+        return ig, 'no-norm'
+    nd = next((r.get('norm') for r in (c.get('runners_up') or []) if r.get('group') == ig), None)
+    if nd is not None and nd > 0 and nb > nd * 0.85:
+        return ig, 'marginal(best=%s %.0f%% better)' % (b, (nd / nb - 1) * 100 if nb else 0)
+    return b, 'best=%s' % b
+
 all_pass = True
 # warmup：预取 motion_chain（浏览器缓存）+ 预载首模型，消除首 case 冷启时序
 try: ev("fetch('./motion_chain.json').then(r=>r.ok?'ok':('http'+r.status)).catch(e=>'err'+String(e))")
@@ -112,7 +151,9 @@ try:
 except Exception as e: print('warmup 渲染 异常', e)
 for key, action, expected, forceEnd in cases:
     if expected is None:
-        expected = (CHAIN.get(key, {}).get('chain', {}).get(action, {}).get('best')) or 'idle'
+        expected, why = expected_for(key, action)
+    else:
+        why = 'self-loop'
     c = (key, action, expected, forceEnd)
     raw = ev(JS + f"({json.dumps(list(c))})")
     try:
@@ -122,9 +163,9 @@ for key, action, expected, forceEnd in cases:
     ok = o.get('pass', False)
     all_pass = all_pass and ok
     flag = 'PASS' if ok else 'FAIL'
-    print(f'[{flag}] {c[0]}  {c[1]:14} -> 期望 {c[2]:8}  实际 {o.get("got")!r:8}  init={o.get("init")!r} started={o.get("started")!r}  currLabel={o.get("curr")!r}  {o.get("skip","") if o.get("skip") else ""}')
+    print(f'[{flag}] {c[0]:12} {c[1]:14} -> 期望 {c[2]:8}  实际 {o.get("got")!r:8}  init={o.get("init")!r} started={o.get("started")!r}  currLabel={o.get("curr")!r}  [{why}] {o.get("skip","") if o.get("skip") else ""}')
     if not ok and 'skip' not in o:
-        print('     ', json.dumps(o, ensure_ascii=False)[:300])
+        print('     ', json.dumps(o, ensure_ascii=False)[:400])
 
 print('\n==== 汇总 ====')
 print('全部通过' if all_pass else '存在失败')

@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.9.0
+version: 1.9.1
 ---
 
 # Live2D 网页运行时集成
@@ -468,7 +468,7 @@ idle 变体判定。
   `idle_groups`，前端 `idleSet = new Set(idle_groups)` 直接用。
 - **三层回落语义**（在 `mm.startRandomMotion` 接管回调里，按 `lastGroup` 分类）：
   ① `touch_drag*` → 回落 drag 自身（配合 `createMotion` 对 idle/drag 组 `setIsLoop` 持续循环）；
-  ② 长动画（`!idleSet.has(lg) && !/^touch_idle/`）→ 回默认 `idleGroup`；
+  ② 长动画（`!idleSet.has(lg) && !/^touch_idle/`）→ 2026-10-19 前是固定回 `idleGroup`；**新语义见 §12.1**；
   ③ `touch_idle*` → 查 `chainModel.chain[lg].best`（末帧 vs 待机首帧差异度，口径见 WF-32）。
   回落目标确定后同步更新 bar 的 `#l2Curr` 动态标签（播动作显示动作名、回落后显示待机组名）。
 - **回落必须直接 `mm.startMotion(best, idx, IDLE优先级)`**，**不能**调库 `startRandomMotion`：它只在
@@ -484,4 +484,29 @@ idle 变体判定。
   自然回落不触发（**非产品 bug**，真机 60fps 正常）。探针用 `mm.queueManager.stopAllMotions()` 模拟
   动作结束，触发与自然播完**完全一致**的 complete→shouldRequestIdleMotion→startRandomMotion 回调链。
 - 完整判据/踩坑：docs/TROUBLESHOOTING.md §120、操作流程见 WORKFLOWS WF-33。
+
+### 12.1 2026-10-19 追加：best 要加「明显更优」闸门；黑屏/无候选回默认（version 1.9.1）
+
+只按 `chainModel.chain[lg].best` 无条件回落，会在两种情况下害人：best 只比默认 idle 好 1~2%（伪最优，
+等于在两帧几乎一样的姿态里抛硬币）；或 best 组没加载/条目是 fallback（静默失败 ⇒ 画面停在空状态，
+用户看到「黑屏」）。落成前端 `_pickFallback`：
+
+1. 条目不存在 / `fallback:true`（无待机候选）→ 默认 `idleGroup`；
+2. best 组不在 `definitions` 或长度为 0（懒加载前）→ 默认；
+3. 默认 `idleGroup` 也在 `runners_up` 时，必须 `best_norm < 0.85 × default_norm`，否则回默认；
+4. 默认组不在候选（没有共同驱动参数）→ 允许 best（如 `zhenzhuhao_2 touch_idle25` nb=0 → idle20）。
+
+**判据/数据**：aersasi_2 touch_head 的 best=idle5 只比 idle 好 2% → 回 idle；jianye_4 mail 的 best=idle3
+（nb 0.0145 vs idle 8866.9）→ 必须走 idle3；z46_4 mission 是 fallback → 回 idle。全库 3,688 个长动作、
+810 个 best≠默认，只有明显更优的才采用。**探针 expected 必须用同一套闸门动态算**（旧版把「长动作=idle」
+写死，14 条全 PASS 却掩盖了 810 个动作）。
+
+**「黑屏」取证**：全库 8,051 个 motion3 中 0 条以「所有 PartOpacity 归零」结束、1,033 条 Model/Opacity
+曲线也 0 条以 0 结束 ⇒ 数据层没有「淡出到黑」的 clip；黑屏更像回落到未加载组后 startRandomMotion
+静默失败。无头 ~2fps 不足以判高频观感，需真机对照。
+
+**回落竞态（2026-10-19 实修）**：目标变体未预加载时 `startMotion` 要 fetch，期间库每帧再请求随机待机，
+默认 idle 会抢先（label 已是 idle2、currentGroup 仍是 idle）。三件套：回落前 `mm.state.complete()`；
+`startMotion(..., NORMAL=2)` 压过正在播的 IDLE(1)；记 pending 目标、最多 10s 内拒绝后续 `startRandomMotion`。
+探针 `forceEnd` 也要先 `state.complete()` 再 `stopAllMotions()`，否则优先级残留 = 假 FAIL。完整判据：§124 / WF-37。
 

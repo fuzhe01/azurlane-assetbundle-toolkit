@@ -5,10 +5,14 @@
   Live2D : app.view buffer 尺寸应 = CSS 视口 × max(2, devicePixelRatio)
            —— 对应 index.html L1214 `resolution:Math.max(2,dpr)` + autoDensity:true
   Spine  : spcwrap canvas buffer 尺寸应 = CSS 尺寸 × devicePixelRatio
-           —— 对应 index.html L1688 与 L2074 每帧校正
+           —— 对应 index.html 的 resize()（2026-10-19 修：不能再调 scene.resize()，
+              它会把 buffer 改回 CSS 尺寸；旧版探针只在 DPR=1 下跑，是假绿灯）
 判据（不绕页面入口）：走搜索→点卡片→点皮肤→点 Live2D/Spine 标签的真实点击路径，再回读 canvas。
 
-用法: PYTHONIOENCODING=utf-8 py -3 scripts/diag/l2d_spine_dpr_verify.py --only aersasi_2,yunlong_2
+⚠️ DPR 必须显式抬高：无头默认 devicePixelRatio=1，此时 Spine 1x 也"达标"，
+   永远抓不到"2x 屏上仍 1x"这个 bug。默认 --dpr 2，用 --dpr 1 可回到旧口径。
+
+用法: PYTHONIOENCODING=utf-8 py -3 scripts/diag/l2d_spine_dpr_verify.py --only aersasi_2,yunlong_2 [--dpr 2]
 输出: 逐皮肤 PASS|FAIL；退出码 0=全过 / 1=有失败 / 2=探针自身失败。
 """
 import sys, os, json, time, subprocess, urllib.request
@@ -36,6 +40,8 @@ def arg(name, default=None, cast=str):
 
 
 only = [x for x in (arg("--only", "") or "").split(",") if x] or DEFAULT
+DPR = arg("--dpr", 2, int)
+if DPR < 1: raise SystemExit("--dpr 必须是 >=1 的整数")
 
 
 def srv_alive():
@@ -66,7 +72,7 @@ proc = subprocess.Popen([CHROME, "--headless=new", f"--remote-debugging-port={PO
                          "--no-first-run", "--no-default-browser-check",
                          "--disable-background-timer-throttling",
                          "--enable-unsafe-swiftshader", "--use-angle=swiftshader",
-                         "--window-size=1280,900", URL],
+                         "--force-device-scale-factor=%d" % DPR, "--window-size=1600,1100", URL],
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 ws = None
@@ -160,13 +166,16 @@ def main():
         want = max(2, dpr) if kind == "live2d" else dpr
         ok_w = cw >= csw * want * 0.95
         ok_h = ch >= csh * want * 0.95
+        if abs(dpr - DPR) > 0.01:
+            print("  [WARN] 页面 dpr=%s 与 --dpr=%s 不一致（强制缩放未生效？）" % (dpr, DPR))
         if kind == "live2d" and not r.get("model"):
             ok_w = ok_h = False
         passed = ok_w and ok_h
         if not passed:
             fails += 1
-        print("  %-12s %-6s  %4d x %4d   css %4d x %4d   dpr=%s   want>=%.2f   %s"
-              % (key, kind, cw, ch, csw, csh, r["dpr"], want, "PASS" if passed else "FAIL"))
+        print("  %-12s %-6s  %4d x %4d   css %4d x %4d   ratio=%.2f   dpr=%s   want>=%.2f   %s"
+              % (key, kind, cw, ch, csw, csh, (cw / csw if csw else 0), r["dpr"], want,
+                 "PASS" if passed else "FAIL"))
     ws.close()
     proc.terminate()
     print("")

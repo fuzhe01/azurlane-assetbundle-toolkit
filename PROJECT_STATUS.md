@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-18
+> **生成时间**: 2026-10-19
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python ≥3.13（本机实测 3.14，UnityPy 1.25.4 可跑；项目约定 3.13）
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`
@@ -81,7 +81,8 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 > ✅ 四条已闭环事故注记（判定区幽灵标签 **§51**｜语音被掐 **§41**｜代理指标假绿灯 **§40**｜全量重导覆写事故 **§25**）已外迁 A15 段；目视覆盖 26/269 见上表同一行，不重复。
 > ⚠️ **动效验证必须在播放窗口内高频采样**：运行时把每条 idle 解析成 `isLoop:false`（全 269 模型一致的既有特性），idle 只播一次即回静；等 ~12s 后两次快照比对会因短 idle(5~8s) 已播完而假报 `moved=0`。
 > ⚠️ **aersasi_2/ougen_8 肢体抖动（§116，进行中）**：重建版 .moc3/.physics3 与 AS 版逐字节/逐字段一致已**否证**「提取/物理数值」两条；`L2D_MOTION_EMIT_CONST=1` 换入 A/B 实测 **idle 内波形不变** ⇒ **否证**「真抖动=constant 曲线缺失」（常量曲线只在**切动作复位**轴上生效，idle 循环内部无复位）。待办：真抖动按「切换轴」CDP 目视、动作复位按「切段复位」另测；改用 `scripts/diag/l2d_jitter_probe.py`（读参数名走 `_parameterIds`）。
-> ▸ **方案 B 数据侧（2026-10-17，§119 / WF-32）**：动作播完「按差异度回落最优待机变体」的映射表已落地——`scripts/build_motion_chain_map.py` → `Output/gallery_v2/motion_chain.json`（**262 模型 / 5008 动作 / fallback 110**）。解析要点：Segments 首帧=`seg[1]`、末帧=`seg[-1]`（与段型无关，末端价值即终点 value）；组清单在 **`FileReferences.Motions`**（model3 顶层无 `Motions`）。norm 分布：无缝+平滑 **67.7%** ⇒ 方案 B 价值集中于此；大跳 20.3%（有 2s 淡入兜底）。前端回落改造待用户定接管点后再动（`idleGroup` 需泛化为待机集合，并同步残留复位/Loop/play 判断）。
+> **2026-10-19 复核（审计轮）**：idle3 的肩部曲线本身就是 `-24 ↔ -0.25` 每 0.667s 交替（10 个来回），`DenseClip.curveCount=0`、meta 总段数 1611 / 257 曲线 ⇒ 是**稀疏作者关键帧**，且与 AS 版逐字段相同 ⇒ 不是提取/接线造成的。运行时 `physics=true`、`breath` 参数数 0（呼吸层已关）。无头只有 ~2fps，测不出高频观感，需游戏内同 clip 对照。
+> ▸ **方案 B 数据侧（2026-10-17，§119 / WF-32）**：动作播完「按差异度回落最优待机变体」的映射表已落地——`scripts/build_motion_chain_map.py` → `Output/gallery_v2/motion_chain.json`（**262 模型 / 5008 动作 / fallback 110**）。解析要点：Segments 首帧=`seg[1]`、末帧=`seg[-1]`（与段型无关，末端价值即终点 value）；组清单在 **`FileReferences.Motions`**（model3 顶层无 `Motions`）。norm 分布：无缝+平滑 **67.7%** ⇒ 方案 B 价值集中于此；大跳 20.3%（有 2s 淡入兜底）。✅ **前端 2026-10-19 落地**（§124 / WF-37）：长动作也读表选 best，但加 `<0.85×` 闸门——只比默认 idle 好 1~2% 的「伪最优」、`fallback`（无候选）、best 组未加载一律回默认 idle；drag 仍自循环、待机组仍由库 loop。探针 expected 改成同一套闸门动态算。
 
 ### 2.6 Spine 动态立绘 ✅（v2 提取 + 全屏 CG 导出 + viewer 修复，2026-09-19）
 > ✅ **2026-09-29 分层改认权威清单**：每个 `Output/Spine_v2/<目录>/parts.json` 由 prefab 的
@@ -103,6 +104,8 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 862 舰 / JSON(name,faction,ship_type,rarity) / `Output/WikiData/ship_data.json`。脚本 `scrape_wiki_fast.py`(8线程92秒)。已知：148 艘缺阵营（联动/特殊舰）。
 
 ---
+
+> ▸ **画质验收（2026-10-19）**：Live2D 2x 通过（DPR=2 时 buffer=2.00×CSS）；**Spine 此前每帧 DPR 校正是假绿灯**——`SceneRenderer.resize()` 把 buffer 改回 CSS 尺寸，DPR=2 仍 1.00×，已修（§123），改后 2.00×。旧探针只在 DPR=1 下测，现已默认 `--dpr 2`。
 
 ## 3. 已加工资产清单
 
