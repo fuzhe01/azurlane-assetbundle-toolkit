@@ -6834,3 +6834,17 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 - 「0.4.0 升 0.5.0-beta 就能解决」→ 0.5.0-beta 确实支持颜色，但它要求 Pixi 7（本机 6.5.2），实测换上后 `Live2DModel.from` 不 resolve；补丁 0.4.0 是当前栈的最小改动。
 
 **涉及文件**：`gallery_src/vendor/live2d/pixi-live2d-display-cubism4-patched.js`、`gallery_src/vendor/MANIFEST.json`、`Output/gallery_v2/vendor/live2d/pixi-live2d-display-cubism4.min.js`、`scripts/fetch_gallery_vendor.py`、`scripts/diag/hit_verify.py`。相关 WF-38、§116、WF-36。
+
+## §126. 换机后重建 BGM：两处路径坑（硬编码 KLLM / ffprobe 被 replace 改坏）与 FLAC 档（2026-10-19）
+
+**问题**：`Output/Audio/BGM` 在旧轮清理后为空，画廊音乐库 404。重跑时：
+1. `export_cue_audio.py` 把 `vgmstream-cli.exe` / `ffmpeg.exe` 钉死在 `C:\Users\KLLM\...`，每一条都 `WinError 2`；源包 `files/AssetBundles/cue` 其实完整（4,957 个）。
+2. `transcode_bgm.py` 用 `P.tool('AL_FFMPEG','ffmpeg')`（只查 PATH）→ 本机 ffmpeg 不在 PATH，报「找不到 ffmpeg」；且 `FFPROBE = FFMPEG.replace('ffmpeg','ffprobe')` 会把**目录名**也替换掉，即使 FFMPEG 找到也会 `WinError 2`。
+
+**修法**：`export_cue_audio.py` 改用 `paths.P.VGMSTREAM / P.FFMPEG / P.FILES / P.OUT`；`transcode_bgm.py` 用 `P.FFMPEG`，`FFPROBE = os.path.join(os.path.dirname(FFMPEG), 'ffprobe.exe')`。
+
+**正确顺序**：只解 BGM（561 个，别把 2780 个 CV 再导一遍）→ `transcode_bgm.py --out Output/Audio/BGM_flac --codec flac --roundtrip 7` → `build_bgm_index.py --dir Output/Audio/BGM_flac --out Output/gallery_v2/bgm.json` → 打开音乐库验收 → 再按台账删 wav。
+
+**判据**：`transcode_bgm.py` 自带三条校验（产物存在 / ffprobe 时长差 <0.25s / 源 md5 进台账）；`--roundtrip 7` 真解码回 wav 比 md5。
+
+**涉及文件**：`scripts/export_cue_audio.py`、`scripts/transcode_bgm.py`、`scripts/build_bgm_index.py`、`ledger/bgm_transcode_flac.json`、`Output/Audio/BGM_flac`、`Output/gallery_v2/bgm.json`。相关 WF-39。

@@ -3049,3 +3049,26 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 #### 涉及文件
 
 `gallery_src/vendor/live2d/pixi-live2d-display-cubism4-patched.js`（补丁正本）、`gallery_src/vendor/MANIFEST.json`（local 源 + sha）、`Output/gallery_v2/vendor/live2d/pixi-live2d-display-cubism4.min.js`（运行副本）、`scripts/fetch_gallery_vendor.py`（local 源优先）、`scripts/diag/hit_verify.py`（Chrome/Edge 回退）。相关：§125、WF-36（vendor 换源）、§123/§124（本轮另两处修复）。
+
+### WF-39: 重建 BGM 音乐库（只解 BGM → FLAC → bgm.json — 2026-10-19）
+
+**场景**：`Output/Audio/BGM` 为空 / 音乐库 404，但 `files/AssetBundles/cue` 完整。不要重跑整套 `export_cue_audio.py`（会再导 2,780 个 CV）；只解 BGM。
+
+#### 判据
+
+1. 先 `paths.py` 验证：`VGMSTREAM` / `FFMPEG` 都命中本机安装位；脚本里不许再出现 `C:\Users\KLLM`。
+2. 只对 `get_category(f)=='BGM'` 的 cue 调 `convert_b_to_wav`（本案例 561 个，约 12.2GB wav）。
+3. `transcode_bgm.py --out Output/Audio/BGM_flac --codec flac --roundtrip 7`；台账写 `ledger/bgm_transcode_flac.json`（按 codec 分文件，别和 opus 台账混）。
+4. `build_bgm_index.py --dir Output/Audio/BGM_flac --out Output/gallery_v2/bgm.json`，浏览器打开 `bgm.html` 验一首能播、时长正常、进度条可拖。
+5. 删除 wav 之前必须 `--verify-only` 全绿（产物在/时长/能整条解到底）；删除后 `bgm.json` 不能指向 wav。
+
+#### 踩坑记录
+
+- `export_cue_audio.py` 的 `VGMSTREAM_CLI/FFMPEG` 原先钉死 `C:\Users\KLLM` ⇒ 561 条全 `WinError 2`（§126）。
+- `transcode_bgm.py` 的 `P.tool('AL_FFMPEG','ffmpeg')` 只查 PATH；本机 ffmpeg 在 `%LOCALAPPDATA%\ffmpeg\bin`，要用 `P.FFMPEG`。
+- `FFPROBE = FFMPEG.replace('ffmpeg','ffprobe')` 会把目录名也换掉，必须 `os.path.join(dirname,'ffprobe.exe')`。
+- `transcode_bgm.py` **不删源**；删 wav 是独立一步，必须先 verify-only。
+
+#### 涉及文件
+
+`scripts/export_cue_audio.py`、`scripts/transcode_bgm.py`、`scripts/build_bgm_index.py`、`scripts/paths.py`、`ledger/bgm_transcode_flac.json`、`Output/gallery_v2/bgm.json`。相关：§126、§113（FLAC 无损判据）。
