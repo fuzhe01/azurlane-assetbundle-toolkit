@@ -1471,7 +1471,7 @@ async function renderLive2D(s, sk){
            cm.setParameterValueById('ParamEyeBallY', -eyeT.y); }catch(e){} },
       null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
     const bar=document.getElementById('l2bar');
-    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
+    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+拖拽</b>互动 · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
     const sel=document.getElementById('l2Motion');
     const fillSel=()=>{ const cur=sel.value;
       sel.innerHTML=groups.map(g=>`<option value="${g}">${g}${voice[g]?'（语音）':''}</option>`).join('');
@@ -1685,7 +1685,14 @@ async function renderLive2D(s, sk){
       return ds[(k-1)%ds.length]; };
     const onDown=e=>{ if(e.button!==0) return; moved=0; px=e.clientX; py=e.clientY;
       const n=localHit(e.clientX,e.clientY);
-      if(n && /^touch_drag/.test(n)){ dragPart=n; dragging=false; return; }
+      /* 普通左键拖拽 = 平移画布；Ctrl/⌘ + 左键拖拽 = 拖拽互动（用户 2026-10-19 指定）。
+         落在 touch_drag* 区就用该区；没落区时用 touch_drag1 作兜底（模型没有 drag 组则不拦截，仍平移）。 */
+      if(e.ctrlKey||e.metaKey){
+        const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
+        if(!ds.length){ dragPart=null; dragging=true; return; }
+        dragPart=(n && /^touch_drag/.test(n)) ? n : (ds.find(g=>/^touch_drag1$/.test(g))||ds[0]);
+        dragging=false; return;
+      }
       dragPart=null; dragging=true; };
     const onMove=e=>{ if(dragPart){ const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
         px=e.clientX; py=e.clientY; return; }
