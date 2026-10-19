@@ -103,6 +103,9 @@ cases = [
   ('ougen_8',   'main_1',       None, True),    # 应回 idle13
   ('ougen_8',   'mission_complete', None, True),# 应回 idle7
   ('ougen_8',   'touch_head',   None, True),    # 应回 idle13
+  ('ougen_8',   'touch_idle12', None, True),    # 旧表 idle9 → 覆盖度后 idle7
+  ('ougen_8',   'touch_idle17', None, True),    # 旧表 idle9 → 覆盖度后 idle10
+  ('ougen_8',   'touch_idle2',  None, True),    # 覆盖度后 idle12
 ]
 CHAIN = json.load(open(os.path.join(ROOT, 'Output', 'gallery_v2', 'motion_chain.json'), encoding='utf-8')) \
   .get('models', {})

@@ -6873,7 +6873,7 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 
 **用户判据**（与 `docs/archive/PROJECT_STATUS_2026-10-17_逐字外迁.md` 一致）：
 1. `idle*` 与 `touch_drag*` 自循环；
-2. `touch_idle*` 回最衔接待机：直接查 `motion_chain.json` 的 best（不优先同名）；
+2. `touch_idle*` 回最衔接待机：查 `motion_chain.json` 的 best，但候选必须覆盖动作驱动参数的 **≥60%**；没有合格候选就回默认 idle，不拿低覆盖候选（旧表 touch_idle12→idle9 就是这么错的）；
 3. 其它长动作（`complete/home/login/main_*/mission_complete/wedding/touch_head/touch_body/touch_special` 等）一律回**默认初始 idle**。
 
 **本轮先试过覆盖度闸门**（`n_params>=0.5*n_action`，195 个 best 变化），ougen 长动作不再落 idle9，但用户实测 home/login/main_* 等回 idle13，仍不衔接，且 touch_idle 有误判 ⇒ 按用户要求**整体回退**到上述三层语义，不按表给长动作选 best。

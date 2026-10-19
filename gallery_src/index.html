@@ -1319,7 +1319,7 @@ async function renderLive2D(s, sk){
     mm.startMotion=(g,i,p)=>{ lastGroup=g; return _origStartMotion(g,i,p); };
     const _origRandomMotion=mm.startRandomMotion.bind(mm);
     /* 三层回落（2026-10-17 语义，2026-10-19 按用户要求恢复）：
-       ① touch_drag* → 自身循环；② 其它长动作 → 默认 idleGroup；③ touch_idle* → 同名 idleN，缺组再查表 best。
+       ① touch_drag* → 自身循环；② 其它长动作 → 默认 idleGroup；③ touch_idle* → 表 best（low coverage 时表里 best 为空 → 默认 idle）。
        ⚠️ 额外加一个 ticker 看门狗：动作播完时库若没及时请求 idle（currentGroup 变 null），
        下一帧直接 startMotion 回落，解决"卡在最后一帧几秒钟"。 */
     let _fbPending=false;
@@ -1327,6 +1327,7 @@ async function renderLive2D(s, sk){
       const idx=Math.floor(Math.random()*defs.length);
       const pr=(MP&&MP.NORMAL)||2;   // 压过正在播的 idle(1)，又不像 FORCE 那样硬打断
       try{ const h=document.getElementById('l2Curr'); if(h) h.textContent=dst; }catch(e){}
+      try{ if(mm.state && mm.state.complete) mm.state.complete(); }catch(e){}   // 把上一动作优先级归零，NORMAL 才 reserve 得进
       try{ mm.startMotion(dst,idx,pr); }catch(e){ return false; }
       return true; };
     const _fallback=()=>{
@@ -1338,8 +1339,10 @@ async function renderLive2D(s, sk){
       else if(!/^touch_idle/.test(low)) dst=idleGroup;
       else {
         // touch_idle*：只认表里的 best（最衔接最后一帧），不再优先同名 idleN
+        // 覆盖度保险丝：旧缓存表里 <60% 的候选（如 idle9 22/337）不采用，回默认 idle
         const c=chainModel&&chainModel.chain[lg];
-        dst=(c&&c.best&&mm.definitions[c.best])?c.best:null;
+        const _cov=c&&c.best_coverage!=null?c.best_coverage:1;
+        dst=(c&&c.best&&_cov>=0.6&&mm.definitions[c.best])?c.best:null;
         if(!dst) dst=idleGroup;
       }
       _fbPending=true;
@@ -1349,8 +1352,9 @@ async function renderLive2D(s, sk){
     };
     mm.startRandomMotion=(g,i,p)=>{ if(_fallback()) return true; return _origRandomMotion(g,i,p); };
     app.ticker.add(()=>{
-      if(mm.state && mm.state.currentGroup) _fbPending=false;
-      else if(!_fbPending) _fallback();
+      const cg=mm.state&&mm.state.currentGroup;
+      if(cg && cg!==lastGroup) _fbPending=false;
+      if(!_fbPending && (!cg || (cg===lastGroup && mm.state.isFinished))) _fallback();
     });
 
     /* ---------- 动作语音 ----------
