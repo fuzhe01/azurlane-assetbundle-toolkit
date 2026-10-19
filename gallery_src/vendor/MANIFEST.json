@@ -2,7 +2,7 @@
   "_purpose": "画廊前端运行时库台账。这 4 个第三方 JS 落在 Output/gallery_v2/vendor/（整目录 gitignore），git 里原本 0 份、无版本记录、无来源，换机器或清过 Output 就得重走当年「出网受限下载不到」那段排查（docs/WORKFLOWS.md 的 Spine/Live2D 段落）。本文件是唯一可复现记录，随仓库入库。",
   "_provision": "py -3 scripts/fetch_gallery_vendor.py            # 缺失或哈希不符才拉，按 sha256 校验后才落盘",
   "_check": "py -3 scripts/fetch_gallery_vendor.py --check   # 只校验不回写；漂移/缺件即非零退出（可进回归清单）",
-  "_integrity_note": "live2d 三个 sha256 于 2026-09-26 由本机在用的运行目录副本实测；标 verified=true 的 URL 已当日重新下载并按哈希逐字节对拍命中。spine-all.js 于 2026-10-18 换上游官方构建重新实测（499623B/sha7304a0b7，见该条 observed）。",
+  "_integrity_note": "live2d 两个原始 sha256 于 2026-09-26 实测；pixi-live2d-display-cubism4 于 2026-10-19 换成 0.4.0 本地补丁版（MultiplyColor/ScreenColor，见该条 note），sha/bytes 已重算；spine-all.js 于 2026-10-18 换上游官方构建重新实测（499623B/sha7304a0b7，见该条 observed）。",
   "consumed_by": {
     "file": "gallery_src/index.html",
     "how": "相对页面自身目录加载 ./vendor/live2d/*、./vendor/spine/spine-all.js（⚠️ 不能用资源前缀 P='../' 拼 vendor，那会指向 Output/vendor → 404；判据见 docs/TROUBLESHOOTING.md）",
@@ -20,7 +20,10 @@
       "sha256": "25ae938cb4fe282ce189b357bcc97e603d1e1f7ec78bf04150d401c23cdc792f",
       "license": "Live2D Proprietary Software License；文件头自标 'This file corresponds to the Redistributable Code in the agreement'（EULA: https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html）",
       "sources": [
-        { "url": "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js", "verified": true }
+        {
+          "url": "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js",
+          "verified": true
+        }
       ],
       "note": "官方直链即此路径；根域直接访问返回 404，必须带上完整文件路径。"
     },
@@ -31,24 +34,37 @@
       "sha256": "ce14152237354383ef19362e1d83cad5c62c6af70f6598c2bf54820af8e7eaf1",
       "license": "MIT（文件头声明；registry.npmmirror.com/pixi.js/6.5.2 → license=MIT）",
       "sources": [
-        { "url": "https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.2/browser/pixi.min.js", "verified": true },
-        { "url": "https://cdn.jsdelivr.net/npm/pixi.js@6.5.2/dist/pixi.min.js", "verified": false, "observed": "本机 HTTP000（被墙/超时），非哈希不符" },
-        { "url": "https://registry.npmmirror.com/pixi.js/6.5.2/files/dist/pixi.min.js", "verified": false, "observed": "HTTP404，npmmirror 该包 files 路径与此不同" }
+        {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.2/browser/pixi.min.js",
+          "verified": true
+        },
+        {
+          "url": "https://cdn.jsdelivr.net/npm/pixi.js@6.5.2/dist/pixi.min.js",
+          "verified": false,
+          "observed": "本机 HTTP000（被墙/超时），非哈希不符"
+        },
+        {
+          "url": "https://registry.npmmirror.com/pixi.js/6.5.2/files/dist/pixi.min.js",
+          "verified": false,
+          "observed": "HTTP404，npmmirror 该包 files 路径与此不同"
+        }
       ],
       "note": "必须用 browser/ 构建（全局 PIXI），不要用 dist/pixi.js 的模块版。"
     },
     {
       "path": "Output/gallery_v2/vendor/live2d/pixi-live2d-display-cubism4.min.js",
-      "version": "0.4.0（包内 VERSION=\"0.4.0\"）",
-      "bytes": 119922,
-      "sha256": "af1267e6d52759b245766c578d905bfa025b532d5c3cc727c370957c4409e21b",
-      "license": "MIT（registry.npmmirror.com/pixi-live2d-display/0.4.0 → license=MIT）",
+      "version": "0.4.0 + 本地补丁 colorpatch-20261019（MultiplyColor/ScreenColor）",
+      "bytes": 227011,
+      "sha256": "725a35668d9679e41db59eec8997d188750ae1f43bade11b84ec5f05e3436df6",
+      "license": "MIT（上游 0.4.0）；本文件为 MIT 代码的本地补丁版",
       "sources": [
-        { "url": "https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js", "verified": true },
-        { "url": "https://unpkg.com/pixi-live2d-display@0.4.0/dist/cubism4.min.js", "verified": true }
+        {
+          "local": "gallery_src/vendor/live2d/pixi-live2d-display-cubism4-patched.js",
+          "verified": true
+        }
       ],
-      "rename": "上游文件名 dist/cubism4.min.js → 本机改名 pixi-live2d-display-cubism4.min.js（改名不改内容，哈希一致）",
-      "note": "⚠️ 这个 0.4.0 的 cubism4 模块里 setIsLoop() 只有定义、全 bundle 无调用点，Meta.Loop 被无视——修在前端（gallery_src/index.html 出现 6 次 setIsLoop），**不要改这个库文件**，否则本台账的哈希就失效了。"
+      "rename": "上游 dist/cubism4.js（0.4.0 未压缩）→ 本机改名 pixi-live2d-display-cubism4.min.js；补丁内容见 note",
+      "note": "⚠️ 本机补丁：0.4.0 的 Cubism 渲染器完全不读 moc3 的 per-drawable MultiplyColor / ScreenColor，导致 multiply=[0,0,0] 的阴影/描边层被画成原色（虚影）、screen=[1,1,1] 的白色填充层被画成贴图原样（ougen_8 touch_idle17 倒酒的白瓶白杯）。补丁只做三件事：三个 fragment shader 加 u_multiplyColor/u_screenColor（公式抄 Cubism 5 官方 shader）、setupShaderProgram 按当前 drawable 绑 uniform、doDrawModel 记 drawableIndex。上游 0.4.0 的 setIsLoop 仍不调用，Meta.Loop 由前端处理，不要混。"
     },
     {
       "path": "Output/gallery_v2/vendor/spine/spine-all.js",
@@ -57,9 +73,21 @@
       "sha256": "7304a0b7f8db529e5ce32614acfe5e49e712c706660f20906bc37b7d2c708cf7",
       "license": "文件内无许可头（无 Copyright/(c)/License 行）。上游 EsotericSoftware/spine-runtimes 3.8 受 Spine Runtimes License 约束——**不要凭这条推断可自由再分发**。",
       "sources": [
-        { "url": "https://cdn.jsdelivr.net/gh/EsotericSoftware/spine-runtimes@3.8/spine-ts/build/spine-all.js", "verified": true, "observed": "2026-10-18 实测 499623B / sha7304a0b7；与旧本机份(501448B/sha4782fb5f)同为 3.8.75 但不同构建（上游官方），可按哈希校验落盘" },
-        { "url": "https://fastly.jsdelivr.net/gh/EsotericSoftware/spine-runtimes@3.8/spine-ts/build/spine-all.js", "verified": true, "observed": "jsDelivr 的 Fastly CDN 镜像，内容同官方构建" },
-        { "url": "https://gcore.jsdelivr.net/gh/EsotericSoftware/spine-runtimes@3.8/spine-ts/build/spine-all.js", "verified": true, "observed": "jsDelivr 的 Gcore CDN 镜像（部分网络可达性更好）" }
+        {
+          "url": "https://cdn.jsdelivr.net/gh/EsotericSoftware/spine-runtimes@3.8/spine-ts/build/spine-all.js",
+          "verified": true,
+          "observed": "2026-10-18 实测 499623B / sha7304a0b7；与旧本机份(501448B/sha4782fb5f)同为 3.8.75 但不同构建（上游官方），可按哈希校验落盘"
+        },
+        {
+          "url": "https://fastly.jsdelivr.net/gh/EsotericSoftware/spine-runtimes@3.8/spine-ts/build/spine-all.js",
+          "verified": true,
+          "observed": "jsDelivr 的 Fastly CDN 镜像，内容同官方构建"
+        },
+        {
+          "url": "https://gcore.jsdelivr.net/gh/EsotericSoftware/spine-runtimes@3.8/spine-ts/build/spine-all.js",
+          "verified": true,
+          "observed": "jsDelivr 的 Gcore CDN 镜像（部分网络可达性更好）"
+        }
       ],
       "gap": "已解决（2026-10-18）：4 个 vendor 中此前唯一无可用下载源的，现改用上游官方 spine-runtimes @3.8 构建为 verified 网络源（cdn/fastly/gcore 三路镜像）。前端加载的 spine runtime 内容已由旧本机份(501448B)换为官方构建(499623B)，验证走三层（`fetch --check` 4/4 指纹 + 官方构建同为 3.8.75 + 前端依赖 spine 符号 9/9 全覆盖，见 docs/WORKFLOWS.md WF-36 / docs/TROUBLESHOOTING.md §122）；⚠️ 浏览器渲染像素级回归因本机只有 Edge（headless CDP 报 Multiple targets 起不来）**暂未跑**，待 Chrome/CDP 环境就绪（scripts/diag/verify_spine_vendor.py 已备）。⚠️ 旧本机份 tools/spine-viewer/spine-runtime/3.8_spine-all.js(501448B/sha4782fb5f) 已不是本台账期望哈希，勿再当源。"
     }

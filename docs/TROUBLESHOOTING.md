@@ -6761,7 +6761,9 @@ drag→自身、`#l2Curr` 同步）；`deploy_gallery.py --check` 6/6 同 inode 
 1. 条目不存在 / `fallback:true`（无待机候选）→ 默认；
 2. best 组不在 `definitions` 或长度为 0（懒加载前）→ 默认；
 3. 默认 idleGroup 也在 `runners_up` 时，必须 `best_norm < 0.85 × default_norm`，否则视为「伪最优」→ 默认；
-4. 默认组不在候选（无共同驱动参数）→ 允许 best（如 `zhenzhuhao_2 touch_idle25` → `idle20`，nb=0）。
+4. 默认组不在候选（无共同驱动参数）→ 允许 best（如 `zhenzhuhao_2 touch_idle25` → `idle20`，nb=0）；
+5. **`touch_idle*` 例外：无条件走 best**（用户 2026-10-19 判据：别把 `touch_idleN` 吞回 `idle`）。
+   全库 1,945 条 touch_idle 中 **148 条**因此从默认 idle 切到对应变体（aersasi_2 touch_idle2→idle5、aersasi_3 touch_idle31→idle1）。
 
 **实测（`l2d_motion_chain_verify.py`，17 case 连续 4 轮全 PASS）**：
 - `aersasi_2 touch_head`：best=`idle5` 只比 `idle` 好 **2%** → 实际回 `idle`（伪最优）；
@@ -6790,3 +6792,45 @@ Model/Opacity 曲线也 **0 条**以 0 结束 ⇒ 数据层没有「淡出到黑
 **涉及文件**：`gallery_src/index.html`（`_pickFallback`/`startRandomMotion`）、
 `Output/gallery_v2/motion_chain.json`、`scripts/diag/l2d_motion_chain_verify.py`。相关 WF-33/WF-37、§119/§120。
 
+
+## §125. Live2D 与游戏画面不一致的总根因：0.4.0 运行时丢弃 per-drawable MultiplyColor/ScreenColor（2026-10-19）
+
+**问题**（用户两处肉眼差异，实际是同一个根因）：
+1. `ougen_8` 的 `idle8`（左右分屏动作）在分割线旁有锯齿状虚影 / 一层多余的白边；
+2. `ougen_8 touch_idle17` 末尾倒酒，游戏里酒杯和酒瓶是**白色填充**的剪影，画廊里却是贴图原样（琥珀色酒液 + 银色摇壶）。
+
+**根因**：`pixi-live2d-display 0.4.0` 里的 Cubism 渲染器只支持**模型级** `u_baseColor`，**完全不读** moc3 4.2+ 的 per-drawable `MultiplyColor` / `ScreenColor`。排查：
+- 运行目录 bundle 全文搜 `multiplyColor|screenColor|MultiplyColor|ScreenColor` = **0 命中**；
+- 但 `live2dcubismcore.min.js` 暴露了 `getDrawableMultiplyColors` / `getDrawableScreenColors`，`coreModel._model.drawables.multiplyColors` / `.screenColors` 是现成的 `Float32Array`；
+- `ougen_8` 实测 842 个 drawable：**170 个 multiply=[0,0,0,1]**（本该被压成黑色/隐去的阴影、描边、分屏遮罩层）、**3 个 screen=[1,1,1,1]**（本该白色填充的瓶子/杯子）。默认值是 multiply=[1,1,1,1]、screen=[0,0,0,1]。
+
+⇒ 那 170 个「本该黑掉」的层被画成原色，就是分割线旁的**虚影**；那 3 个「本该白填充」的层被画成贴图，就是**倒酒画面和游戏不一样**。**不是 moc3/动作/提取问题**（这些文件与 AS 版一致，§116），也**不是 mask 抗锯齿**（res=1/2/4 对照，白色带宽度不随分辨率消失）。
+
+**修法**：给 0.4.0 的 Cubism 渲染器打一个**最小补丁**（三处）：
+1. 三个 fragment shader（普通 / 带 mask / 反相 mask）各加 `u_multiplyColor`、`u_screenColor`，按 Cubism 5 官方公式：
+
+```
+texColor.rgb = texColor.rgb * u_multiplyColor.rgb;
+texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb * u_screenColor.rgb);
+```
+
+2. `setupShaderProgram()` 里按当前 drawable 取颜色并 `uniform4f`（缺省回落 1,1,1,1 / 0,0,0,1）；
+3. `doDrawModel()` 在每次 `drawMesh` 前记 `this._drawableIndex`。
+
+补丁后的 0.4.0（未压缩，227KB）落在 `Output/gallery_v2/vendor/live2d/pixi-live2d-display-cubism4.min.js`；**可复现副本**入库 `gallery_src/vendor/live2d/pixi-live2d-display-cubism4-patched.js`，`gallery_src/vendor/MANIFEST.json` 改成 `local` 源 + 新 sha/bytes（换机器 `fetch_gallery_vendor.py` 会直接拷它）。
+
+**验证**：
+- `ougen_8 idle8`：分割线旁虚影消失（全页截图前后对照，见 `.diag/l2dshot/` 与 `.diag/filter/`）；
+- `ougen_8 touch_idle17`：末尾酒瓶/酒杯变成**纯白填充**，与游戏描述一致；
+- 抽样 `aersasi_2 idle3` / `aersasi_3 idle5` / `zhangwu_2 idle`：画面正常、无整块变黑；
+- `scripts/diag/hit_verify.py --only ougen_8`：30 个部位 **HIT 27 / INGROUP 3 / WIRING 0**，可点中率 100%；
+- `fetch_gallery_vendor.py --check` 4/4；`l2d_motion_chain_verify.py` 19 case 全 PASS。
+
+**影响面**：所有 moc3 里带非默认 multiply/screen 颜色的模型都会变（这正是「和游戏一致」的部分）；默认色的模型着色器分支逐像素等价（默认 uniform = 原行为）。
+
+**已排除的假设**：
+- 「分割线白边是贴图 UV 出血/过滤」→ 否证：NEAREST / PMA / res=1/2/4 对照，白带仍随几何走；
+- 「白色倒酒是 moc3/贴图缺件」→ 否证：moc3 与 AS 逐字节一致，贴图里有白色区域；
+- 「0.4.0 升 0.5.0-beta 就能解决」→ 0.5.0-beta 确实支持颜色，但它要求 Pixi 7（本机 6.5.2），实测换上后 `Live2DModel.from` 不 resolve；补丁 0.4.0 是当前栈的最小改动。
+
+**涉及文件**：`gallery_src/vendor/live2d/pixi-live2d-display-cubism4-patched.js`、`gallery_src/vendor/MANIFEST.json`、`Output/gallery_v2/vendor/live2d/pixi-live2d-display-cubism4.min.js`、`scripts/fetch_gallery_vendor.py`、`scripts/diag/hit_verify.py`。相关 WF-38、§116、WF-36。

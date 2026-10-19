@@ -21,7 +21,13 @@ import websocket
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import cdp_slot            # 端口 / profile 一律不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
-CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
+CHROME = next((p for p in [
+    r'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    r'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    os.path.expandvars(r'%LOCALAPPDATA%/Google/Chrome/Application/chrome.exe'),
+    r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+    r'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+] if os.path.isfile(p)), r'C:/Program Files/Google/Chrome/Application/chrome.exe')
 PORT, PROFILE = cdp_slot.slot(ROOT, 'hitv')
 limit = int(sys.argv[sys.argv.index('--limit') + 1]) if '--limit' in sys.argv else 0
 only = [x for x in (sys.argv[sys.argv.index('--only')+1] if '--only' in sys.argv else '').split(',') if x]

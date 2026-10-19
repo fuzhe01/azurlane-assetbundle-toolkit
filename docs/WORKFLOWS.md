@@ -2996,6 +2996,8 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
    `py -3 scripts/diag/l2d_motion_chain_verify.py`
    - 必须覆盖：伪最优（aersasi_2 touch_head→idle）、明确更优（jianye_4 mail→idle3）、
      无候选（z46_4 mission→idle）、drag 自循环、touch_idle 变体、默认组不在候选（zhenzhuhao_2 touch_idle25→idle20）。
+   - **`touch_idle*` 例外**：即使 best 只比默认好 1% 也必须回 best（全库 148 条非默认）；
+     探针要覆盖 aersasi_2 touch_idle2→idle5、aersasi_3 touch_idle31→idle1 这两条被 15% 闸门误伤的用例。
 3. **改完先刷平再验**：`py -3 scripts/deploy_gallery.py` → `--check` 6/6；
    `Edit`/原子保存会**断硬链**，提交前必须刷平，提交后再 `--relink` 补链。
 4. **画质要看图**：同屏 1x/2x 截图对照（`.diag/spine_ab/`），别只信数值；数值对但取景/构图变了也是回退。
@@ -3019,3 +3021,27 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 `scripts/diag/l2d_motion_chain_verify.py`、`scripts/deploy_gallery.py`、`Output/gallery_v2/motion_chain.json`。
 相关：§123/§124、WF-16（前端硬规则）、WF-33（回落语义）、WF-14（Spine 播放）。
 
+
+### WF-38: 给画廊第三方运行时打本地补丁（Live2D 颜色案例 + MANIFEST local 源 — 2026-10-19）
+
+**场景**：画廊用的第三方库有功能缺失（本例：`pixi-live2d-display 0.4.0` 不读 moc3 的 per-drawable `MultiplyColor`/`ScreenColor`），但上游没有兼容当前 Pixi 版本的新版。需要在**不换栈**的前提下打最小补丁，并让换机器可复现。
+
+#### 判据
+
+1. **先证「缺的是库不是数据」**：同一份 moc3 与 AssetStudio 逐字节一致；库 bundle 搜目标符号 0 命中；core 里能读到颜色数组（`coreModel._model.drawables.multiplyColors`）。三条同时成立才动库。
+2. **补丁只改渲染末端**：fragment shader 加 2 个 uniform + `setupShaderProgram` 按 drawable 取色 + `doDrawModel` 记 `_drawableIndex`。不要重写/换整个渲染器。
+3. **默认值必须等价**：颜色数组缺失时回落 `multiply=[1,1,1,1] / screen=[0,0,0,1]`，否则没设颜色的模型会整块变黑（本例第一次就黑屏了）。
+4. **落盘两份**：运行目录一份 + `gallery_src/vendor/...` 入库一份；`gallery_src/vendor/MANIFEST.json` 把该条改成 `local` 源并更新 sha/bytes；`fetch_gallery_vendor.py --check` 必须 4/4。
+5. **验收必须看图**：本例 `ougen_8 idle8` 分割线虚影、`touch_idle17` 末尾白瓶白杯；再看 3 个默认色模型确认没被补丁弄坏；最后跑 `hit_verify.py --only ougen_8` 确认 WIRING=0。
+
+#### 踩坑记录
+
+- **0.5.0-beta 不能直接上**：它支持颜色，但 peerDependency 是 Pixi 7；本机 Pixi 6.5.2。实测换 Pixi 7 + beta 后 `PIXI.live2d` 为空（beta UMD 还引用 `process`），`Live2DModel.from` 不 resolve。补丁 0.4.0 是当前栈最小改动。
+- **颜色数组在 `getModel()._model.drawables`**，不在框架包装的 `getModel().drawables`；读错层级会全部走默认值（画面不变，误以为补丁没生效）。
+- **`u_multiplyColor.a` 不参与公式**（Cubism 官方：A 不用于 Multiply/Screen 计算），别把 alpha 乘进去。
+- **补丁后文件是未压缩 227KB**，文件名仍叫 `.min.js`；以 MANIFEST 的 sha 为准，别按文件名判断。
+- **`hit_verify.py` 原先硬编码 Chrome**，本机只有 Edge → 直接改 `FileNotFoundError`。已加 Chrome/Edge 候选（与其它探针一致），否则无法做补丁后的点击回归。
+
+#### 涉及文件
+
+`gallery_src/vendor/live2d/pixi-live2d-display-cubism4-patched.js`（补丁正本）、`gallery_src/vendor/MANIFEST.json`（local 源 + sha）、`Output/gallery_v2/vendor/live2d/pixi-live2d-display-cubism4.min.js`（运行副本）、`scripts/fetch_gallery_vendor.py`（local 源优先）、`scripts/diag/hit_verify.py`（Chrome/Edge 回退）。相关：§125、WF-36（vendor 换源）、§123/§124（本轮另两处修复）。

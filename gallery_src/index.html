@@ -1314,10 +1314,13 @@ async function renderLive2D(s, sk){
     const _normOf=(c,grp)=>{ const arr=(c&&c.runners_up)||[];
       const r=arr.find(x=>x.group===grp); return r?r.norm:null; };
     const FALLBACK_MAX_RATIO=0.85;   // best 至少要省 15% 的末帧差异，否则视为"没有明显更优"
-    const _pickFallback=(c)=>{
+    const _pickFallback=(c,alwaysBest)=>{
       const b=c&&c.best; if(!b||c.fallback) return null;
       const defs=mm.definitions[b]; if(!defs||!defs.length) return null;
       const nb=c.best_norm; if(nb==null) return null;
+      /* touch_idle* 是「触摸后回到对应待机」的成对语义：即使 best 只比默认 idle 好 1%，
+         也必须回 best（用户的判据：别把 touch_idleN 吞回 idle）。长动作才走 15% 闸门。 */
+      if(alwaysBest) return b;
       const nd=_normOf(c,idleGroup);
       if(nd!=null && nd>0 && nb > nd*FALLBACK_MAX_RATIO) return null;
       return b; };
@@ -1356,7 +1359,8 @@ async function renderLive2D(s, sk){
         if(lg && /^touch_drag/.test(low)) return ret(lg);          // ① 拖拽短动画自循环
         if(lg && idleSet.has(lg)) return _origRandomMotion(g,i,p); // ② 待机组：库 loop，不接管
         const c=chainModel&&lg&&chainModel.chain[lg];
-        const best=_pickFallback(c);                                // ③ 明显更优的待衔接变体
+        const isTI=/^touch_idle/.test(low);
+        const best=_pickFallback(c, isTI);                          // ③ touch_idle 无条件 best；长动作走 15% 闸门
         if(best) return ret(best);
         return ret(idleGroup);                                      // ④ 黑屏/无候选/伪最优 → 默认
       }catch(e){}

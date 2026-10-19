@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.9.1
+version: 1.9.2
 ---
 
 # Live2D 网页运行时集成
@@ -494,7 +494,10 @@ idle 变体判定。
 1. 条目不存在 / `fallback:true`（无待机候选）→ 默认 `idleGroup`；
 2. best 组不在 `definitions` 或长度为 0（懒加载前）→ 默认；
 3. 默认 `idleGroup` 也在 `runners_up` 时，必须 `best_norm < 0.85 × default_norm`，否则回默认；
-4. 默认组不在候选（没有共同驱动参数）→ 允许 best（如 `zhenzhuhao_2 touch_idle25` nb=0 → idle20）。
+4. 默认组不在候选（没有共同驱动参数）→ 允许 best（如 `zhenzhuhao_2 touch_idle25` nb=0 → idle20）；
+5. **`touch_idle*` 例外：即使只差 1% 也必须回 best**（用户 2026-10-19 判据：别把 `touch_idleN` 吞回 `idle`）。
+   全库 1,945 个 touch_idle 条目，其中 148 个因此从默认 idle 切到对应变体（aersasi_2 touch_idle2→idle5、
+   aersasi_3 touch_idle31→idle1）。
 
 **判据/数据**：aersasi_2 touch_head 的 best=idle5 只比 idle 好 2% → 回 idle；jianye_4 mail 的 best=idle3
 （nb 0.0145 vs idle 8866.9）→ 必须走 idle3；z46_4 mission 是 fallback → 回 idle。全库 3,688 个长动作、
@@ -510,3 +513,24 @@ idle 变体判定。
 `startMotion(..., NORMAL=2)` 压过正在播的 IDLE(1)；记 pending 目标、最多 10s 内拒绝后续 `startRandomMotion`。
 探针 `forceEnd` 也要先 `state.complete()` 再 `stopAllMotions()`，否则优先级残留 = 假 FAIL。完整判据：§124 / WF-37。
 
+
+## 13. MultiplyColor / ScreenColor：0.4.0 运行时会整层丢色（2026-10-19，version 1.9.2）
+
+moc3 4.2+ 给每个 drawable 存了 `MultiplyColor` 与 `ScreenColor`。游戏里大量用它们做：
+- **multiply=[0,0,0,1]**：阴影/描边/分屏遮罩层（应压黑）；
+- **screen=[1,1,1,1]**：白色填充的剪影（本例倒酒的白瓶白杯）。
+
+`pixi-live2d-display 0.4.0` 的 Cubism 渲染器**只认模型级 u_baseColor**，全文搜 `multiplyColor` 0 命中；颜色数组其实在 `coreModel._model.drawables.multiplyColors / .screenColors`（`Float32Array`）。丢弃的后果：该黑的层被画成原色 → **分割线虚影/白边**；该白填充的层被画成贴图 → **和游戏画面不一致**。
+
+**修法（最小补丁，别换栈）**：三个 fragment shader 加 `u_multiplyColor/u_screenColor`，`setupShaderProgram` 按 `renderer._drawableIndex` 取色，`doDrawModel` 每次 `drawMesh` 前记索引。公式：
+
+```
+texColor.rgb = texColor.rgb * u_multiplyColor.rgb;
+texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb * u_screenColor.rgb);
+```
+
+**红线**：颜色数组缺失时必须回落 `multiply=[1,1,1,1] / screen=[0,0,0,1]`，否则默认模型整块变黑（首版实测）。读色层级是 `renderer.getModel()._model.drawables`，不是 `renderer.getModel().drawables`。
+
+**不要升 0.5.0-beta**：它支持颜色但要 Pixi 7；当前栈 6.5.2，换上后 `Live2DModel.from` 不 resolve。补丁版要入库（`gallery_src/vendor/live2d/...-patched.js`）+ MANIFEST `local` 源，否则换机器 fetch 会拉回原版。
+
+**验收**：`ougen_8 idle8` 分割线虚影消失、`touch_idle17` 白瓶白杯出现；再抽 3 个默认色模型确认没变黑；`hit_verify.py --only ougen_8` WIRING=0。完整取证：§125 / WF-38。

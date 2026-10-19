@@ -91,6 +91,8 @@ cases = [
   ('ougen_8',   'main_1',       None, True),    # main_* 场景 → 按同一闸门判定
   ('aersasi_3', 'touch_head',   None, True),    # best=idle1 与 idle 打平 → 默认 idle
   ('aersasi_3', 'touch_idle2',  None, True),    # best=idle2 好 6 倍 → 必须走变体
+  ('aersasi_2', 'touch_idle2',  None, True),    # ⚠️ 2026-10-19 新语义：best=idle5 只差 8%，touch_idle 仍必须走 best
+  ('aersasi_3', 'touch_idle31', None, True),    # best=idle1 与 idle 打平，touch_idle 仍必须走 best
   ('aersasi_3', 'touch_drag1',  'touch_drag1', True),  # drag 循环 → 回落自身
   ('jianye_4',  'mail',         None, True),    # best=idle3（norm 0.01 vs 默认 idle 8866）→ 必须走变体
   ('z46_4',     'mission',      None, True),    # fallback=true（无候选）→ 默认 idle
@@ -137,6 +139,8 @@ def expected_for(key, action):
     nb = c.get('best_norm')
     if nb is None:
         return ig, 'no-norm'
+    if action.startswith('touch_idle'):
+        return b, 'best(touch_idle always)=%s' % b
     nd = next((r.get('norm') for r in (c.get('runners_up') or []) if r.get('group') == ig), None)
     if nd is not None and nd > 0 and nb > nd * 0.85:
         return ig, 'marginal(best=%s %.0f%% better)' % (b, (nd / nb - 1) * 100 if nb else 0)
