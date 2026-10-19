@@ -96,6 +96,12 @@ cases = [
   ('aersasi_3', 'touch_drag1',  'touch_drag1', True),  # drag 循环 → 回落自身
   ('jianye_4',  'mail',         None, True),    # best=idle3（norm 0.01 vs 默认 idle 8866）→ 必须走变体
   ('z46_4',     'mission',      None, True),    # fallback=true（无候选）→ 默认 idle
+  ('ougen_8',   'complete',     None, True),    # 旧表误判 idle9（22/337）→ 覆盖度闸门后应回 idle
+  ('ougen_8',   'home',         None, True),    # 应回 idle13，不再 idle9
+  ('ougen_8',   'login',        None, True),    # 应回 idle13
+  ('ougen_8',   'main_1',       None, True),    # 应回 idle13
+  ('ougen_8',   'mission_complete', None, True),# 应回 idle7
+  ('ougen_8',   'touch_head',   None, True),    # 应回 idle13
 ]
 CHAIN = json.load(open(os.path.join(ROOT, 'Output', 'gallery_v2', 'motion_chain.json'), encoding='utf-8')) \
   .get('models', {})
@@ -112,6 +118,12 @@ for m in ['zhangwu_2', 'zhenzhuhao_2', 'z46_4']:
     if tids: cases.append((m, tids[0], None, True))
     if longs: cases.append((m, longs[0], None, True))
     if drags: cases.append((m, drags[0], drags[0], True))
+_ONLY = []
+if '--models' in sys.argv:
+    _ONLY = [x for x in sys.argv[sys.argv.index('--models') + 1].split(',') if x]
+if _ONLY:
+    cases = [c for c in cases if c[0] in _ONLY]
+
 def _groups(key):
     p = os.path.join(ROOT, 'Output', 'Live2D', key, key + '.model3.json')
     try:
@@ -139,6 +151,8 @@ def expected_for(key, action):
     nb = c.get('best_norm')
     if nb is None:
         return ig, 'no-norm'
+    if c.get('n_action_params') and c.get('best_coverage') is not None and c['best_coverage'] < 0.5:
+        return ig, 'low-coverage'
     if action.startswith('touch_idle'):
         return b, 'best(touch_idle always)=%s' % b
     nd = next((r.get('norm') for r in (c.get('runners_up') or []) if r.get('group') == ig), None)

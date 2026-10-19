@@ -107,6 +107,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 > ▸ **画质验收（2026-10-19）**：Live2D 2x 通过（DPR=2 时 buffer=2.00×CSS）；**Spine 此前每帧 DPR 校正是假绿灯**——`SceneRenderer.resize()` 把 buffer 改回 CSS 尺寸，DPR=2 仍 1.00×，已修（§123），改后 2.00×。旧探针只在 DPR=1 下测，现已默认 `--dpr 2`。
 > ▸ **Live2D 颜色（2026-10-19，§125/WF-38）**：0.4.0 运行时丢弃 per-drawable `MultiplyColor/ScreenColor` ⇒ 170 个 multiply=[0,0,0] 的层被画成原色（ougen_8 idle8 分割线虚影）、3 个 screen=[1,1,1] 的层没白填充（touch_idle17 倒酒）。已给 0.4.0 打最小补丁（三个 fragment shader + 按 drawable 绑 uniform），补丁副本入库并由 MANIFEST `local` 源供应；`hit_verify ougen_8` WIRING=0。
 > ▸ **touch_idle* 回落修正（2026-10-19）**：15% 闸门只约束长动作；`touch_idle*` 无条件回 best（全库 1,945 条中 **148 条**因此从默认 idle 切到对应变体）。
+> ▸ **2026-10-19 续修**：① 裁剪遮罩缓冲 256²→1024/2048（idle8 分割线锯齿）；② 回落差异度加覆盖度闸门（`n_params>=0.5*n_action`，195 个 best 变化，ougen_8 不再落 idle9）；③ 开场 login 设置（默认关，FORCE 启动，用户切动作先 complete）；④ 眼神跟随（默认开，LOW 优先级 ticker 直接写 `ParamEyeBallX/Y`）。
 > ▸ **画质补丁（2026-10-19）**：静态立绘默认上限改 **1:1**（不再二次放大，小图留白）；Spine 开 **MSAA**（`antialias:true`）。
 > ▸ **CG 入画廊（2026-10-19）**：`CG_v2` 235 张由 `build_gallery_index.py` 写成 `skin.cg`，并生成 `thumbs/<key>_cg.webp`；`gallery_index_diff_check --allow-skin cg` 只允许这 235 条变化。硬链去重 45 文件/201.8MB 已执行。
 

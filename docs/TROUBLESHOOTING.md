@@ -6848,3 +6848,39 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 **判据**：`transcode_bgm.py` 自带三条校验（产物存在 / ffprobe 时长差 <0.25s / 源 md5 进台账）；`--roundtrip 7` 真解码回 wav 比 md5。
 
 **涉及文件**：`scripts/export_cue_audio.py`、`scripts/transcode_bgm.py`、`scripts/build_bgm_index.py`、`ledger/bgm_transcode_flac.json`、`Output/Audio/BGM_flac`、`Output/gallery_v2/bgm.json`。相关 WF-39。
+
+## §127. Live2D 分割线的锯齿不是颜色，是裁剪遮罩缓冲只有 256²（2026-10-19）
+
+**问题**：ougen_8 idle8 分屏动作，分割线旁仍有一排「牙齿」状锯齿（用户红圈标出）。上一轮的颜色补丁已去掉虚影，但边缘锯齿仍在。
+
+**根因**：`CubismClippingManager_WebGL` 默认 `_clippingMaskBufferSize = 256`（0.4.0 源码 L2893），而 Live2D canvas 在 2x 下是 2098×1558；256² 的 mask 被拉伸到画布上，mask 边缘就是阶梯。不是贴图过滤，也不是颜色。
+
+**证据**：同一帧设 mask=256/1024/2048/4096 对照（`.diag/mask/mask_all.png`）——256 有明显阶梯，1024 起边缘平滑，2048/4096 肉眼无进一步收益。
+
+**修法**：模型 load 后、加进 stage 前调用：
+```js
+mdl.internalModel.renderer.setClippingMaskBufferSize((window.devicePixelRatio||1)>=2 ? 2048 : 1024);
+```
+实测 DPR=1 时 mask=1024、画面正常；改完 `seam_final.png` 分割线平滑。
+
+**已排除**：不是贴图 UV 出血（NEAREST/PMA 对照都还在）、不是颜色（multiply/screen 已修）、不是 res=1/2/4 能消掉（白带在，只是边缘更细）。
+
+**涉及文件**：`gallery_src/index.html`（`renderLive2D` 里 setClippingMaskBufferSize）、`Output/gallery_v2/vendor/live2d/pixi-live2d-display-cubism4.min.js`。相关 §125、WF-38/WF-40。
+
+## §128. 动作回落误判 idle9：差异度只算公共参数的均值，覆盖 22/337 也能拿第一（2026-10-19）
+
+**问题**：用户实测 ougen_8 的 `complete/home/login/main_1~4/mission_complete/touch_head` 全部回落到 `idle9`，明显不衔接。
+
+**根因**：`build_motion_chain_map.py` 的 `norm = Σ(Δ/range)² / N_common`。`idle9` 与这些动作只共有 **22 个参数**（动作驱动 337 个），分子天然小 ⇒ norm≈0，击败了共有 337 个参数但差异略大的 `idle`。差异度必须加**覆盖度**约束，不能只比均值。
+
+**修法**：
+1. 生成侧：先筛 `n_params >= 0.5 × n_action` 的候选（无合格候选才退回全体）；排序改为 `(norm, -n_params, 默认 idle 优先)`；输出 `n_action_params / best_coverage / n_qualified`。
+2. 前端：`_pickFallback` 再挡一次 `best_coverage < 0.5`（防旧表/手改表）。
+
+**结果**（重建 262 模型 / 6357 动作，195 个 best 变化）：
+- `complete → idle`、`home/login/main_1 → idle13`、`mission_complete → idle7`、`touch_head → idle13`；
+- `idle9` 不再出现；`l2d_motion_chain_verify.py --models ougen_8` 7 case 全 PASS；aersasi/jianye/z46 子集 12 case 全 PASS。
+
+**注意**：全库 fallback（无公共参数）仍是 2139 条，与旧表一致；单待机组模型（z46_4 等）本来就没有可比的第二组，fallback 回默认 idle 是对的。
+
+**涉及文件**：`scripts/build_motion_chain_map.py`、`Output/gallery_v2/motion_chain.json`、`gallery_src/index.html`（`_pickFallback`）、`scripts/diag/l2d_motion_chain_verify.py`。相关 §124/WF-37/WF-40。

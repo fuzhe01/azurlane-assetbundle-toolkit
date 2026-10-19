@@ -3072,3 +3072,26 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 #### 涉及文件
 
 `scripts/export_cue_audio.py`、`scripts/transcode_bgm.py`、`scripts/build_bgm_index.py`、`scripts/paths.py`、`ledger/bgm_transcode_flac.json`、`Output/gallery_v2/bgm.json`。相关：§126、§113（FLAC 无损判据）。
+
+### WF-40: Live2D 分屏锯齿 / 回落覆盖度 / 开场 login 与眼神跟随（2026-10-19）
+
+**场景**：修完颜色补丁后，仍要处理四类问题：① 分割线锯齿；② 长动作回落被少量公共参数误导；③ 开场自动播 login；④ 眼神跟随开关。
+
+#### 判据
+
+1. **遮罩缓冲**：`renderer.getClippingMaskBufferSize()` 默认 256；DPR>=2 设 2048、否则 1024；判据看 `.diag/mask/mask_all.png` 同帧 256/1024 对照，1024 起无阶梯。
+2. **回落覆盖度**：`motion_chain.json` 每条须有 `n_action_params/best_coverage`；`best_coverage < 0.5` 的候选不得当选；ougen_8 的 complete/home/login/main_*/mission_complete/touch_head 不得再落到 idle9。
+3. **开场 login**：设置项 `OPT.login` 默认 **关**（避免改变既有浏览习惯）；打开后 `currentGroup==='login'`、标签 `login`；用 FORCE 启动，用户切动作时先 `state.complete()` 防同级 reserve 拒绝。
+4. **眼神跟随**：`OPT.eye` 默认开；判据读 `ParamEyeBallX/Y`，指针移到右上应变为约 `+0.7/+0.6`（Y 取反），关掉后回 0。
+
+#### 踩坑记录
+
+- mask 256 是 Cubism SDK 默认值，不是我们的提取问题；只改画布 resolution 不会变大。
+- 差异度 `Σ/N_common` 天生偏向公共参数少的候选：ougen_8 idle9 只覆盖 22/337，norm≈0。必须先筛覆盖度再排序。
+- 眼位写在 `internalModel.update` 里会被随后的 `loadParameters()` 覆盖；要用 **LOW 优先级 ticker**（在 model.update 之后、render 之前）。
+- `mdl.focus()` 的 `focusController.x` 在 headless 下 target 变、x 不变，不能作为唯一实现；直接写 `ParamEyeBallX/Y` 更稳。
+- 开场 login 用 NORMAL 优先级压不过初始 idle（实测 currentGroup 仍 idle），必须 FORCE，并在用户动作前 `state.complete()`。
+
+#### 涉及文件
+
+`gallery_src/index.html`（`renderLive2D` 的 mask/eye/login、`_pickFallback`）、`scripts/build_motion_chain_map.py`、`Output/gallery_v2/motion_chain.json`、`scripts/diag/l2d_motion_chain_verify.py`。相关 §127/§128、WF-37/38。

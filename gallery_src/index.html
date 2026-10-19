@@ -492,6 +492,8 @@ main{position:relative;z-index:1}
     <button data-k="voice" title="点击立绘 / Live2D 部位时是否播放语音">点击出声</button>
     <button data-k="lines" title="播放台词时是否在画面下方显示中文正文">显示台词</button>
     <button data-k="remember" title="记住每个皮肤上次的缩放与位置，下次打开直接回到那里">记住视角</button>
+    <button data-k="eye" title="鼠标移动时模型视线是否跟随（与游戏同款；关闭后回正）">眼神跟随</button>
+    <button data-k="login" title="打开 Live2D 时先播 login 动作（与游戏登录画面一致；播完按回落规则走）">开场 login</button>
   </div></div>
   <div class="ctl"><label>配色</label><div class="opt" id="gTheme" title="昼 / 夜配色（状态会记住）">
     <button data-t="light">昼</button><button data-t="dark">夜</button>
@@ -556,7 +558,7 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)');   // 动效总开关�
    没有"需要关掉的花哨"，所以那颗按钮按用户要求删掉了（2026-09-28）。
    老用户 localStorage 里残留的 `bgfx:false` 会被 Object.assign 塞进来，但没人再读它——
    不清理是故意的：清它要写迁移代码，而那个键无害。 */
-let OPT = {voice:true, lines:true, remember:true};
+let OPT = {voice:true, lines:true, remember:true, eye:true, login:false};
 try{ Object.assign(OPT, JSON.parse(localStorage.getItem(OPT_KEY) || '{}')); }catch(e){}
 function saveOpt(){ try{ localStorage.setItem(OPT_KEY, JSON.stringify(OPT)); }catch(e){} }
 function paintOpt(){ document.querySelectorAll('#gOpt button')
@@ -1215,6 +1217,9 @@ async function renderLive2D(s, sk){
     wrap.appendChild(app.view); my.app=app;
     const L2M=PIXI.live2d.Live2DModel;
     const mdl=await L2M.from(P+model+'/'+sk.live2dBase+'.model3.json',{autoInteract:false});
+    /* 裁剪遮罩缓冲默认只有 256²，放大到 2x 画布上会把 mask 边缘拉成锯齿（ougen_8 idle8
+       分割线的"牙齿"）。按 DPR 提到 1024/2048；实测 1024 起边缘就平滑，2048 与 4096 无肉眼差。 */
+    try{ mdl.internalModel.renderer.setClippingMaskBufferSize((window.devicePixelRatio||1)>=2?2048:1024); }catch(e){}
     if(my.cancelled||seq!==_l2seq){ app.destroy(true,{children:true}); return; }
     app.stage.addChild(mdl);
     /* fit 基准必须用 internalModel.width/height（= Cubism 画布单位 × pixelsPerUnit）。
@@ -1317,6 +1322,10 @@ async function renderLive2D(s, sk){
       const b=c&&c.best; if(!b||c.fallback) return null;
       const defs=mm.definitions[b]; if(!defs||!defs.length) return null;
       const nb=c.best_norm; if(nb==null) return null;
+      /* 覆盖度保险丝：候选只覆盖动作参数的一小部分时，norm 会因"公共参数少"虚假变小
+         （ougen_8 旧表把 complete/home/main_1~4/touch_head 全判给 idle9，n_params=22/337）。
+         表已按 >=50% 重建，这里再挡一次，防止旧表/手改表混入。 */
+      if(c.n_action_params && c.best_coverage!=null && c.best_coverage < 0.5) return null;
       /* touch_idle* 是「触摸后回到对应待机」的成对语义：即使 best 只比默认 idle 好 1%，
          也必须回 best（用户的判据：别把 touch_idleN 吞回 idle）。长动作才走 15% 闸门。 */
       if(alwaysBest) return b;
@@ -1427,12 +1436,26 @@ async function renderLive2D(s, sk){
        用户触发的动作一律 FORCE：库的 state.reserve() 会拒绝 ≤ 当前优先级的请求（idle 占 IDLE=1），
        不 FORCE 就连点第二个部位都放不出来。回落 idle 交给运行时（见 ②），不再需要定时器。 */
     const played=new Set();
-    const play=g=>{ if(!g) return false;
+    const play=(g,pr)=>{ if(!g) return false;
       try{ playVoice(g);
         /* 动态标签：播出即同步显示当前组（非待机动作播放中显示动作名，便于回落前后对照） */
         const _l2c=document.getElementById('l2Curr'); if(_l2c) _l2c.textContent=g;
-        mm.startMotion(g,0,MP.FORCE);
+        /* 开场 login 用 FORCE 才压得过初始 idle；用户一动手先把它标 complete，否则同级 priority
+           会让动作被 reserve 拒掉（实测 FORCE 才能在 currentGroup 里看到 login）。 */
+        try{ if(g!=='login' && mm.state && mm.state.currentGroup==='login' && mm.state.complete) mm.state.complete(); }catch(e){}
+        mm.startMotion(g,0,pr||MP.FORCE);
         if(!idleSet.has(g)) played.add(g); return true; }catch(e){ return false; } };
+    try{ window.__l2play=play; }catch(e){}
+    /* ---------- 眼神跟随 ----------
+       不用 mdl.focus()：它绕 focusController，实测 target 变了但 x 不更新（headless 与真机都可能），
+       且部分模型没有标准 ParamEyeBallX。这里直接每帧写 ParamEyeBallX/Y（有就生效，没有就 no-op），
+       位置按画布中心归一化到 [-1,1]；ticker 监听排在内置 model update 之后，不会被动作曲线覆盖。 */
+    const eyeT={x:0,y:0}; try{ window.__eyeT=eyeT; }catch(e){}
+    wrap.addEventListener('pointermove', e=>{ if(!OPT.eye) return;
+      try{ const r=app.view.getBoundingClientRect();
+        eyeT.x=Math.max(-1,Math.min(1,(e.clientX-r.left-r.width/2)/(r.width/2)));
+        eyeT.y=Math.max(-1,Math.min(1,(e.clientY-r.top-r.height/2)/(r.height/2))); }catch(err){} });
+    wrap.addEventListener('pointerleave', ()=>{ eyeT.x=0; eyeT.y=0; });
     /* ---------- 非 idle 动作的参数残留复位（docs/TROUBLESHOOTING.md §21 末段） ----------
        touch_idle1（安土「午夜的瑰色电梯」）动画 252 条曲线，其中 15 条 idle 从不驱动；clip 播完
        没有任何曲线把它们写回去 → 整体位移停在末帧 → 57 个判定区全部被甩出画布，用户「进去就出不来」。
@@ -1457,6 +1480,13 @@ async function renderLive2D(s, sk){
       for(const it of rest.items) try{ cm.setParameterValueByIndex(it[0], it[1]+(it[2]-it[1])*k); }catch(e){}
       if(k>=1) rest=null; };
     app.ticker.add(restTick);
+    /* 眼睛参数用 **LOW 优先级的 ticker** 写：它在 Live2DModel.update（NORMAL）之后、
+       app.render 之前执行，此时 loadParameters 已经把动作/物理值铺完，写进去才留到本帧绘制。
+       写在 model.update 里会被随后的 loadParameters 覆盖（实测）。 */
+    app.ticker.add(()=>{ if(!OPT.eye) return;
+      try{ cm.setParameterValueById('ParamEyeBallX', eyeT.x);
+           cm.setParameterValueById('ParamEyeBallY', -eyeT.y); }catch(e){} },
+      null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
     const bar=document.getElementById('l2bar');
     bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
     const sel=document.getElementById('l2Motion');
@@ -1465,6 +1495,12 @@ async function renderLive2D(s, sk){
       if(cur) sel.value=cur; };
     fillSel();
     { const _l2c=document.getElementById('l2Curr'); if(_l2c) _l2c.textContent=idleGroup; }
+    /* 开场 login：与游戏一致先播登录动作；播完仍走同一套回落（不改变 lastGroup 语义）。
+       延迟 300ms 让 fit/贴图先稳定；用户已切走则不播。 */
+    if(OPT.login && groups.includes('login')){
+      setTimeout(()=>{ if(my.cancelled||seq!==_l2seq) return;
+        try{ sel.value='login'; play('login', MP.FORCE); }catch(e){} }, 300);
+    }
     /* 表是异步来的（本地小文件），回填后只刷新下拉标签与语音计数，不阻塞模型加载主流程。
        计数只算「模型里真的有的组」，否则会把表里其它类别（战斗/强化…）算进来说话数虚高。 */
     Promise.all([loadVoiceMap(), loadWords()]).then(([m])=>{ const e=m[sk.key]||{}, map=e.l2d||{};
@@ -2242,6 +2278,11 @@ paintTheme();
       OPT[k]=!OPT[k]; saveOpt(); paintOpt();
       if(k==='voice' && !OPT.voice) stopSkinVoice();   // 关掉就把手上正在播的那条停掉，别"关了还有声"
       if(k==='lines' && !OPT.lines) hideSub();
+      if(k==='eye' && !OPT.eye){                       // 关跟随 → 视线回正（不留在最后一次鼠标位置）
+        try{ const m=l2State&&l2State.app&&l2State.app.stage.children[0];
+          if(m){ const c=m.internalModel.coreModel;
+            c.setParameterValueById('ParamEyeBallX', 0); c.setParameterValueById('ParamEyeBallY', 0); } }catch(e){}
+      }
       if(tab==='voice') renderVoice();                 // 台词列要随开关显隐，重画一次
     };
   });
