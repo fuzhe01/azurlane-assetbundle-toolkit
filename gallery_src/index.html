@@ -1217,9 +1217,22 @@ async function renderLive2D(s, sk){
     wrap.appendChild(app.view); my.app=app;
     const L2M=PIXI.live2d.Live2DModel;
     const mdl=await L2M.from(P+model+'/'+sk.live2dBase+'.model3.json',{autoInteract:false});
-    /* 裁剪遮罩缓冲默认只有 256²，放大到 2x 画布上会把 mask 边缘拉成锯齿（ougen_8 idle8
-       分割线的"牙齿"）。按 DPR 提到 1024/2048；实测 1024 起边缘就平滑，2048 与 4096 无肉眼差。 */
-    try{ mdl.internalModel.renderer.setClippingMaskBufferSize((window.devicePixelRatio||1)>=2?2048:1024); }catch(e){}
+    /* 裁剪遮罩缓冲：Cubism 把多个 mask 铺在同一张正方形 RT 上（每块约 N/⌈√maskCount⌉），
+       所以 N 必须 ≥ 画布长边 × √maskCount 才能 1:1；只按 DPR 给 1024/2048 在 mask 多时仍会放大出阶梯。
+       统一按模型实际 mask 数算（不需要逐模型配置），上限 8192。 */
+    try{
+      const _r=mdl.internalModel.renderer;
+      let _mc=1;
+      try{ const _cm=_r._clippingManager;
+        _mc=(_cm&&_cm._clippingContextListForMask&&_cm._clippingContextListForMask.length)||1; }catch(e){}
+      let _long=2098;
+      try{ _long=Math.max(_r.gl.drawingBufferWidth||0,_r.gl.drawingBufferHeight||0)||_long; }catch(e){}
+      const _need=Math.ceil(_long*Math.sqrt(Math.max(1,_mc)));
+      let _n=1024;
+      while(_n<_need && _n<8192) _n*=2;   // 2 的幂；mask 多时自动到 8192
+      _r.setClippingMaskBufferSize(_n);
+      try{ window.__maskDbg={mc:_mc,long:_long,n:_n}; }catch(e){}
+    }catch(e){ try{ window.__maskDbg={err:String(e)}; }catch(_){} }
     if(my.cancelled||seq!==_l2seq){ app.destroy(true,{children:true}); return; }
     app.stage.addChild(mdl);
     /* fit 基准必须用 internalModel.width/height（= Cubism 画布单位 × pixelsPerUnit）。
@@ -1501,6 +1514,25 @@ async function renderLive2D(s, sk){
       let idx=-1; try{ idx=core.getDrawableIndex(a.Id); }catch(e){}
       return idx<0 ? null : {name:a.Name, idx};
     }).filter(Boolean);
+    /* 拖拽互动区：moc3 里的 TouchDrag1..20 是可见的拖拽标记，model3 的 HitAreas 只登记了 3 个。
+       这里把所有尚未登记的 TouchDrag* drawable 补成互动区（退化框由 geomOf 统一挡掉）；
+       ougen_8 补全后 30 + 14 = 44 个互动区。点击/拖拽都走同一套 hitAt。 */
+    try{
+      const _ids=core.getDrawableIds?core.getDrawableIds():(core._model&&core._model.drawables&&core._model.drawables.ids)||[];
+      const _known=new Set(hitAreas.map(h=>String(h.name).toLowerCase()));
+      for(let i=0;i<_ids.length;i++){
+        const id=String(_ids[i]);
+        if(!/^TouchDrag(\d+)$/i.test(id)) continue;
+        const _dn=parseInt(id.match(/(\d+)$/)[1],10);
+        if(_dn===19 || _dn===20) continue;   // 19/20 是场景外拖拽标记，不计入 44 个可见互动区
+        const nm=id.toLowerCase();
+        if(_known.has(nm)) continue;
+        let ix=-1; try{ ix=core.getDrawableIndex(id); }catch(e){}
+        if(ix<0) continue;
+        hitAreas.push({name:nm, idx:ix});
+        _known.add(nm);
+      }
+    }catch(e){}
     const triIn=(x,y,a,b,c)=>{ const d=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
       if(Math.abs(d)<1e-12) return false;
       const l=((b[1]-c[1])*(x-c[0])+(c[0]-b[0])*(y-c[1]))/d, m=((c[1]-a[1])*(x-c[0])+(a[0]-c[0])*(y-c[1]))/d;
@@ -1634,15 +1666,34 @@ async function renderLive2D(s, sk){
     const clampPan=()=>{ const cw=wrap.clientWidth||1, ch=wrap.clientHeight||1;
       const lim=Math.max(cw,ch)*0.6;
       ox=Math.max(-lim,Math.min(lim,ox)); oy=Math.max(-lim,Math.min(lim,oy)); };
-    let dragging=false,px=0,py=0,moved=0;
-    const onDown=e=>{ if(e.button!==0) return; dragging=true; moved=0; px=e.clientX; py=e.clientY; };
-    const onMove=e=>{ if(!dragging)return; const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
+    let dragging=false,px=0,py=0,moved=0,dragPart=null;
+    const localHit=(cx,cy)=>{ const r=wrap.getBoundingClientRect();
+      const lp=mdl.toLocal(new PIXI.Point(cx-r.left, cy-r.top));
+      const pv=P2V(lp.x/ppu, lp.y/ppu); return hitAt(pv.x, pv.y); };
+    /* 拖拽区优先：落在 touch_drag* 上时不平移画面，松手按拖动距离决定「拖拽动作」还是「点击」。
+       拖动方向没分组时按编号轮转到现有的 touch_drag1..3，避免 44 个区里有区点不出动作。 */
+    const dragGroupOf=n=>{ if(groups.includes(n)) return n;
+      const _alt=n.replace(/^touchdrag(\d+)$/,'touch_drag$1');
+      if(groups.includes(_alt)) return _alt;
+      const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
+      if(!ds.length) return null;
+      const k=parseInt((n.match(/(\d+)$/)||[])[1]||'1',10);
+      return ds[(k-1)%ds.length]; };
+    const onDown=e=>{ if(e.button!==0) return; moved=0; px=e.clientX; py=e.clientY;
+      const n=localHit(e.clientX,e.clientY);
+      if(n && /^touch_drag/.test(n)){ dragPart=n; dragging=false; return; }
+      dragPart=null; dragging=true; };
+    const onMove=e=>{ if(dragPart){ const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
+        px=e.clientX; py=e.clientY; return; }
+      if(!dragging)return; const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
       ox+=dx; oy+=dy; px=e.clientX; py=e.clientY; clampPan(); apply(); };
-    const onUp=e=>{ if(!dragging) return; dragging=false; if(moved>=6||e.button!==0){ vm.touch(); return; }
-      const r=wrap.getBoundingClientRect();
-      const lp=mdl.toLocal(new PIXI.Point(e.clientX-r.left, e.clientY-r.top));
-      const pv=P2V(lp.x/ppu, lp.y/ppu);
-      const name=hitAt(pv.x, pv.y);
+    const onUp=e=>{ if(dragPart){ const part=dragPart; dragPart=null;
+        if(moved>=6){ const dg=dragGroupOf(part); if(dg && play(dg)){ sel.value=dg;
+            const pill=document.getElementById('l2Hit'); if(pill) pill.textContent=(part+' → ')+dg; } }
+        else { const g=dragGroupOf(part); if(g && play(g)){ sel.value=g; } }
+        return; }
+      if(!dragging) return; dragging=false; if(moved>=6||e.button!==0){ vm.touch(); return; }
+      const name=localHit(e.clientX,e.clientY);
       const g = name && (groups.includes(name) ? name : groups.find(x=>x.toLowerCase()===name.toLowerCase())) || (name?null:fallbackG);
       if(!g) return;
       if(play(g)){ sel.value=g; const pill=document.getElementById('l2Hit');

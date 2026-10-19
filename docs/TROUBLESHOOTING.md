@@ -6863,7 +6863,9 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 
 **结论**：剩余阶梯是**模型自带的硬 alpha/裁剪边缘**，运行时只能「变小」或「柔化」，要彻底无阶梯必须改模型 mask/artmesh（超出画廊运行时范围）。当前代码保留 mask=1024/2048（比 256 细），未默认加 blur；是否接受 0.4~0.6px 柔化需用户拍板。
 
-**未执行（2026-10-19 用户要求）**：批量改所有分屏模型的 mask/artmesh 尚未做。目前没有安全的批量改法：改 mask 需重写 moc3 的 mask drawable/索引，改 artmesh 需重编顶点/UV；两者都会改变模型资产，且无法用现有探针证明 262 个模型零回归。本条只保留运行时 mask=1024/2048（更细），不谎称已根治。
+**2026-10-19 追加**：mask 缓冲改为按公式 N ≥ 画布长边 × √maskCount 自动取 2 的幂（上限 8192），不再固定 1024/2048；ougen_8 maskCount=9、画布 2098 → mask=8192。运行时统一生效，不需要逐模型配置。
+
+**仍未做**：批量改模型 mask/artmesh（见下）。目前没有安全的批量改法：改 mask 需重写 moc3 的 mask drawable/索引，改 artmesh 需重编顶点/UV；两者都会改变模型资产，且无法用现有探针证明 262 个模型零回归。本条只保留运行时 mask=1024/2048（更细），不谎称已根治。
 
 **涉及**：`gallery_src/index.html`（setClippingMaskBufferSize）、`.diag/mask/*` 对照图。相关 §125、WF-38/WF-40。
 
