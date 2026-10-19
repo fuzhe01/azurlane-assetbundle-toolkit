@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.9.3
+version: 1.9.4
 ---
 
 # Live2D 网页运行时集成
@@ -535,14 +535,18 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 
 **验收**：`ougen_8 idle8` 分割线虚影消失、`touch_idle17` 白瓶白杯出现；再抽 3 个默认色模型确认没变黑；`hit_verify.py --only ougen_8` WIRING=0。完整取证：§125 / WF-38。
 
-## 14. 分屏锯齿、回落覆盖度、开场 login、眼神跟随（2026-10-19，version 1.9.3）
+## 14. 回落三层语义 / 看门狗 / 自动刷新 / login / 眼动（2026-10-19，version 1.9.4）
 
-**分屏锯齿**：Cubism 裁剪遮罩缓冲默认 **256²**；画布 2x 时 mask 被拉伸成阶梯。模型 load 后、加 stage 前：`renderer.setClippingMaskBufferSize(dpr>=2?2048:1024)`。判据：同帧 256/1024 对照，1024 起平滑。
+**回落（唯一定义）**：drag 自身循环；touch_idle* 优先同名 idleN，缺组查表 best；其它长动作一律默认 idle。不要给长动作加“最佳衔接”闸门/覆盖度排序（2026-10-19 试过，ougen 会从 idle9 变 idle13，用户判不衔接，已回退）。
 
-**回落覆盖度**：差异度 `Σ(Δ/range)² / N_common` 会偏向公共参数少的候选（ougen_8 idle9 仅 22/337 → norm 0）。生成侧先筛 `n_params >= 0.5*n_action` 再排序，输出 `n_action_params/best_coverage`；前端 `_pickFallback` 再挡 `best_coverage<0.5`。否则 complete/home/login/main_*/touch_head 会集体误落 idle9。
+**卡最后一帧**：库的 `shouldRequestIdleMotion` 不一定及时触发；在 `app.ticker` 检测 `currentGroup==null` 且不在回落中 → 下一帧 `startMotion(dst,0,NORMAL)`。
 
-**开场 login**：默认关，`OPT.login` 打开后播 `login`；必须 **FORCE** 才压得过初始 idle（NORMAL 实测仍停在 idle），用户切动作前先 `state.complete()`，否则同级 priority 被 reserve 拒绝。
+**自动更新**：索引重建（`build_gallery_index.py`）写 index 前跑 `build_motion_chain_map.py --write`，失败拒绝写 index。
 
-**眼神跟随**：`OPT.eye` 默认开；`mdl.focus()` 在 headless 下 `focusController.x` 不更新，**别依赖它**。用 **LOW 优先级 ticker**（model.update 之后、render 之前）直接写 `ParamEyeBallX/Y`；写在 update 里会被 `loadParameters()` 覆盖。判据：指针右上 → `ParamEyeBallX≈+0.7 / ParamEyeBallY≈+0.6`，关闭回 0。
+**开场 login**：`OPT.login` 默认关；FORCE 启动（NORMAL 压不过初始 idle），用户切动作前 `state.complete()`。
+
+**眼神**：`OPT.eye` 默认开；LOW 优先级 ticker 直接写 `ParamEyeBallX/Y`（写在 update 里会被 `loadParameters()` 覆盖）；判据指针右上 → +0.7/+0.6，关闭回 0。
+
+**分屏阶梯**：mask 256→1024/2048 只变细；4x+4096+2D 降采样仍存在，是 artmesh 硬 alpha 露出 (0,0,0) 底色。CSS blur 0.55 可消但整体软；彻底修需改模型 mask/artmesh，运行时不要谎称已根治。
 
 完整取证：§127/§128、WF-40。

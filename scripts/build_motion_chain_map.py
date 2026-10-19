@@ -150,31 +150,19 @@ def build_model_chain(model_dir, model):
                           'norm': round(norm, 4), 'n_params': len(common)})
         if not cands:
             continue
-        # ⚠️ 覆盖度闸门（2026-10-19）：旧版只按 norm 均值排序，候选只覆盖 22/337 个参数
-        # 也会因"公共参数少 ⇒ 均值小"拿第一（ougen_8 的 complete/home/main_*/touch_head
-        # 全部误落到 idle9，n_params=22）。先要求公共参数 >= 动作驱动参数的 50%，
-        # 没有合格候选才退回全体（再按 norm/覆盖度排）。
-        n_action = len(end_val)
-        min_cov = max(1, int(n_action * 0.5))
-        qualified = [c for c in cands if c['n_params'] >= min_cov]
-        pool = qualified or cands
-        pool.sort(key=lambda x: (x['norm'], -x['n_params'], LEGACY_PREF.index(x['group'])
-                                 if x['group'] in LEGACY_PREF else 99))
-        best = pool[0]
-        fb = best['norm'] == float('inf')  # 与所有待机候选零公共参数
+        cands.sort(key=lambda x: (x['norm'], x['n_params'], LEGACY_PREF.index(x['group'])
+                                  if x['group'] in LEGACY_PREF else 99))
+        fb = cands[0]['norm'] == float('inf')  # 与所有待机候选零公共参数
         chain[a] = {
-            'best': None if fb else best['group'],
-            'best_norm': None if fb else best['norm'],
+            'best': None if fb else cands[0]['group'],
+            'best_norm': None if fb else cands[0]['norm'],
             # 无衔接候选（无公共参数，如 effect）时前端回落默认 idleGroup
             'fallback': fb,
             'n_idle_cands': len(idle_groups),
-            'n_action_params': n_action,
-            'best_coverage': round((best['n_params'] / n_action) if n_action else 0.0, 3),
-            'n_qualified': len(qualified),
-            'leak_n_params': (n_action - best['n_params']) if not fb else None,
+            'leak_n_params': (len(a_end) - cands[0]['n_params']) if not fb else None,
             'runners_up': [{'group': c['group'],
                             'norm': None if c['norm'] == float('inf') else c['norm'],
-                            'n_params': c['n_params']} for c in pool[:5]],
+                            'n_params': c['n_params']} for c in cands[:5]],
         }
     return {'model': model, 'idle_groups': idle_groups,
             'n_actions': len(chain), 'chain': chain}

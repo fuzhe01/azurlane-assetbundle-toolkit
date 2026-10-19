@@ -6849,38 +6849,35 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 
 **涉及文件**：`scripts/export_cue_audio.py`、`scripts/transcode_bgm.py`、`scripts/build_bgm_index.py`、`ledger/bgm_transcode_flac.json`、`Output/Audio/BGM_flac`、`Output/gallery_v2/bgm.json`。相关 WF-39。
 
-## §127. Live2D 分割线的锯齿不是颜色，是裁剪遮罩缓冲只有 256²（2026-10-19）
+## §127. Live2D 分割线阶梯：256² 遮罩只是第一层，剩余硬 alpha 边缘未彻底消除（2026-10-19）
 
-**问题**：ougen_8 idle8 分屏动作，分割线旁仍有一排「牙齿」状锯齿（用户红圈标出）。上一轮的颜色补丁已去掉虚影，但边缘锯齿仍在。
+**现象**：ougen_8 idle8 分屏线仍有一排「牙齿」；把遮罩缓冲从 256 提到 1024/2048 后阶梯变小，但用户认为更显眼。
 
-**根因**：`CubismClippingManager_WebGL` 默认 `_clippingMaskBufferSize = 256`（0.4.0 源码 L2893），而 Live2D canvas 在 2x 下是 2098×1558；256² 的 mask 被拉伸到画布上，mask 边缘就是阶梯。不是贴图过滤，也不是颜色。
+**已证**：`CubismClippingManager_WebGL` 默认 `_clippingMaskBufferSize=256`（0.4.0 L2893），2x 画布 2098×1558 下 mask 被拉伸 → 阶梯；1024 起同帧对照明显变细（`.diag/mask/mask_256_1024.png`）。
 
-**证据**：同一帧设 mask=256/1024/2048/4096 对照（`.diag/mask/mask_all.png`）——256 有明显阶梯，1024 起边缘平滑，2048/4096 肉眼无进一步收益。
+**进一步排除**：
+- 4x 超采样（`index_hi.html`，buffer 4196×2984）+ mask 4096：阶梯仍存在，说明不只是分辨率；
+- 4x → 2D canvas `drawImage` 高质量降采样：仍存在，说明不是浏览器合成/降采样；
+- 阶梯旁黑色是 **纯 (0,0,0) 背景**，即两块 artmesh 的硬 alpha 边缘之间露出画布底色，不是贴图过滤或颜色；
+- CSS `blur(0.55px)` 能消掉阶梯，但整张模型变软，不能作为默认画质。
 
-**修法**：模型 load 后、加进 stage 前调用：
-```js
-mdl.internalModel.renderer.setClippingMaskBufferSize((window.devicePixelRatio||1)>=2 ? 2048 : 1024);
-```
-实测 DPR=1 时 mask=1024、画面正常；改完 `seam_final.png` 分割线平滑。
+**结论**：剩余阶梯是**模型自带的硬 alpha/裁剪边缘**，运行时只能「变小」或「柔化」，要彻底无阶梯必须改模型 mask/artmesh（超出画廊运行时范围）。当前代码保留 mask=1024/2048（比 256 细），未默认加 blur；是否接受 0.4~0.6px 柔化需用户拍板。
 
-**已排除**：不是贴图 UV 出血（NEAREST/PMA 对照都还在）、不是颜色（multiply/screen 已修）、不是 res=1/2/4 能消掉（白带在，只是边缘更细）。
+**涉及**：`gallery_src/index.html`（setClippingMaskBufferSize）、`.diag/mask/*` 对照图。相关 §125、WF-38/WF-40。
 
-**涉及文件**：`gallery_src/index.html`（`renderLive2D` 里 setClippingMaskBufferSize）、`Output/gallery_v2/vendor/live2d/pixi-live2d-display-cubism4.min.js`。相关 §125、WF-38/WF-40。
+## §128. 动作回落恢复 2026-10-17 语义 + 看门狗（2026-10-19，用户要求回退覆盖度方案）
 
-## §128. 动作回落误判 idle9：差异度只算公共参数的均值，覆盖 22/337 也能拿第一（2026-10-19）
+**用户判据**（与 `docs/archive/PROJECT_STATUS_2026-10-17_逐字外迁.md` 一致）：
+1. `idle*` 与 `touch_drag*` 自循环；
+2. `touch_idle*` 回最衔接待机：优先同名 `idleN`，没有该组再查 `motion_chain.json` 的 best；
+3. 其它长动作（`complete/home/login/main_*/mission_complete/wedding/touch_head/touch_body/touch_special` 等）一律回**默认初始 idle**。
 
-**问题**：用户实测 ougen_8 的 `complete/home/login/main_1~4/mission_complete/touch_head` 全部回落到 `idle9`，明显不衔接。
+**本轮先试过覆盖度闸门**（`n_params>=0.5*n_action`，195 个 best 变化），ougen 长动作不再落 idle9，但用户实测 home/login/main_* 等回 idle13，仍不衔接，且 touch_idle 有误判 ⇒ 按用户要求**整体回退**到上述三层语义，不按表给长动作选 best。
 
-**根因**：`build_motion_chain_map.py` 的 `norm = Σ(Δ/range)² / N_common`。`idle9` 与这些动作只共有 **22 个参数**（动作驱动 337 个），分子天然小 ⇒ norm≈0，击败了共有 337 个参数但差异略大的 `idle`。差异度必须加**覆盖度**约束，不能只比均值。
+**卡最后一帧几秒**：库的 `shouldRequestIdleMotion` 在动作 finish 后不一定及时触发；保留原三层分支，另加 ticker 看门狗：`currentGroup==null` 且不在回落中 → 下一帧直接 `startMotion(dst, 0, NORMAL)`。实测 forceEnd 后首采样即回 idle，不再停 2~5 秒。
 
-**修法**：
-1. 生成侧：先筛 `n_params >= 0.5 × n_action` 的候选（无合格候选才退回全体）；排序改为 `(norm, -n_params, 默认 idle 优先)`；输出 `n_action_params / best_coverage / n_qualified`。
-2. 前端：`_pickFallback` 再挡一次 `best_coverage < 0.5`（防旧表/手改表）。
+**验证**：`l2d_motion_chain_verify.py --models aersasi_2,aersasi_3,ougen_8` **16/16 PASS**；ougen 的 complete/home/login/main_1/mission_complete/touch_head 全部 idle；touch_idle2 → idle2（同名配对），aersasi_3 touch_idle31（无 idle31）→ idle1。
 
-**结果**（重建 262 模型 / 6357 动作，195 个 best 变化）：
-- `complete → idle`、`home/login/main_1 → idle13`、`mission_complete → idle7`、`touch_head → idle13`；
-- `idle9` 不再出现；`l2d_motion_chain_verify.py --models ougen_8` 7 case 全 PASS；aersasi/jianye/z46 子集 12 case 全 PASS。
+**自动更新**：`build_gallery_index.py` 写 index 前调用 `build_motion_chain_map.py --write`，Live2D 动作更新后只要重建索引，`motion_chain.json` 自动跟上（失败则拒绝写 index）。
 
-**注意**：全库 fallback（无公共参数）仍是 2139 条，与旧表一致；单待机组模型（z46_4 等）本来就没有可比的第二组，fallback 回默认 idle 是对的。
-
-**涉及文件**：`scripts/build_motion_chain_map.py`、`Output/gallery_v2/motion_chain.json`、`gallery_src/index.html`（`_pickFallback`）、`scripts/diag/l2d_motion_chain_verify.py`。相关 §124/WF-37/WF-40。
+**涉及**：`gallery_src/index.html`（回落三层+看门狗）、`build_gallery_index.py`（自动刷新）、`scripts/build_motion_chain_map.py`（已回退到 8121746 版本）、`scripts/diag/l2d_motion_chain_verify.py`。相关 §124、WF-37/WF-40。

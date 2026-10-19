@@ -765,6 +765,16 @@ cnt = {
 index = {'generated': 'v2', 'counts': cnt, 'ships': ship_list,
          'silhouettes': silhouettes, 'variants': variants}
 os.makedirs(GAL, exist_ok=True)
+# ---------- 动作回落表必须跟当前 Live2D 动作一起更新（2026-10-19）----------
+# 前端只读 gallery_v2/motion_chain.json；如果只更新 Live2D 不重建它，新动作会沿用旧 best/旧组清单。
+# 放在写 index 前：任何一次正常索引重建（含 update_pipeline 的 derive）都会顺带刷新。
+if os.path.abspath(GAL) == os.path.abspath(os.path.join(OUT, 'gallery_v2')):
+    import subprocess
+    _chain_script = os.path.join(ROOT, 'scripts', 'build_motion_chain_map.py')
+    _rc = subprocess.call([sys.executable, _chain_script, '--write'])
+    if _rc != 0:
+        raise SystemExit('build_motion_chain_map.py 失败（rc=%d）—— 动作回落表未更新，拒绝写 index' % _rc)
+
 json.dump(index, open(os.path.join(GAL, 'index.json'), 'w', encoding='utf-8'),
           ensure_ascii=False)
 # 同时输出 index.js，令 index.html 可直接以 file:// 双击打开时也能读到数据

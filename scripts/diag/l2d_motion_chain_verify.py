@@ -3,7 +3,7 @@
 走页面自己的 play()（下拉框 onchange）——不能直接 mm.startMotion（绕前端交互层 → 假阴性，见 l2d_touchidle_probe 注释）。
 用法: py -3 scripts/diag/l2d_motion_chain_verify.py
 """
-import sys, os, json, time, subprocess, urllib.request
+import sys, os, json, re, time, subprocess, urllib.request
 sys.stdout.reconfigure(encoding='utf-8')
 import websocket
 
@@ -140,8 +140,12 @@ def _default_idle(key):
     return gs[0] if gs else 'idle'
 
 def expected_for(key, action):
-    """复刻前端 _pickFallback 的闸门（只读表 + model3 组清单），返回 (组, 理由)。"""
+    """复刻前端三层回落（2026-10-17 语义），返回 (组, 理由)。"""
     ig = _default_idle(key)
+    if action.startswith('touch_drag'):
+        return action, 'self-loop'
+    if not action.startswith('touch_idle'):
+        return ig, 'long->default idle'
     c = ((CHAIN.get(key) or {}).get('chain') or {}).get(action)
     if not c or c.get('fallback'):
         return ig, 'no-entry/fallback'
@@ -153,8 +157,12 @@ def expected_for(key, action):
         return ig, 'no-norm'
     if c.get('n_action_params') and c.get('best_coverage') is not None and c['best_coverage'] < 0.5:
         return ig, 'low-coverage'
-    if action.startswith('touch_idle'):
-        return b, 'best(touch_idle always)=%s' % b
+    mt = re.match(r'^touch_idle(\d+)$', action)
+    if mt:
+        pair = 'idle' + mt.group(1)
+        if pair in _groups(key):
+            return pair, 'touch_idle pair=%s' % pair
+        return b, 'best(touch_idle no-pair)=%s' % b
     nd = next((r.get('norm') for r in (c.get('runners_up') or []) if r.get('group') == ig), None)
     if nd is not None and nd > 0 and nb > nd * 0.85:
         return ig, 'marginal(best=%s %.0f%% better)' % (b, (nd / nb - 1) * 100 if nb else 0)

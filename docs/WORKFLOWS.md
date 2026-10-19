@@ -3073,25 +3073,35 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 
 `scripts/export_cue_audio.py`、`scripts/transcode_bgm.py`、`scripts/build_bgm_index.py`、`scripts/paths.py`、`ledger/bgm_transcode_flac.json`、`Output/gallery_v2/bgm.json`。相关：§126、§113（FLAC 无损判据）。
 
-### WF-40: Live2D 分屏锯齿 / 回落覆盖度 / 开场 login 与眼神跟随（2026-10-19）
+### WF-40: Live2D 回落三层语义 / 看门狗 / 自动刷新 / 开场 login / 眼神（2026-10-19）
 
-**场景**：修完颜色补丁后，仍要处理四类问题：① 分割线锯齿；② 长动作回落被少量公共参数误导；③ 开场自动播 login；④ 眼神跟随开关。
+**适用**：Live2D 动作播完不回落、回落错组、卡最后一帧；或要加开场 login / 眼动开关。
 
-#### 判据
+#### 回落语义（唯一判据，来自 2026-10-17 归档）
 
-1. **遮罩缓冲**：`renderer.getClippingMaskBufferSize()` 默认 256；DPR>=2 设 2048、否则 1024；判据看 `.diag/mask/mask_all.png` 同帧 256/1024 对照，1024 起无阶梯。
-2. **回落覆盖度**：`motion_chain.json` 每条须有 `n_action_params/best_coverage`；`best_coverage < 0.5` 的候选不得当选；ougen_8 的 complete/home/login/main_*/mission_complete/touch_head 不得再落到 idle9。
-3. **开场 login**：设置项 `OPT.login` 默认 **关**（避免改变既有浏览习惯）；打开后 `currentGroup==='login'`、标签 `login`；用 FORCE 启动，用户切动作时先 `state.complete()` 防同级 reserve 拒绝。
-4. **眼神跟随**：`OPT.eye` 默认开；判据读 `ParamEyeBallX/Y`，指针移到右上应变为约 `+0.7/+0.6`（Y 取反），关掉后回 0。
+1. `idle*` → 库自循环；`touch_drag*` → 自身循环。
+2. `touch_idle*` → 优先同名 `idleN`（有该组），否则 `motion_chain.json` 的 best；无 best 才默认 idle。
+3. 其它长动作（`complete/home/login/main_*/mission_complete/wedding/touch_head/touch_body/touch_special` 等）→ **默认初始 idle**，不按表选 best。
 
-#### 踩坑记录
+⚠️ 不要再给长动作加“最佳衔接”闸门/覆盖度排序：2026-10-19 试过，ougen 会从 idle9 变成 idle13，用户判为不衔接，已整体回退。
 
-- mask 256 是 Cubism SDK 默认值，不是我们的提取问题；只改画布 resolution 不会变大。
-- 差异度 `Σ/N_common` 天生偏向公共参数少的候选：ougen_8 idle9 只覆盖 22/337，norm≈0。必须先筛覆盖度再排序。
-- 眼位写在 `internalModel.update` 里会被随后的 `loadParameters()` 覆盖；要用 **LOW 优先级 ticker**（在 model.update 之后、render 之前）。
-- `mdl.focus()` 的 `focusController.x` 在 headless 下 target 变、x 不变，不能作为唯一实现；直接写 `ParamEyeBallX/Y` 更稳。
-- 开场 login 用 NORMAL 优先级压不过初始 idle（实测 currentGroup 仍 idle），必须 FORCE，并在用户动作前 `state.complete()`。
+#### 看门狗
+
+库的 `shouldRequestIdleMotion` 在 finish 后不一定及时触发，表现为卡最后一帧几秒。在 `app.ticker` 里检测 `currentGroup==null` 且不在回落中 → 下一帧 `startMotion(dst,0,MP.NORMAL)`。判据：forceEnd 后 1s 内 `currentGroup` 已是 idle，标签同步。
+
+#### 自动更新
+
+`build_gallery_index.py` 写 index 前调用 `build_motion_chain_map.py --write`；失败则拒绝写 index。Live2D 更新后只要走正常索引重建（含 `update_pipeline` 的 derive），回落表自动跟上。
+
+#### 开场 login / 眼神
+
+- `OPT.login` 默认关；开后在模型加载后 300ms 播 `login`，用 FORCE（NORMAL 压不过初始 idle），用户切动作前 `state.complete()` 防同级 reserve。
+- `OPT.eye` 默认开；用 LOW 优先级 ticker 直接写 `ParamEyeBallX/Y`（写在 model.update 里会被 `loadParameters()` 覆盖）；判据指针右上 → `ParamEyeBallX≈+0.7 / ParamEyeBallY≈+0.6`，关闭回 0。
+
+#### 分屏阶梯（未彻底解决）
+
+mask 256→1024/2048 只能让阶梯变细；4x 超采样 + mask 4096 + 2D 降采样仍存在，确认是 artmesh 硬 alpha 边缘露出 (0,0,0) 画布底色。CSS blur 0.55px 可消但整体变软。要彻底无阶梯需改模型 mask/artmesh；运行时暂不默认 blur。
 
 #### 涉及文件
 
-`gallery_src/index.html`（`renderLive2D` 的 mask/eye/login、`_pickFallback`）、`scripts/build_motion_chain_map.py`、`Output/gallery_v2/motion_chain.json`、`scripts/diag/l2d_motion_chain_verify.py`。相关 §127/§128、WF-37/38。
+`gallery_src/index.html`、`scripts/build_gallery_index.py`、`scripts/build_motion_chain_map.py`、`Output/gallery_v2/motion_chain.json`、`scripts/diag/l2d_motion_chain_verify.py`。相关 §127/§128、WF-37/38。
