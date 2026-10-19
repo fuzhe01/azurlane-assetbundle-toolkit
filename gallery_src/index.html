@@ -1314,9 +1314,9 @@ async function renderLive2D(s, sk){
     const chainModel=(chainSrc&&chainSrc.models&&chainSrc.models[sk.key])||null;
     const idleSet=new Set(chainModel?chainModel.idle_groups:[]);
     if(idleGroup) idleSet.add(idleGroup);
-    let lastGroup=null, lastIdle=idleGroup;
+    let lastGroup=null;
     const _origStartMotion=mm.startMotion.bind(mm);
-    mm.startMotion=(g,i,p)=>{ lastGroup=g; if(idleSet.has(g)) lastIdle=g; return _origStartMotion(g,i,p); };
+    mm.startMotion=(g,i,p)=>{ lastGroup=g; return _origStartMotion(g,i,p); };
     const _origRandomMotion=mm.startRandomMotion.bind(mm);
     /* 三层回落（2026-10-17 语义，2026-10-19 按用户要求恢复）：
        ① touch_drag* → 自身循环；② 其它长动作 → 默认 idleGroup；③ touch_idle* → 表 best（low coverage 时表里 best 为空 → 默认 idle）。
@@ -1335,11 +1335,12 @@ async function renderLive2D(s, sk){
       const lg=lastGroup, low=((lg||'').toLowerCase());
       if(!lg || idleSet.has(lg)) return false;
       let dst=null;
-      // touch_idle*/touch_drag*：回到**进入动作前的 idle**（lastIdle）。
-      // 这是最可靠的“衔接”：用户从 idle9 进入，就回 idle9；不需要全局猜 best。
+      // touch_idle*/touch_drag*：用表 best（新口径：drag 用 raw_sse，idle 用 norm，均不做覆盖度排除）。
       // 其它长动作回默认 idleGroup。
       if(!/^touch_(idle|drag)/.test(low)) dst=idleGroup;
-      else dst=(lastIdle&&mm.definitions[lastIdle])?lastIdle:idleGroup;
+      else { const c=chainModel&&chainModel.chain[lg];
+        dst=(c&&c.best&&mm.definitions[c.best])?c.best:null;
+        if(!dst) dst=idleGroup; }
       _fbPending=true;
       const ok=_ret(dst);
       setTimeout(()=>{_fbPending=false;},1200);

@@ -147,10 +147,17 @@ def _default_idle(key):
     return gs[0] if gs else 'idle'
 
 def expected_for(key, action):
-    """复刻前端：touch_idle*/touch_drag* 回进入动作前的 idle；探针从默认 idle 进入，故期望默认 idle。
-    其它长动作也回默认 idle。"""
+    """复刻前端：touch_idle*/touch_drag* 读表 best；其它长动作默认 idle。"""
     ig = _default_idle(key)
-    return ig, 'last-idle/default'
+    if not action.startswith(('touch_idle', 'touch_drag')):
+        return ig, 'long->default idle'
+    c = ((CHAIN.get(key) or {}).get('chain') or {}).get(action)
+    if not c or c.get('fallback'):
+        return ig, 'no-entry/fallback'
+    b = c.get('best')
+    if not b or b not in _groups(key):
+        return ig, 'best-missing'
+    return b, 'best(%s)=%s' % ('touch_drag' if action.startswith('touch_drag') else 'touch_idle', b)
 
 all_pass = True
 # warmup：预取 motion_chain（浏览器缓存）+ 预载首模型，消除首 case 冷启时序

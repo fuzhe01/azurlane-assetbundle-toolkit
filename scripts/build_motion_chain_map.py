@@ -150,30 +150,31 @@ def build_model_chain(model_dir, model):
                           'norm': round(norm, 4), 'n_params': len(common)})
         if not cands:
             continue
-        # 覆盖度闸门（2026-10-19）：norm 是「公共参数均值」，只覆盖 1/N 个参数的候选
-        # 会因分子小而虚假胜出（ougen_8 touch_idle12 旧表->idle9）。要求 best 至少覆盖
-        # 动作驱动参数的 50%；没有任何候选合格时宁可回默认 idle，也不拿低覆盖候选。
+        # 2026-10-19 最终口径：不再用覆盖度闸门（它把 ougen touch_idle14/idle9 这种
+        # 只覆盖 26% 但末帧完全重合的候选排除掉，反而选了 norm 2.54 的 idle11）。
+        # touch_drag* 是循环短动作，用 raw_sse（不除 range）；touch_idle* 用 norm。
         n_action = len(end_val)
-        min_cov = max(1, int(n_action * 0.6 + 0.5))   # 覆盖不足 60% 的候选一律不用（宁可回默认 idle）
-        qualified = [c for c in cands if c['n_params'] >= min_cov]
-        qualified.sort(key=lambda x: (x['norm'], -x['n_params'],
-                                      LEGACY_PREF.index(x['group'])
-                                      if x['group'] in LEGACY_PREF else 99))
-        best = qualified[0] if qualified else None
-        fb = best is None or best['norm'] == float('inf')
+        metric = 'raw_sse' if a.startswith('touch_drag') else 'norm'
+        cands.sort(key=lambda x: (x[metric], -x['n_params'],
+                                  LEGACY_PREF.index(x['group'])
+                                  if x['group'] in LEGACY_PREF else 99))
+        best = cands[0]
+        best_m = best[metric]
+        fb = (best_m == float('inf'))
         chain[a] = {
             'best': None if fb else best['group'],
-            'best_norm': None if fb else best['norm'],
-            # 无候选/低覆盖（如 effect、touch_idle2）时前端回落默认 idleGroup
+            'best_norm': None if fb else best_m,
+            'metric': metric,
+            # 无公共参数（如 effect）时前端回落默认 idleGroup
             'fallback': fb,
             'n_idle_cands': len(idle_groups),
             'n_action_params': n_action,
-            'best_coverage': round((best['n_params'] / n_action) if (best and n_action) else 0.0, 3),
-            'n_qualified': len(qualified),
-            'leak_n_params': (n_action - best['n_params']) if (best and not fb) else None,
+            'best_coverage': round((best['n_params'] / n_action) if n_action else 0.0, 3),
+            'leak_n_params': (n_action - best['n_params']) if not fb else None,
             'runners_up': [{'group': c['group'],
                             'norm': None if c['norm'] == float('inf') else c['norm'],
-                            'n_params': c['n_params']} for c in qualified[:5]],
+                            'raw_sse': c['raw_sse'],
+                            'n_params': c['n_params']} for c in cands[:5]],
         }
     return {'model': model, 'idle_groups': idle_groups,
             'n_actions': len(chain), 'chain': chain}

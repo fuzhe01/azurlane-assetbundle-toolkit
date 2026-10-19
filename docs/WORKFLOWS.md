@@ -3080,7 +3080,7 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 #### 回落语义（唯一判据，来自 2026-10-17 归档）
 
 1. `idle*` → 库自循环；`touch_drag*` 按住时 loop、松手回拖拽前的 idle（没有记录才默认 idle），不查表 best。
-2. `touch_idle*` / `touch_drag*` → 回进入动作前正在播的 idle（lastIdle）；表 best 不参与这两类。
+2. `touch_idle*` 用 `norm`、`touch_drag*` 用 `raw_sse` 查表 best；不做覆盖度排除（否则 idle9 会被 26% 覆盖度误杀）。
 3. 其它长动作（`complete/home/login/main_*/mission_complete/wedding/touch_head/touch_body/touch_special` 等）→ **默认初始 idle**，不按表选 best。
 
 ⚠️ 不要再给长动作加“最佳衔接”闸门/覆盖度排序：2026-10-19 试过，ougen 会从 idle9 变成 idle13，用户判为不衔接，已整体回退。
