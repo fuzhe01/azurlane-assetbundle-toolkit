@@ -6872,7 +6872,7 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 ## §128. 动作回落恢复 2026-10-17 语义 + 看门狗（2026-10-19，用户要求回退覆盖度方案）
 
 **用户判据**（与 `docs/archive/PROJECT_STATUS_2026-10-17_逐字外迁.md` 一致）：
-1. `idle*` 自循环；`touch_drag*` 不再自循环，与 `touch_idle*` 一样回表 best（覆盖≥60%，否则默认 idle）；
+1. `idle*` 自循环；`touch_drag*` 不再自循环，也**不再查表 best**，回到拖拽前的 idle（没有记录才默认 idle）；
 2. `touch_idle*` 回最衔接待机：查 `motion_chain.json` 的 best，但候选必须覆盖动作驱动参数的 **≥60%**；没有合格候选就回默认 idle，不拿低覆盖候选（旧表 touch_idle12→idle9 就是这么错的）；
 3. 其它长动作（`complete/home/login/main_*/mission_complete/wedding/touch_head/touch_body/touch_special` 等）一律回**默认初始 idle**。
 

@@ -149,7 +149,9 @@ def _default_idle(key):
 def expected_for(key, action):
     """复刻前端三层回落（2026-10-17 语义），返回 (组, 理由)。"""
     ig = _default_idle(key)
-    if not action.startswith(('touch_idle', 'touch_drag')):
+    if action.startswith('touch_drag'):
+        return ig, 'drag->previous/default idle'
+    if not action.startswith('touch_idle'):
         return ig, 'long->default idle'
     c = ((CHAIN.get(key) or {}).get('chain') or {}).get(action)
     if not c or c.get('fallback'):

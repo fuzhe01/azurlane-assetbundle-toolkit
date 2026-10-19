@@ -1335,9 +1335,10 @@ async function renderLive2D(s, sk){
       const lg=lastGroup, low=((lg||'').toLowerCase());
       if(!lg || idleSet.has(lg)) return false;
       let dst=null;
-      // touch_drag*/touch_idle* 都查表 best；其它长动作回默认 idle。
-      // 覆盖度保险丝：<60% 的候选（如 idle9 22/337）不采用，回默认 idle。
-      if(!/^touch_(idle|drag)/.test(low)) dst=idleGroup;
+      // touch_drag*：拖拽只是临时反应，回到**拖拽前的 idle**（游戏语义）；没有记录才默认 idle。
+      // touch_idle*：查表 best（覆盖<60% 回默认）；其它长动作回默认 idle。
+      if(/^touch_drag/.test(low)) dst=dragReturn||idleGroup;
+      else if(!/^touch_idle/.test(low)) dst=idleGroup;
       else {
         // touch_idle*/touch_drag*：只认表里的 best（最衔接最后一帧），不再优先同名 idleN
         const c=chainModel&&chainModel.chain[lg];
@@ -1670,7 +1671,7 @@ async function renderLive2D(s, sk){
     const clampPan=()=>{ const cw=wrap.clientWidth||1, ch=wrap.clientHeight||1;
       const lim=Math.max(cw,ch)*0.6;
       ox=Math.max(-lim,Math.min(lim,ox)); oy=Math.max(-lim,Math.min(lim,oy)); };
-    let dragging=false,px=0,py=0,moved=0,dragPart=null;
+    let dragging=false,px=0,py=0,moved=0,dragPart=null,dragReturn=null;
     const localHit=(cx,cy)=>{ const r=wrap.getBoundingClientRect();
       const lp=mdl.toLocal(new PIXI.Point(cx-r.left, cy-r.top));
       const pv=P2V(lp.x/ppu, lp.y/ppu); return hitAt(pv.x, pv.y); };
@@ -1699,7 +1700,9 @@ async function renderLive2D(s, sk){
       if(!dragging)return; const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
       ox+=dx; oy+=dy; px=e.clientX; py=e.clientY; clampPan(); apply(); };
     const onUp=e=>{ if(dragPart){ const part=dragPart; dragPart=null;
-        if(moved>=6){ const dg=dragGroupOf(part); if(dg && play(dg)){ sel.value=dg;
+        if(moved>=6){ const dg=dragGroupOf(part);
+          dragReturn=(mm.state && idleSet.has(mm.state.currentGroup))?mm.state.currentGroup:idleGroup;
+          if(dg && play(dg)){ sel.value=dg;
             const pill=document.getElementById('l2Hit'); if(pill) pill.textContent=(part+' → ')+dg; } }
         else { const g=dragGroupOf(part); if(g && play(g)){ sel.value=g; } }
         return; }
