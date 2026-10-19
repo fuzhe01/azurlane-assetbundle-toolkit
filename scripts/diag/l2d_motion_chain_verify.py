@@ -48,6 +48,7 @@ JS = r"""(async(args)=>{ const key=args[0], action=args[1], expected=args[2], fo
   let ship=null, sk=null;
   for(const s of GALLERY.ships){ const k=s.skins.find(x=>x.key===key); if(k&&s.live2dSkins.includes(key)){ship=s;sk=k;break;} }
   if(!sk) return JSON.stringify({key, skip:'no skin'});
+  try{ OPT.login=false; }catch(e){}   // 测试隔离：开场 login 会干扰回落判据
   openShip(ship); setSkin(sk); buildSkinList(ship);
   const l2=[...document.querySelectorAll('#mTabs .tab')].find(x=>x.dataset.k==='live2d');
   l2.click();
@@ -157,12 +158,8 @@ def expected_for(key, action):
         return ig, 'no-norm'
     if c.get('n_action_params') and c.get('best_coverage') is not None and c['best_coverage'] < 0.5:
         return ig, 'low-coverage'
-    mt = re.match(r'^touch_idle(\d+)$', action)
-    if mt:
-        pair = 'idle' + mt.group(1)
-        if pair in _groups(key):
-            return pair, 'touch_idle pair=%s' % pair
-        return b, 'best(touch_idle no-pair)=%s' % b
+    if action.startswith('touch_idle'):
+        return b, 'best(touch_idle)=%s' % b
     nd = next((r.get('norm') for r in (c.get('runners_up') or []) if r.get('group') == ig), None)
     if nd is not None and nd > 0 and nb > nd * 0.85:
         return ig, 'marginal(best=%s %.0f%% better)' % (b, (nd / nb - 1) * 100 if nb else 0)

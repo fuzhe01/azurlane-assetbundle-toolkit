@@ -558,7 +558,7 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)');   // 动效总开关�
    没有"需要关掉的花哨"，所以那颗按钮按用户要求删掉了（2026-09-28）。
    老用户 localStorage 里残留的 `bgfx:false` 会被 Object.assign 塞进来，但没人再读它——
    不清理是故意的：清它要写迁移代码，而那个键无害。 */
-let OPT = {voice:true, lines:true, remember:true, eye:true, login:false};
+let OPT = {voice:true, lines:true, remember:true, eye:true, login:true};
 try{ Object.assign(OPT, JSON.parse(localStorage.getItem(OPT_KEY) || '{}')); }catch(e){}
 function saveOpt(){ try{ localStorage.setItem(OPT_KEY, JSON.stringify(OPT)); }catch(e){} }
 function paintOpt(){ document.querySelectorAll('#gOpt button')
@@ -1324,11 +1324,9 @@ async function renderLive2D(s, sk){
       if(/^touch_drag/.test(low)) dst=lg;
       else if(!/^touch_idle/.test(low)) dst=idleGroup;
       else {
+        // touch_idle*：只认表里的 best（最衔接最后一帧），不再优先同名 idleN
         const c=chainModel&&chainModel.chain[lg];
-        const tn=(low.match(/^touch_idle(\d+)$/)||[])[1];
-        const pair=tn?('idle'+tn):null;
-        dst=(pair&&mm.definitions[pair]&&mm.definitions[pair].length)?pair
-            :(c&&c.best&&mm.definitions[c.best]?c.best:null);
+        dst=(c&&c.best&&mm.definitions[c.best])?c.best:null;
         if(!dst) dst=idleGroup;
       }
       _fbPending=true;

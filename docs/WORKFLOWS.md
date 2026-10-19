@@ -3080,7 +3080,7 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 #### 回落语义（唯一判据，来自 2026-10-17 归档）
 
 1. `idle*` → 库自循环；`touch_drag*` → 自身循环。
-2. `touch_idle*` → 优先同名 `idleN`（有该组），否则 `motion_chain.json` 的 best；无 best 才默认 idle。
+2. `touch_idle*` → 直接 `motion_chain.json` 的 best；无 best 才默认 idle。
 3. 其它长动作（`complete/home/login/main_*/mission_complete/wedding/touch_head/touch_body/touch_special` 等）→ **默认初始 idle**，不按表选 best。
 
 ⚠️ 不要再给长动作加“最佳衔接”闸门/覆盖度排序：2026-10-19 试过，ougen 会从 idle9 变成 idle13，用户判为不衔接，已整体回退。

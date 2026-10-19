@@ -17,7 +17,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 import websocket
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
+CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT = 9337
 DEBUG_DIR = os.path.join(ROOT, '.diag', 'chrome_l2d_shot')
 SHOTS = os.path.join(ROOT, '.diag', 'l2d_shots_visual')

@@ -44,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 OUT = os.environ.get("L2D_OUT_DIR") or os.path.join(ROOT, "Output", "Live2D")
 PROD = os.path.join(ROOT, "Output", "Live2D")   # 只重导 motion 时，model3.json 仍从这里取
 DIAG = os.path.join(ROOT, ".diag")
-BASE = "https://static.l2d.su/azurlane/live2d"
+BASE = os.environ.get("L2D_REF_BASE", "https://static.l2d.su/azurlane/live2d")
 TIMEOUT = 25
 # urlopen(timeout=25) 只约束**单次 socket 操作**：慢滴式响应能让整轮挂住（2026-09-24 实测
 # 206/269 处 25 分钟零输出），所以每个 URL 还要一道墙钟硬上限。见 TROUBLESHOOTING §26。

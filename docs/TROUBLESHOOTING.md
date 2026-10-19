@@ -6863,13 +6863,15 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 
 **结论**：剩余阶梯是**模型自带的硬 alpha/裁剪边缘**，运行时只能「变小」或「柔化」，要彻底无阶梯必须改模型 mask/artmesh（超出画廊运行时范围）。当前代码保留 mask=1024/2048（比 256 细），未默认加 blur；是否接受 0.4~0.6px 柔化需用户拍板。
 
+**未执行（2026-10-19 用户要求）**：批量改所有分屏模型的 mask/artmesh 尚未做。目前没有安全的批量改法：改 mask 需重写 moc3 的 mask drawable/索引，改 artmesh 需重编顶点/UV；两者都会改变模型资产，且无法用现有探针证明 262 个模型零回归。本条只保留运行时 mask=1024/2048（更细），不谎称已根治。
+
 **涉及**：`gallery_src/index.html`（setClippingMaskBufferSize）、`.diag/mask/*` 对照图。相关 §125、WF-38/WF-40。
 
 ## §128. 动作回落恢复 2026-10-17 语义 + 看门狗（2026-10-19，用户要求回退覆盖度方案）
 
 **用户判据**（与 `docs/archive/PROJECT_STATUS_2026-10-17_逐字外迁.md` 一致）：
 1. `idle*` 与 `touch_drag*` 自循环；
-2. `touch_idle*` 回最衔接待机：优先同名 `idleN`，没有该组再查 `motion_chain.json` 的 best；
+2. `touch_idle*` 回最衔接待机：直接查 `motion_chain.json` 的 best（不优先同名）；
 3. 其它长动作（`complete/home/login/main_*/mission_complete/wedding/touch_head/touch_body/touch_special` 等）一律回**默认初始 idle**。
 
 **本轮先试过覆盖度闸门**（`n_params>=0.5*n_action`，195 个 best 变化），ougen 长动作不再落 idle9，但用户实测 home/login/main_* 等回 idle13，仍不衔接，且 touch_idle 有误判 ⇒ 按用户要求**整体回退**到上述三层语义，不按表给长动作选 best。
@@ -6881,3 +6883,19 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 **自动更新**：`build_gallery_index.py` 写 index 前调用 `build_motion_chain_map.py --write`，Live2D 动作更新后只要重建索引，`motion_chain.json` 自动跟上（失败则拒绝写 index）。
 
 **涉及**：`gallery_src/index.html`（回落三层+看门狗）、`build_gallery_index.py`（自动刷新）、`scripts/build_motion_chain_map.py`（已回退到 8121746 版本）、`scripts/diag/l2d_motion_chain_verify.py`。相关 §124、WF-37/WF-40。
+
+## §129. l2d.su 参考库全站路径 404（2026-10-19）
+
+**现象**：`l2d_ref_diff.py antu_2` / `aersasi_2` 全部 `[SKIP] 参考库无此模型`，`--no-cache` 仍 404；WF-16 第 1 件因此红。
+
+**取证**：
+- 站点首页 200，meta 已从 `static.l2d.su/azurlane` 改到 `static.l2d.su/al`；
+- `/azurlane/live2d/...`、`/al/live2d/...`、`/al/<model>/...` 全 404；
+- 不是网络（代理/直连都 404），是参考库目录结构变了或模型已下架。
+
+**处理**：
+- `l2d_ref_diff.py` 的 BASE 支持 `L2D_REF_BASE` 环境变量，找到新镜像直接指过去；
+- `wf16_regression.py` 把“全部 SKIP + 明确 404”记为 **环境跳过**，不写成通过；
+- 未伪造参考数据，也未把 SKIP 当 PASS。
+
+**判定**：外部参考库不可达，本轮无法用 l2d.su 做 motion 对照；WF-16 第 1 件只能算 SKIP。
