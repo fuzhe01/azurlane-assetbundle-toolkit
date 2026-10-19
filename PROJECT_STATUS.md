@@ -346,3 +346,5 @@ motion 大面积失效源于我们自己的解析器（帧 0 护栏 + 曲线名�
 ---
 
 > **历史归档**：v1 时代攻关路线、多部件合成已知问题清单（Bug#1-#4）、7-30/7-31 修复记录、bj 背景层专项、调参工具 v3-v6 会话流水、旧 Spine Viewer 调试史 → 全部见 `docs/archive/PROJECT_STATUS_历史归档.md`。
+
+> ▸ **2026-10-19 HitAreas 补全**：`fix_model3.py` 对 `Touch*` 先查 `touch_<x>`，没有再退回 `<x>`；全库 38 模型补 128 个 `TouchIdle*→idle*`（含 ougen_8 脱鞋 TouchIdle6→idle6）。`TouchDrag4/6/7/11..` 无动作组，前端只登记/轮转，不能播放不存在的 clip。取证 §130。

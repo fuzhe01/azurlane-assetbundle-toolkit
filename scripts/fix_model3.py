@@ -240,6 +240,12 @@ for model_name in sorted(os.listdir(OUTPUT_DIR)):
                 continue
             cand = 'touch_' + _re.sub(r'(?<!^)(?=[A-Z])', '_', tid[5:]).lower()
             cand = cand.replace('__', '_')
+            # 有些按钮的动作组不带 touch_ 前缀：TouchIdle6 对应的是 idle6（脱鞋/换装待机），
+            # 旧规则只认 touch_idle6 → 整块被判成“无动作”而丢弃。先查 touch_<x>，再退回 <x>。
+            if cand not in gexact:
+                alt = tid[5:].lower()
+                if alt in gexact:
+                    cand = alt
             if cand in gexact:
                 extra.append({"Id": tid, "Name": cand})
         if extra:

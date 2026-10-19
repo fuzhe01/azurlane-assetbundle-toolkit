@@ -6901,3 +6901,21 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 - 未伪造参考数据，也未把 SKIP 当 PASS。
 
 **判定**：外部参考库不可达，本轮无法用 l2d.su 做 motion 对照；WF-16 第 1 件只能算 SKIP。
+
+## §130. 互动区（HitAreas）缺整块：只认 touch_<X>，漏掉 TouchIdle6→idle6 这类“无 touch_ 前缀”的按钮（2026-10-19）
+
+**现象**：ougen_8 脚部脱鞋互动区缺失；参数/部件面板有相关部件，但页面点不到。
+
+**根因**：`reconstruct_live2d.py` 生成的 model3 没有 HitAreas；`fix_model3.py` 从 moc3 的 `Touch*` 补登记时，只接受**同名 `touch_<x>` 动作组**。
+
+`TouchIdle6` 的真实动作组是 `idle6`（不是 `touch_idle6`），于是被整块丢掉；同类还有 TouchIdle45→idle45 等。
+
+**修法**：先查 `touch_<x>`，没有再退回 `<x>`（`idle6`/`idle45`）；仍无动作组的才跳过。
+
+**结果**：全库 38 个模型补 128 个 idle 映射（ougen_8 补 TouchIdle6→idle6）；ougen HitAreas 30→31，前端再加 14 个 TouchDrag*，共 45 个可见互动区。
+
+**仍不完整的部分**：moc3 有 44 个 Touch*，但原始 AnimationClip 只有 `touch_drag1/2/3`；`TouchDrag4/6/7/11..20` 没有对应动作组，前端只能登记并轮转到现有 drag 组，不能播放不存在的动作。要“完全复刻”必须游戏侧还有这些 clip 或做人工动作。
+
+**脱鞋**：`idle6` 本身就是对应动作；也可以继续用参数/部件面板手动调 `PartOpacity`/参数验证。
+
+**涉及**：`scripts/fix_model3.py`、`Output/Live2D/*/*.model3.json`、`gallery_src/index.html`（TouchDrag* 补区）。相关 §18/§26、WF-40。
