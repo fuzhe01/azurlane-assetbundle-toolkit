@@ -3079,7 +3079,7 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 
 #### 回落语义（唯一判据，来自 2026-10-17 归档）
 
-1. `idle*` → 库自循环；`touch_drag*` 不再自循环，回到拖拽前的 idle（没有记录才默认 idle），不查表 best。
+1. `idle*` → 库自循环；`touch_drag*` 按住时 loop、松手回拖拽前的 idle（没有记录才默认 idle），不查表 best。
 2. `touch_idle*` → `motion_chain.json` 的 best，但候选需覆盖动作参数的 ≥60%；低覆盖/无候选 → 默认 idle。
 3. 其它长动作（`complete/home/login/main_*/mission_complete/wedding/touch_head/touch_body/touch_special` 等）→ **默认初始 idle**，不按表选 best。
 
@@ -3115,4 +3115,4 @@ mask 256→1024/2048 只能让阶梯变细；4x 超采样 + mask 4096 + 2D 降�
 #### 2026-10-19 追加：mask 按数量算 + 拖拽互动
 
 - mask：`N` 取 2 的幂，`N ≥ 画布长边 × √maskCount`，上限 8192（ougen_8：maskCount=9、长边 2098 → 8192）；运行时按模型自动算，所有模型统一，无需逐模型配置。
-- 拖拽：把 moc3 里未登记的 `TouchDrag*` drawable 补成互动区（ougen_8 30 + 14 = 44 个）；**Ctrl/⌘ + 左键拖拽**才进互动（普通左键仍是平移），松手按拖动距离播 `touch_drag*`；`touchdragN` 优先映射 `touch_dragN`，没有该组再轮转到现有 drag 组。
+- 拖拽：把 moc3 里未登记的 `TouchDrag*` drawable 补成互动区（ougen_8 30 + 14 = 44 个）；**Ctrl/⌘ + 左键按住**才进互动（普通左键仍是平移）：按下即播 `touch_drag*` 并强制 loop（按住期间持续动），松手停 loop 并回拖拽前的 idle；`touchdragN` 优先映射 `touch_dragN`，没有该组再轮转到现有 drag 组。

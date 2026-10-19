@@ -1383,6 +1383,7 @@ async function renderLive2D(s, sk){
     /* 每个 group 实际驱动的参数名集合，在 createMotion 拿到原始 json 时顺手登记（零额外请求）。
        下面的「残留复位」和 motion3.json 的曲线绑定集是同一份数据，不另开文件。 */
     const paramSets=Object.create(null);
+    const forcedLoop=new Set();   // Ctrl 拖拽按住期间强制 loop 的 drag 组
     const curveId=(c)=>{ const i=c&&c.Id; return typeof i==='string'? i : (i&&i.string)||null; };
     const origCreateMotion=mm.createMotion.bind(mm);
     mm.createMotion=(json,group,def)=>{ const m=origCreateMotion(json,group,def);
@@ -1390,7 +1391,7 @@ async function renderLive2D(s, sk){
          touch_drag 与长动画（touch_head/touch_body/complete 等）虽 Meta.Loop 恒 True，但 vendored 库从不据此自动 loop——
          setIsLoop 必须手动调用；这里**只给 idle 组合调**，drag/长动画不 setLoop → 播完由 complete→
          shouldRequestIdleMotion 逐帧接管回落（touch_drag/touch_idle→best，其它长动作→idle），就是方案B的行为。 */
-      if(idleSet.has(group)&&json&&json.Meta&&json.Meta.Loop&&m.setIsLoop){
+      if((idleSet.has(group)||forcedLoop.has(group))&&json&&json.Meta&&json.Meta.Loop&&m.setIsLoop){
         m.setIsLoop(true); if(m.setIsLoopFadeIn) m.setIsLoopFadeIn(false); }
       try{ if(json&&json.Curves){ const s=paramSets[group]||(paramSets[group]=new Set());
           for(const c of json.Curves) if(c.Target==='Parameter'){ const id=curveId(c); if(id) s.add(id); } } }catch(e){}
@@ -1684,15 +1685,22 @@ async function renderLive2D(s, sk){
       if(!ds.length) return null;
       const k=parseInt((n.match(/(\d+)$/)||[])[1]||'1',10);
       return ds[(k-1)%ds.length]; };
+    const setGroupLoop=(g,on)=>{ try{ for(const m of (mm.motionGroups[g]||[])){
+        if(m&&m.setIsLoop) m.setIsLoop(on); } }catch(e){} };
     const onDown=e=>{ if(e.button!==0) return; moved=0; px=e.clientX; py=e.clientY;
       const n=localHit(e.clientX,e.clientY);
       /* 普通左键拖拽 = 平移画布；Ctrl/⌘ + 左键拖拽 = 拖拽互动（用户 2026-10-19 指定）。
-         落在 touch_drag* 区就用该区；没落区时用 touch_drag1 作兜底（模型没有 drag 组则不拦截，仍平移）。 */
+         按下即播 drag 并强制 loop（按住期间持续动），松手停 loop 回拖拽前的 idle。 */
       if(e.ctrlKey||e.metaKey){
         const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
         if(!ds.length){ dragPart=null; dragging=true; return; }
-        dragPart=(n && /^touch_drag/.test(n)) ? n : (ds.find(g=>/^touch_drag1$/.test(g))||ds[0]);
-        dragging=false; return;
+        const dg=dragGroupOf((n && /^touch_drag/.test(n)) ? n : 'touch_drag1');
+        if(!dg){ dragPart=null; dragging=true; return; }
+        dragReturn=(mm.state && idleSet.has(mm.state.currentGroup))?mm.state.currentGroup:idleGroup;
+        forcedLoop.add(dg); setGroupLoop(dg,true);
+        dragPart=dg; dragging=false;
+        if(play(dg, MP.FORCE)) sel.value=dg;
+        return;
       }
       dragPart=null; dragging=true; };
     const onMove=e=>{ if(dragPart){ const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
@@ -1700,11 +1708,11 @@ async function renderLive2D(s, sk){
       if(!dragging)return; const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
       ox+=dx; oy+=dy; px=e.clientX; py=e.clientY; clampPan(); apply(); };
     const onUp=e=>{ if(dragPart){ const part=dragPart; dragPart=null;
-        if(moved>=6){ const dg=dragGroupOf(part);
-          dragReturn=(mm.state && idleSet.has(mm.state.currentGroup))?mm.state.currentGroup:idleGroup;
-          if(dg && play(dg)){ sel.value=dg;
-            const pill=document.getElementById('l2Hit'); if(pill) pill.textContent=(part+' → ')+dg; } }
-        else { const g=dragGroupOf(part); if(g && play(g)){ sel.value=g; } }
+        forcedLoop.delete(part); setGroupLoop(part,false);
+        try{ if(mm.state && mm.state.complete) mm.state.complete(); }catch(e){}
+        const back=dragReturn||idleGroup;
+        if(play(back, MP.FORCE)){ sel.value=back;
+          const pill=document.getElementById('l2Hit'); if(pill) pill.textContent=(back+' ← 拖拽'); }
         return; }
       if(!dragging) return; dragging=false; if(moved>=6||e.button!==0){ vm.touch(); return; }
       const name=localHit(e.clientX,e.clientY);
@@ -1712,7 +1720,10 @@ async function renderLive2D(s, sk){
       if(!g) return;
       if(play(g)){ sel.value=g; const pill=document.getElementById('l2Hit');
         if(pill) pill.textContent=(name?'部位 '+name+' → ':'')+g; } };
-    const onCancel=()=>{ dragging=false; };
+    const onCancel=()=>{ dragging=false;
+      if(dragPart){ forcedLoop.delete(dragPart); setGroupLoop(dragPart,false); dragPart=null;
+        try{ if(mm.state&&mm.state.complete) mm.state.complete(); }catch(e){}
+        const back=dragReturn||idleGroup; if(play(back,MP.FORCE)) sel.value=back; } };
     /* 缩放必须按住 Ctrl(或 ⌘/Alt)：裸滚轮要留给页面滚动。
        之前裸滚轮被 preventDefault 劫持，用户浏览列表时鼠标经过模型就会一路放大到 12 倍并累积偏移，
        看起来像「模型乱动/位置不对」 */
