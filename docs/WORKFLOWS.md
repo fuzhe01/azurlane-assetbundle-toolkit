@@ -3105,3 +3105,9 @@ mask 256→1024/2048 只能让阶梯变细；4x 超采样 + mask 4096 + 2D 降�
 #### 涉及文件
 
 `gallery_src/index.html`、`scripts/build_gallery_index.py`、`scripts/build_motion_chain_map.py`、`Output/gallery_v2/motion_chain.json`、`scripts/diag/l2d_motion_chain_verify.py`。相关 §127/§128、WF-37/38。
+
+#### 2026-10-19 WF-16 实跑结果（Edge）
+
+- 五件：`l2d_ref_diff`（参考库 404 → 环境跳过，未参与比对）、坐标系、检查器、交互五项、台词与开关 **全 PASS**；
+- 全量 hit 262 个模型单轮 >1h，本轮改跑 `hit_verify.py --limit 30`：**30 模型 / 247 部位 / HIT 202 + INGROUP 45 + WIRING 0 / 可点中率 100%**；全量 262 未跑完，不能写成“六件全绿”。
+- headless Edge 的 `requestFullscreen` 无手势授权，`talk_verify` 打印 ⚠️ 跳过该直读判据，结构判据 `inFSTarget` 已独立验过。
