@@ -1335,11 +1335,11 @@ async function renderLive2D(s, sk){
       const lg=lastGroup, low=((lg||'').toLowerCase());
       if(!lg || idleSet.has(lg)) return false;
       let dst=null;
-      if(/^touch_drag/.test(low)) dst=lg;
-      else if(!/^touch_idle/.test(low)) dst=idleGroup;
+      // touch_drag*/touch_idle* 都查表 best；其它长动作回默认 idle。
+      // 覆盖度保险丝：<60% 的候选（如 idle9 22/337）不采用，回默认 idle。
+      if(!/^touch_(idle|drag)/.test(low)) dst=idleGroup;
       else {
-        // touch_idle*：只认表里的 best（最衔接最后一帧），不再优先同名 idleN
-        // 覆盖度保险丝：旧缓存表里 <60% 的候选（如 idle9 22/337）不采用，回默认 idle
+        // touch_idle*/touch_drag*：只认表里的 best（最衔接最后一帧），不再优先同名 idleN
         const c=chainModel&&chainModel.chain[lg];
         const _cov=c&&c.best_coverage!=null?c.best_coverage:1;
         dst=(c&&c.best&&_cov>=0.6&&mm.definitions[c.best])?c.best:null;
@@ -1385,11 +1385,11 @@ async function renderLive2D(s, sk){
     const curveId=(c)=>{ const i=c&&c.Id; return typeof i==='string'? i : (i&&i.string)||null; };
     const origCreateMotion=mm.createMotion.bind(mm);
     mm.createMotion=(json,group,def)=>{ const m=origCreateMotion(json,group,def);
-      /* drag 与 idle 变体是循环待机/拖拽：采纳 Meta.Loop 让它们在播完时不触发回落（库检测到 loop 就持续回绕）。
-         长动画（touch_head/touch_body/complete 等）虽 Meta.Loop 恒 True，但 vendored 库从不据此自动 loop——
-         setIsLoop 必须手动调用；这里只给 idle/drag 组合调，长动画不 setLoop → 播完由 complete→
-         shouldRequestIdleMotion 逐帧接管回落（①drag ②长动画→idle ③touch_idle→best），就是方案B的行为。 */
-      if((idleSet.has(group)||/^touch_drag/.test(group))&&json&&json.Meta&&json.Meta.Loop&&m.setIsLoop){
+      /* 只有 idle 变体是循环待机：采纳 Meta.Loop 让其播完不触发回落（库检测到 loop 就持续回绕）。
+         touch_drag 与长动画（touch_head/touch_body/complete 等）虽 Meta.Loop 恒 True，但 vendored 库从不据此自动 loop——
+         setIsLoop 必须手动调用；这里**只给 idle 组合调**，drag/长动画不 setLoop → 播完由 complete→
+         shouldRequestIdleMotion 逐帧接管回落（touch_drag/touch_idle→best，其它长动作→idle），就是方案B的行为。 */
+      if(idleSet.has(group)&&json&&json.Meta&&json.Meta.Loop&&m.setIsLoop){
         m.setIsLoop(true); if(m.setIsLoopFadeIn) m.setIsLoopFadeIn(false); }
       try{ if(json&&json.Curves){ const s=paramSets[group]||(paramSets[group]=new Set());
           for(const c of json.Curves) if(c.Target==='Parameter'){ const id=curveId(c); if(id) s.add(id); } } }catch(e){}

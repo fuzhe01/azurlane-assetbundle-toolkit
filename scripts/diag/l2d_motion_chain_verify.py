@@ -94,7 +94,7 @@ cases = [
   ('aersasi_3', 'touch_idle2',  None, True),    # best=idle2 好 6 倍 → 必须走变体
   ('aersasi_2', 'touch_idle2',  None, True),    # ⚠️ 2026-10-19 新语义：best=idle5 只差 8%，touch_idle 仍必须走 best
   ('aersasi_3', 'touch_idle31', None, True),    # best=idle1 与 idle 打平，touch_idle 仍必须走 best
-  ('aersasi_3', 'touch_drag1',  'touch_drag1', True),  # drag 循环 → 回落自身
+  ('aersasi_3', 'touch_drag1',  None, True),    # drag 也回 best
   ('jianye_4',  'mail',         None, True),    # best=idle3（norm 0.01 vs 默认 idle 8866）→ 必须走变体
   ('z46_4',     'mission',      None, True),    # fallback=true（无候选）→ 默认 idle
   ('ougen_8',   'complete',     None, True),    # 旧表误判 idle9（22/337）→ 覆盖度闸门后应回 idle
@@ -106,6 +106,9 @@ cases = [
   ('ougen_8',   'touch_idle12', None, True),    # 旧表 idle9 → 覆盖度后 idle7
   ('ougen_8',   'touch_idle17', None, True),    # 旧表 idle9 → 覆盖度后 idle10
   ('ougen_8',   'touch_idle2',  None, True),    # 覆盖度后 idle12
+  ('ougen_8',   'touch_drag1',  None, True),    # 表 best idle11
+  ('ougen_8',   'touch_drag2',  None, True),    # 表 best idle13
+  ('ougen_8',   'touch_drag3',  None, True),    # 表 best idle7
 ]
 CHAIN = json.load(open(os.path.join(ROOT, 'Output', 'gallery_v2', 'motion_chain.json'), encoding='utf-8')) \
   .get('models', {})
@@ -146,9 +149,7 @@ def _default_idle(key):
 def expected_for(key, action):
     """复刻前端三层回落（2026-10-17 语义），返回 (组, 理由)。"""
     ig = _default_idle(key)
-    if action.startswith('touch_drag'):
-        return action, 'self-loop'
-    if not action.startswith('touch_idle'):
+    if not action.startswith(('touch_idle', 'touch_drag')):
         return ig, 'long->default idle'
     c = ((CHAIN.get(key) or {}).get('chain') or {}).get(action)
     if not c or c.get('fallback'):
@@ -159,10 +160,9 @@ def expected_for(key, action):
     nb = c.get('best_norm')
     if nb is None:
         return ig, 'no-norm'
-    if c.get('n_action_params') and c.get('best_coverage') is not None and c['best_coverage'] < 0.5:
+    if c.get('n_action_params') and c.get('best_coverage') is not None and c['best_coverage'] < 0.6:
         return ig, 'low-coverage'
-    if action.startswith('touch_idle'):
-        return b, 'best(touch_idle)=%s' % b
+    return b, 'best(%s)=%s' % ('touch_drag' if action.startswith('touch_drag') else 'touch_idle', b)
     nd = next((r.get('norm') for r in (c.get('runners_up') or []) if r.get('group') == ig), None)
     if nd is not None and nd > 0 and nb > nd * 0.85:
         return ig, 'marginal(best=%s %.0f%% better)' % (b, (nd / nb - 1) * 100 if nb else 0)
