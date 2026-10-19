@@ -57,10 +57,9 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 1,897 张（bg 1,302 + helpbg 364 + commonbg 111 + loadingbg 50 + loadingbg_hx 13 + newshipbg 14 + worldhelpbg 29 + lotterybg 12 + backyardbg 2）。输出 `Output/Raw/{bg,commonbg,loadingbg,helpbg,...}/`。
 > 2026-09-16 随源包更新全量重导 1897/1897；修复 `export_assets.py` 漏设 `FALLBACK_UNITY_VERSION` 导致较新包加载失败的问题。⚠️ **`Output/Raw/`（2.02 GB，1,964 png）不是 `files/` 的副本，是 09-16 那轮的冻结导出层**：当前 5 档管线不写不读它、前端索引引用 0 处、唯一读者 `organize.py` 至今未跑（§2.8），可由源包确定性重导。取证 **§111**。
 
-### 2.4 音频导出 ✅
-4,370 WAV / 0 失败 / ~14GB。`.b` 是 CRIWARE ACB，vgmstream 解码。分类 BGM 536 / CV 2,696 / Other 1,136 / SE 2。脚本 `scripts/export_cue_audio.py`。
-✅ **2026-10-06 BGM 改档为 FLAC 无损**：`Output/Audio/BGM/` = 536 个 `.flac` / **6.87 GB（比 wav 省 41.5%）**，19.1 小时；逐条 `--verify-only`（产物 md5 对台账 + 整条解到 null）全绿，裸 PCM 回环抽 7 份（0.5→88.5 MB）逐字节相同。原 wav 与中途的 opus 版（1.06 GB）都已删，**净回收 12.81 GB**。三档实测对照：wav 11.75 / FLAC 6.87 / opus128k 1.06 GB。
-✅ 新增画廊播放页 `gallery_v2/bgm.html`（潮汐进度条 + 雨后玻璃 + 三组筛选），**归属已补全**：355 首有出处（12 张配置表）、388 首有用途、40 首官方中文名（10 张专辑）、17 首连到舰名。⚠️ 两条硬教训：换格式必须重跑播放验收（`.flac` 默认 MIME 是 `audio/x-flac`，Chrome `canPlayType` 返回空串）；无损要靠裸 PCM 回环证明，不能靠格式名字。取证 **§112 / §113**。
+### 2.4 音频导出 ✅（2026-10-19 重建 BGM）
+`Output/Audio/BGM_flac/` = **561 首 `.flac` / 7.10 GB / 19.84 小时**；`Output/Audio/CV2/` = 20,760 文件 / 1.25 GB。BGM 的 561 个 wav（12.20 GB）在 `--verify-only` 561/561 全绿后已删。脚本 `export_cue_audio.py` / `transcode_bgm.py` / `build_bgm_index.py`（本轮把前两个的硬编码 KLLM 路径与 ffprobe 拼接修正，见 §126 / WF-39）。
+✅ **音乐库可用**：`gallery_v2/bgm.json` 561 首；`bgm_page_probe.py` 全 PASS（播放在走、Range 拖动、筛选/搜索、两套主题截图）。归属：377 首有出处、413 有用途、40 首官方中文名（10 张专辑）、17 首连舰名。⚠️ 换格式必须重跑播放验收（`.flac` 默认 MIME 是 `audio/x-flac`）；无损靠 `--verify-only` 的 md5+整条解码证明，不能靠格式名字。取证 **§112 / §113 / §126**。
 
 ### 2.5 Live2D 模型还原 ✅（2026-09-21 动作层重建；2026-09-22 补齐 9 个 bundle → 269 模型；2026-09-26 修 5 个贴图索引错绑）
 269/269 还原、纹理拼接正确、HitAreas 已全库补登真判定区。输出 `Output/Live2D/{舰名}/`，**4.7GB**（2026-09-24 实测，曲线补齐后从 ~3.9GB 涨上来）。脚本 `reconstruct_live2d.py` / `fix_model3.py` / `extract_motions.py`。
@@ -115,13 +114,13 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 
 | 类别 | 文件数 | 大小 | 说明 |
 |---|---|---|---|
-| Paintings_v2 | 4,486 | ~15 GB | v2 静态立绘（当前正式产物） |
-| Spine_v2 | 232 主包 | — | v2 Spine 提取 |
-| Live2D | 256 | ~3.5 GB | Live2D 模型 |
-| Audio | 4,370 | ~14 GB | BGM/CV/Other/SE |
-| Raw/bg 等 | ~1,900 | ~2 GB | 背景/加载/帮助图原件 |
-| gallery_v2 | ~4,500 | ~190 MB | 本地浏览平台 |
-| files/AssetBundles | 86,849 | 26.6 GB | 源数据（只读） |
+| Paintings_v2 | 4,452 | 16.07 GB | v2 静态立绘（当前正式产物） |
+| Spine_v2 | 235 目录 | 3.64 GB | v2 Spine 提取 |
+| Live2D | 262 | 5.31 GB | Live2D 模型 |
+| Audio | 21,321 | 8.35 GB | BGM_flac 561 + CV2 20,760 |
+| CG_v2 | 235 | 0.89 GB | 已进画廊索引（`skin.cg`） |
+| gallery_v2 | 4,705 | ~0.19 GB | 本地浏览平台 |
+| files/AssetBundles | 56,520 | 27.67 GB | 源数据（只读） |
 
 （v1 旧产物与历次调试目录已清理；**2026-09-20 磁盘清理 126 项/7.3GB 与硬链接去重 531 文件/~358MB 的完整流水**（含"重复资产被画廊按文件名引用故不能删"的判据）见归档 A3 段与 `windows-hardlink-dedup-verify` 技能。）
 
