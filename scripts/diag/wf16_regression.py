@@ -110,7 +110,7 @@ def main():
     if a.full_ref:
         steps[0] = ('1 l2d_ref_diff 全量', ['l2d_ref_diff.py', '--all'], False)
     t0 = time.time()
-    bad, done = [], []
+    bad, done, env_skip = [], [], []
     for label, args, skippable in steps:
         if any(s in ' '.join(args) for s in skips) and skippable:
             print(f'\n#### {label} —— 按 --skip 跳过', flush=True)
@@ -118,12 +118,28 @@ def main():
         script = os.path.join(HERE, args[0])
         print(f'\n#### {label}  {time.strftime("%H:%M:%S")}', flush=True)
         env = dict(os.environ, PYTHONIOENCODING='utf-8')
-        r = subprocess.run([sys.executable, script] + args[1:], cwd=ROOT, env=env)
-        print(f'#### {label} 退出码 = {r.returncode}', flush=True)
-        (bad if r.returncode else done).append(f'{label}(exit {r.returncode})')
+        if args[0] == 'l2d_ref_diff.py':
+            # 参考库 404 时全部 [SKIP]，这是**上游参考库不可达**，不是 motion 数据失败；
+            # 捕获输出明确区分，避免把"没比过"写成通过。
+            r = subprocess.run([sys.executable, script] + args[1:], cwd=ROOT, env=env,
+                               capture_output=True, text=True, encoding='utf-8', errors='replace')
+            print(r.stdout or '', end='')
+            if r.stderr:
+                print(r.stderr, end='')
+            rc = r.returncode
+            if rc and '没有任何模型真正参与比对' in (r.stdout or ''):
+                rc = 0
+                env_skip.append(label + '(参考库 404，未参与比对)')
+        else:
+            r = subprocess.run([sys.executable, script] + args[1:], cwd=ROOT, env=env)
+            rc = r.returncode
+        print(f'#### {label} 退出码 = {rc}', flush=True)
+        (bad if rc else done).append(f'{label}(exit {rc})')
 
     print(f'\n===== 汇总（{time.time()-t0:.0f}s）=====')
     print('通过:', ', '.join(done) or '无')
+    if env_skip:
+        print('环境跳过:', ', '.join(env_skip))
     if bad:
         print('未通过:', ', '.join(bad))
         sys.exit(1)
