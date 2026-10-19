@@ -147,28 +147,10 @@ def _default_idle(key):
     return gs[0] if gs else 'idle'
 
 def expected_for(key, action):
-    """复刻前端三层回落（2026-10-17 语义），返回 (组, 理由)。"""
+    """复刻前端：touch_idle*/touch_drag* 回进入动作前的 idle；探针从默认 idle 进入，故期望默认 idle。
+    其它长动作也回默认 idle。"""
     ig = _default_idle(key)
-    if action.startswith('touch_drag'):
-        return ig, 'drag->previous/default idle'
-    if not action.startswith('touch_idle'):
-        return ig, 'long->default idle'
-    c = ((CHAIN.get(key) or {}).get('chain') or {}).get(action)
-    if not c or c.get('fallback'):
-        return ig, 'no-entry/fallback'
-    b = c.get('best')
-    if not b or b not in _groups(key):
-        return ig, 'best-missing'
-    nb = c.get('best_norm')
-    if nb is None:
-        return ig, 'no-norm'
-    if c.get('n_action_params') and c.get('best_coverage') is not None and c['best_coverage'] < 0.6:
-        return ig, 'low-coverage'
-    return b, 'best(%s)=%s' % ('touch_drag' if action.startswith('touch_drag') else 'touch_idle', b)
-    nd = next((r.get('norm') for r in (c.get('runners_up') or []) if r.get('group') == ig), None)
-    if nd is not None and nd > 0 and nb > nd * 0.85:
-        return ig, 'marginal(best=%s %.0f%% better)' % (b, (nd / nb - 1) * 100 if nb else 0)
-    return b, 'best=%s' % b
+    return ig, 'last-idle/default'
 
 all_pass = True
 # warmup：预取 motion_chain（浏览器缓存）+ 预载首模型，消除首 case 冷启时序
