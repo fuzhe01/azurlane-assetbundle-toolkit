@@ -3001,6 +3001,10 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 3. **改完先刷平再验**：`py -3 scripts/deploy_gallery.py` → `--check` 6/6；
    `Edit`/原子保存会**断硬链**，提交前必须刷平，提交后再 `--relink` 补链。
 4. **画质要看图**：同屏 1x/2x 截图对照（`.diag/spine_ab/`），别只信数值；数值对但取景/构图变了也是回退。
+5. **静态立绘不放大**：查看器上限 1:1（小图留白、滚轮/双击看 1:1），判据：小图 `client==natural`；
+   Spine 开 `antialias:true`，判据：`getContextAttributes().antialias===true` 且 buffer/CSS 仍 = dpr。
+6. **CG 入索引**：`CG_v2/*.png` 由 `build_gallery_index.py` 写成 `skin.cg`，同时要有 `thumbs/<key>_cg.webp`；
+   判据：`gallery_index_diff_check.py --allow-skin cg` 只允许 235 条 cg 变化、船/皮肤/语音零差异。
 
 #### 踩坑记录
 

@@ -981,10 +981,9 @@ function mountImageViewer(){
   curVM=vm;
   function relayout(){ const r=stage.getBoundingClientRect();
     if(!img.naturalWidth) return false;
-    /* 上限 2 倍而不是 1：立绘原件多为 800~1100px 宽，在 2560 屏放大后的弹窗里
-       按「不放大」只能画到自然尺寸 → 四周大片留白，就是用户说的「缩得有点小」。
-       像素保真没有丢：双击仍然是 1:1 像素（下面 dblclick 用 naturalWidth/clientWidth 反算）。 */
-    const k=Math.min(r.width/img.naturalWidth, r.height/img.naturalHeight, 2);
+    /* 上限 1 倍（不放大）：>1 只是把源图硬拉大，必然糊（用户 2026-10-19 判据：不能模糊）。
+       小于视口的图会留白，想看大图用滚轮/双击 1:1；640/4402 张源宽 <1000px 的图不再二次放大。 */
+    const k=Math.min(r.width/img.naturalWidth, r.height/img.naturalHeight, 1);
     img.style.width=Math.round(img.naturalWidth*k)+'px';
     img.style.height=Math.round(img.naturalHeight*k)+'px';
     return true; }
@@ -1695,7 +1694,7 @@ async function startSpine(s, sk){
     const wrap=document.getElementById('spcwrap'); wrap.style.cssText='position:absolute;inset:0';
     const cv=document.createElement('canvas'); cv.style.cssText='width:100%;height:100%;display:block;cursor:grab'; wrap.appendChild(cv);
     const bar=document.createElement('div'); bar.className='spine-bar'; wrap.appendChild(bar);
-    const glctx=new spine.webgl.ManagedWebGLRenderingContext(cv,{alpha:true,premultipliedAlpha:true});
+    const glctx=new spine.webgl.ManagedWebGLRenderingContext(cv,{alpha:true,premultipliedAlpha:true,antialias:true});
     const scene=new spine.webgl.SceneRenderer(cv,glctx,false);
     const gl=glctx.gl; gl.clearColor(0,0,0,0); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
 
