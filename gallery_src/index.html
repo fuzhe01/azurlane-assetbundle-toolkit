@@ -1676,9 +1676,13 @@ async function renderLive2D(s, sk){
     const dragGroupOf=n=>{ if(groups.includes(n)) return n;
       const _alt=n.replace(/^touchdrag(\d+)$/,'touch_drag$1');
       if(groups.includes(_alt)) return _alt;
+      const k=parseInt((n.match(/(\d+)$/)||[])[1]||'1',10);
+      // TouchDragN 的真实动作组不一定是 touch_dragN（多数模型只有 drag1..3）：
+      // 按编号依次试 touch_dragN → touch_idleN → idleN → dragN（TouchDrag6 就是脱鞋 idle6）。
+      for(const c of ['touch_drag'+k,'touch_idle'+k,'idle'+k,'drag'+k]){
+        if(groups.includes(c)) return c; }
       const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
       if(!ds.length) return null;
-      const k=parseInt((n.match(/(\d+)$/)||[])[1]||'1',10);
       return ds[(k-1)%ds.length]; };
     const setGroupLoop=(g,on)=>{ try{ for(const m of (mm.motionGroups[g]||[])){
         if(m&&m.setIsLoop) m.setIsLoop(on); } }catch(e){} };
@@ -1713,7 +1717,9 @@ async function renderLive2D(s, sk){
         return; }
       if(!dragging) return; dragging=false; if(moved>=6||e.button!==0){ vm.touch(); return; }
       const name=localHit(e.clientX,e.clientY);
-      const g = name && (groups.includes(name) ? name : groups.find(x=>x.toLowerCase()===name.toLowerCase())) || (name?null:fallbackG);
+      // 普通点击补区（touchdragN）也要能触发：先查同名组，再走 dragGroupOf 的编号映射。
+      const g = name && (groups.includes(name) ? name
+        : (groups.find(x=>x.toLowerCase()===name.toLowerCase()) || dragGroupOf(name))) || (name?null:fallbackG);
       if(!g) return;
       if(play(g)){ sel.value=g; const pill=document.getElementById('l2Hit');
         if(pill) pill.textContent=(name?'部位 '+name+' → ':'')+g; } };
