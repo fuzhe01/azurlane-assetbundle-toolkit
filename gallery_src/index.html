@@ -1172,6 +1172,27 @@ function mountSkinVoice(barEl, clickEl, keyOf){
   Promise.all([loadVoiceMap(), loadWords()]).then(draw,draw);
 }
 /* ---------- Live2D（pixi 6.5.2 + pixi-live2d-display 0.4.0 + cubismcore 5.1.0，均为 vendor/live2d/ 本地脚本） ---------- */
+/* ---------- 状态切换交互（§132，2026-10-20）：部分 TouchDrag* 不是「动作」而是「状态开关」 ----------
+    首例 ougen_8 touch_drag17（拖鞋）：ShoseOff 参数（显示名「脱鞋」）在该模型 55 个 motion 里
+    **零曲线驱动** —— 它是游戏代码直接 set 的纯状态参数；穿/脱鞋的局部过渡动画由 moc3 keyform
+    随参数值渐变自然产生，不经过任何 motion。误把它当「动作」轮转播 touch_drag1..3（屁股回弹）
+    是错误的（用户按游戏画面指正，取证 docs/TROUBLESHOOTING.md §132）。
+    两种接线形态（全库取证结论，扫描器 scripts/diag/l2d_state_param_scan.py）：
+      ① 区名→参数名不对应（ougen_8 特例）：TouchDrag17 区 → ShoseOff 参数；
+      ② 区名同名参数（aersasi_2/3、antu_2 通用模式）：点 TouchDragN 区 = 播同名 motion
+         （若有）+ 游戏代码 set 同名 touch_dragN 参数（0..1 开关、零 motion/physics 驱动，
+         显示名即语义，如 aersasi_2 touch_drag1「墨镜TMD」、aersasi_3 touch_drag12「丝袜弹出」）。
+    判据：零 motion 驱动 + 零 physics 驱动 + 0..1 值域；候选清单须经游戏画面对照确认语义才接线。
+    配置表驱动（多条目，每模型可接多个状态）：trigger 写 moc3 补区形态的编号名（touchdragN；
+    model3 登记的 touch_dragN 会被归一）。运行态（_on/_tw）挂在条目对象上。 */
+const STATE_TOGGLES = {
+  'ougen_8': [
+    { trigger:'touchdrag17', id:'ShoseOff', off:0, on:1, dur:0.5, label:'脱鞋 / 穿鞋' }
+  ],
+  'aersasi_2': [
+    { trigger:'touchdrag1', id:'touch_drag1', off:0, on:1, dur:0.5, label:'墨镜' }
+  ]
+};
 let l2State = null;
 function stopLive2D(){ if(l2State){ l2State.cancelled=true; if(l2State.off)try{l2State.off()}catch(e){}
   if(l2State.app)try{l2State.app.destroy(true,{children:true,baseTexture:true,texture:true})}catch(e){} l2State=null; } }
@@ -1667,7 +1688,43 @@ async function renderLive2D(s, sk){
     const clampPan=()=>{ const cw=wrap.clientWidth||1, ch=wrap.clientHeight||1;
       const lim=Math.max(cw,ch)*0.6;
       ox=Math.max(-lim,Math.min(lim,ox)); oy=Math.max(-lim,Math.min(lim,oy)); };
-    let dragging=false,px=0,py=0,moved=0,dragPart=null,dragReturn=null;
+    /* ---------- 状态切换区（§132）：命中配置 trigger 的区不播动作，直接切参数状态 ----------
+        写参数挂在 internalModel 的 beforeModelUpdate 事件上（vendor 源码 5451 行：physics/pose
+        之后、model.update() 渲染之前 emit）——帧末 loadParameters 会把参数拉回 motion 末态，
+        但下一帧事件里会再写，渲染永远读到状态值；不与 motionManager 抢管线，零 monkey-patch。
+        切换动画 = tween 期间逐帧写中间值，moc3 keyform 随参数渐变（=游戏里那段局部过渡）。
+        多条目：每模型可配置多个状态（见 STATE_TOGGLES 头注释），运行态 _on/_tw 挂条目自身。
+        ⚠️ STATE_TOGGLES 是模块级常量、_on/_tw 会跨 renderLive2D 残留——每次进模型必须重置，
+        否则重进皮肤带着上一场的状态（_on=1 直接写新模型，跳过 stateCurOn 初始化）。 */
+    const STOGS=STATE_TOGGLES[sk.key]||[];
+    for(const t of STOGS){ t._on=undefined; t._tw=null; }
+    const normHit=n=>String(n||'').toLowerCase().replace(/^touch_drag(\d+)$/,'touchdrag$1');
+    const stateFind=n=>{ const h=normHit(n); return STOGS.find(t=>t.trigger===h)||null; };
+    const stateCurOn=t=>{ try{ const cur=core.getParameterValueById(t.id);
+        return Math.abs(cur-t.on)<Math.abs(cur-t.off)?t.on:t.off; }catch(e){ return t.off; } };
+    const stateApply=()=>{ for(const t of STOGS){
+      try{
+        if(t._tw){
+          const k=Math.min(1,(performance.now()-t._tw.t0)/1000/t.dur);
+          const e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;   // easeInOutQuad
+          core.setParameterValueById(t.id, t._tw.from+(t._tw.to-t._tw.from)*e);
+          if(k>=1) t._tw=null;
+        }else{
+          if(t._on===undefined||t._on===null) t._on=stateCurOn(t);
+          core.setParameterValueById(t.id, t._on);   // 每帧重申：防任何外部路径把它拉走
+        }
+      }catch(e){} } };
+    mdl.internalModel.on('beforeModelUpdate', stateApply);
+    const toggleState=(t,via)=>{ if(!t) return false;
+      try{
+        if(t._on===undefined||t._on===null) t._on=stateCurOn(t);
+        t._tw={from:core.getParameterValueById(t.id), to:(t._on===t.on?t.off:t.on), t0:performance.now()};
+        t._on=(t._on===t.on)?t.off:t.on;
+        const pill=document.getElementById('l2Hit');
+        if(pill) pill.textContent=(t.label||t.id)+(t._on===t.on?' ▸ on':' ▸ off')+(via?' ← 拖拽':'');
+        return true;
+      }catch(e){ return false; } };
+    let dragging=false,px=0,py=0,moved=0,dragPart=null,dragReturn=null,stateDown=null;
     const localHit=(cx,cy)=>{ const r=wrap.getBoundingClientRect();
       const lp=mdl.toLocal(new PIXI.Point(cx-r.left, cy-r.top));
       const pv=P2V(lp.x/ppu, lp.y/ppu); return hitAt(pv.x, pv.y); };
@@ -1689,6 +1746,8 @@ async function renderLive2D(s, sk){
       /* 普通左键拖拽 = 平移画布；Ctrl/⌘ + 左键拖拽 = 拖拽互动（用户 2026-10-19 指定）。
          按下即播 drag 并强制 loop（按住期间持续动），松手停 loop 回拖拽前的 idle。 */
       if(e.ctrlKey||e.metaKey){
+        /* 状态切换区（§132）：按住/拖它不播 drag 动作，松手时切状态（与游戏一致：拖一下鞋子切穿/脱） */
+        const st=stateFind(n); if(st){ stateDown=st; dragPart=null; dragging=false; return; }
         const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
         if(!ds.length){ dragPart=null; dragging=true; return; }
         // n 可能是 touch_drag1（model3）或 touchdrag4（moc3 补区）；统一交给 dragGroupOf，
@@ -1706,7 +1765,8 @@ async function renderLive2D(s, sk){
         px=e.clientX; py=e.clientY; return; }
       if(!dragging)return; const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
       ox+=dx; oy+=dy; px=e.clientX; py=e.clientY; clampPan(); apply(); };
-    const onUp=e=>{ if(dragPart){ const part=dragPart; dragPart=null;
+    const onUp=e=>{ if(stateDown){ const st=stateDown; stateDown=null; toggleState(st,true); return; }
+      if(dragPart){ const part=dragPart; dragPart=null;
         forcedLoop.delete(part); setGroupLoop(part,false);
         try{ if(mm.state && mm.state.complete) mm.state.complete(); }catch(e){}
         const back=dragReturn||idleGroup;
@@ -1715,13 +1775,15 @@ async function renderLive2D(s, sk){
         return; }
       if(!dragging) return; dragging=false; if(moved>=6||e.button!==0){ vm.touch(); return; }
       const name=localHit(e.clientX,e.clientY);
+      /* 状态切换区（§132）：点击=切状态，不播动作 */
+      { const st=stateFind(name); if(st){ toggleState(st,false); return; } }
       // 普通点击补区（touchdragN）也要能触发：先查同名组，再走 dragGroupOf 的编号映射。
       const g = name && (groups.includes(name) ? name
         : (groups.find(x=>x.toLowerCase()===name.toLowerCase()) || dragGroupOf(name))) || (name?null:fallbackG);
       if(!g) return;
       if(play(g)){ sel.value=g; const pill=document.getElementById('l2Hit');
         if(pill) pill.textContent=(name?'部位 '+name+' → ':'')+g; } };
-    const onCancel=()=>{ dragging=false;
+    const onCancel=()=>{ dragging=false; stateDown=null;
       if(dragPart){ forcedLoop.delete(dragPart); setGroupLoop(dragPart,false); dragPart=null;
         try{ if(mm.state&&mm.state.complete) mm.state.complete(); }catch(e){}
         const back=dragReturn||idleGroup; if(play(back,MP.FORCE)) sel.value=back; } };
@@ -1743,7 +1805,8 @@ async function renderLive2D(s, sk){
     window.addEventListener('blur',onCancel);
     window.addEventListener('pointermove',onMove);
     window.addEventListener('pointerup',onUp);
-    my.off=()=>{ stopSkinVoice(); ro.disconnect(); wrap.removeEventListener('wheel',onWheel);
+    my.off=()=>{ stopSkinVoice(); ro.disconnect(); try{mdl.internalModel.off('beforeModelUpdate', stateApply);}catch(e){}
+      wrap.removeEventListener('wheel',onWheel);
       wrap.removeEventListener('pointerdown',onDown); wrap.removeEventListener('dblclick',onDbl);
       wrap.removeEventListener('pointercancel',onCancel);
       window.removeEventListener('pointercancel',onCancel); window.removeEventListener('blur',onCancel);

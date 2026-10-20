@@ -6914,9 +6914,9 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 
 **结果**：全库 38 个模型补 128 个 idle 映射（ougen_8 补 TouchIdle6→idle6）；ougen HitAreas 30→31，前端再加 14 个 TouchDrag*，共 45 个可见互动区。
 
-**TouchDragN 只播拖拽动作**：它不是 idleN；`TouchDrag6` 点/拖都应该出 drag 动作。原始 AnimationClip 只有 `touch_drag1/2/3`，没有同名组时按编号轮转到现有 drag 组。脱鞋是玩家拖动鞋子部件完成的交互，不能靠改播 idle6 复刻。
+**TouchDragN 只播拖拽动作**：它不是 idleN；`TouchDrag6` 点/拖都应该出 drag 动作。原始 AnimationClip 只有 `touch_drag1/2/3`，没有同名组时按编号轮转到现有 drag 组。
 
-**脱鞋**：`idle6` 本身就是对应动作；也可以继续用参数/部件面板手动调 `PartOpacity`/参数验证。
+**脱鞋（2026-10-20 修正）**：~~idle6 本身就是对应动作~~ **误判**——idle6 曲线驱动的是上臂伸缩/上半身角度等姿态参数，与鞋无关。真实机制见 §132：拖鞋区（TouchDrag17，左脚）切 `ShoseOff` 状态参数，不播任何 motion；参数/部件面板手动调仍可用于验证。
 
 **涉及**：`scripts/fix_model3.py`、`Output/Live2D/*/*.model3.json`、`gallery_src/index.html`（TouchDrag* 补区）。相关 §18/§26、WF-40。
 ## §131. astc_encoder import 被 archspec `..` 路径间歇 PermissionError 掐死 → 贴图提取静默全跳过（2026-10-20）
@@ -6936,3 +6936,24 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 **验证**：antu_2/aersasi_2/aersasi_3/qiershazhi_2 重跑全部出贴图（13.5MB+7.1MB 等），`l2d_tex_completeness` 5/5 全绿、`l2d_texorder_check` 5/5。
 
 **涉及**：`scripts/astc_import_patch.py`、`scripts/reconstruct_live2d.py`、`scripts/diag/l2d_texture_decode_diag.py`（原 `_probe_tex.py`，通用贴图解码诊断）。相关 §130、WF-15。
+## §132. TouchDragN 不全是「动作」：部分是游戏代码 set 的状态开关（穿/脱鞋、墨镜）——误播动作 + 截图法假阴性（2026-10-20）
+
+**现象**：用户按游戏画面指正：ougen_8 拖鞋子应该是**切换穿/脱鞋状态**，但画廊把它轮转成 touch_drag1..3（拖身体的软体回弹动画）。§130 旧结论「idle6=脱鞋」**是误判**（idle6 曲线驱动的是上臂伸缩/上半身角度等姿态参数，与鞋无关——本轮曲线 Id 对照推翻）。
+
+**根因**：`ShoseOff`（显示名「脱鞋」）在 ougen_8 全部 55 个 motion 里**零曲线驱动**、零 physics 驱动——它是游戏代码直接 set 的**纯状态参数**；穿/脱鞋的局部过渡由 moc3 keyform 随参数值渐变自然产生（不经过任何 motion）。同理 aersasi_2 的 `touch_drag1`（「墨镜TMD」）等。**判一个 TouchDragN 是不是状态开关**：参数 Id == 区名（或显示名语义）+ 零 motion/physics 驱动 + 0..1 值域 → `scripts/diag/l2d_state_param_scan.py` 全库扫描。
+
+**修法（前端，gallery_src/index.html）**：`STATE_TOGGLES` 配置表（模型 → [{trigger, id, off, on, dur, label}]）+ `stateApply` 挂 `internalModel` 的 `beforeModelUpdate` 事件（vendor 源码 5451 行：physics/pose 之后、`model.update()` 渲染之前 emit；帧末 `loadParameters` 会把参数拉回 motion 末态，但下一帧事件里再写——**渲染永远读到状态值**，不与 motionManager 抢管线、零 monkey-patch）+ `toggleState` 用 0.5s easeInOutQuad tween 写中间值。**多条目架构**：每模型可接多个状态，运行态 `_on/_tw` 挂条目自身；⚠️ `STATE_TOGGLES` 是模块级常量，每次 `renderLive2D` 必须 `t._on=undefined; t._tw=null` 重置，否则跨皮肤残留旧状态。
+
+**验证方法论（本轮最大教训——截图法三层假阴性）**：
+1. **全图截图差分**被 idle 基线抖动淹没（ougen_8 idle 21~44% 自然差异 > 状态差异）；
+2. **区域化裁剪**又因裁剪盒取的是「点击标记」的盒而非「形变 drawable」的盒，且布局抖动让基线两张尺寸都不一致；
+3. **冻结 ticker + core.update() 手动步进**基线反常 45%（core.update 两帧对比自身不幂等，弃）。
+   **唯一干净的两种信源**：① **顶点直读**——`core.setParameterValueById(id,v)` + `core.update()` + `getDrawableVertexPositions()` 前后对比（ShoseOff=1 → 7 个 drawable 形变，参照 ParamAngleX=30 → 103 个，证明视觉绑定存在）；② **beforeModelUpdate 探针 listener**（排在 stateApply 后注册、执行在其后）逐帧记录渲染前参数值——真实 ticker 循环下看到 `[0.7262, 1]`（tween 中间值+终态）与 off 段回 0，**渲染必读到**。aersasi_2 墨镜因形变大（全图 36.9% > 基线）截图法直接可用。
+
+**探针时序坑（假阴性元凶）**：setup 时算好点击坐标 → 等 3s 让 idle 稳定 → 用旧坐标点击：**idle 演进让判定区移位**（2% 包围盒容差远小于 3s 漂移），点击落空白 → pill 不变 → 误判产品坏了。修法：坐标计算与派发必须在**同一次 evaluate 里零间隔完成**（取顶点→toGlobal→getBoundingClientRect→dispatchEvent）。
+
+**全库扫描结论（5 模型 32 候选）**：两种接线形态——① 区名→参数名不对应（ougen_8 TouchDrag17→ShoseOff，唯一）；② **区名同名参数**（aersasi_2/3、antu_2 通用模式：点 TouchDragN 区 = 播同名 motion（若有）+ 游戏代码 set 同名 `touch_dragN` 参数；aersasi_3 有成对「弹出/选择」参数如 丝袜弹出/选择，语义未经游戏画面对照**不接线**）。已接线：ougen_8 脱鞋、aersasi_2 墨镜。ougen_8 另有 TouchDrag11（右脚鞋，与 ArtMesh843/833/848 重叠）与大量场景外标记（TouchDrag1-8/12-14/18-20 顶点在 ±400 之外，点不到属正常）。
+
+**已排除的假设**（别再重跑）：ShoseOff 无视觉绑定（顶点直读推翻：7 drawable 形变）；Param326 家族才是视觉载体而 ShoseOff 是纯逻辑标志（两者都驱动：ShoseOff→7 个、Param326→5 个 drawable；home motion 0s 的脱鞋态是 Param325=1+326=1+341=1，但直接 set ShoseOff 同样产生视觉）；「鞋在画面底部」（ougen_8 是腿部近景模型，V 空间 y>0 即鞋区）；点击坐标换算有 bug（v6 全链路 debug：lp/pv/hitAll/pill 全通）。
+
+**涉及**：`gallery_src/index.html`（STATE_TOGGLES/stateApply/toggleState/onDown/onUp/onCancel）、`scripts/diag/l2d_state_param_scan.py`（全库状态参数扫描器）。相关 §130（本条修正其「idle6=脱鞋」误判）、§131、WF-16。

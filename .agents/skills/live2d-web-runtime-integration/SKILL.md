@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.6
+version: 1.10.7
 ---
 
 # Live2D 网页运行时集成
@@ -553,4 +553,20 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 
 **2026-10-19 追加**：mask 缓冲不能固定 1024/2048 —— Cubism 把多个 mask 铺在一张方 RT 上，N 必须 ≥ 画布长边 × √maskCount；按模型自动取 2 的幂（ougen_8 maskCount=9 → 8192）。拖拽互动：把 moc3 的 TouchDrag* 补成互动区（ougen 30+14=44），**Ctrl/⌘+左键拖拽**才触发（普通左键平移），松手按距离播 touch_drag*。
 
-**HitAreas 完整性（2026-10-19）**：`fix_model3.py` 补 moc3 的 `Touch*` 时，动作组先查 `touch_<x>`，没有再退回 `<x>`（TouchIdle6→idle6 这种脱鞋/换装按钮就是被旧规则丢掉的）；TouchDragN 只播 drag 动作：有 touch_dragN 用同名组，没有按编号轮转现有 drag 组；不能改播 idleN（脱鞋是玩家拖动交互，不是 idle6 动作）。
+**HitAreas 完整性（2026-10-19）**：`fix_model3.py` 补 moc3 的 `Touch*` 时，动作组先查 `touch_<x>`，没有再退回 `<x>`（TouchIdle6→idle6 这种脱鞋/换装按钮就是被旧规则丢掉的）；TouchDragN 默认播 drag 动作：有 touch_dragN 用同名组，没有按编号轮转现有 drag 组；不能改播 idleN（~~脱鞋是 idle6~~ 误判已修正——见 §15，脱鞋是状态切换不是任何 motion）。
+
+## 15. TouchDragN 不全是动作：状态开关的识别、接线与验证信源（2026-10-20，version 1.10.7）
+
+**识别判据（缺一不可）**：某 TouchDragN 交互对应的参数 ① 在该模型全部 motion3.json 曲线里**零驱动** ② 零 physics3.json Output 驱动 ③ 0..1 值域开关 ④ 参数 Id 与区名同名或显示名是开关语义（「脱鞋」「墨镜」「××on/off」）。游戏里这类交互 = 播 motion（若有）+ **游戏代码直接 set 参数**，视觉过渡由 moc3 keyform 随参数渐变自然产生。碧蓝两种形态：区名→参数名不对应（ougen_8 TouchDrag17→ShoseOff，稀少）与**区名同名参数**（aersasi_2/3、antu_2 通用：点 TouchDragN = 播同名 motion + set 同名 `touch_dragN` 参数）。全库扫描器模式：join `CubismParameter`(GO 名=参数Id) + `CubismDisplayInfoParameterName`(显示名) + `CubismRaycastable`(区名)，三条判据过滤（实例 `scripts/diag/l2d_state_param_scan.py`）。
+
+**接线（零 monkey-patch）**：配置表（模型→[{trigger,id,off,on,dur,label}]）+ `stateApply` 挂 `internalModel` 的 **`beforeModelUpdate`** 事件（vendor 在 physics/pose 之后、`model.update()` 渲染之前 emit）——帧末 `loadParameters()` 会把参数拉回 motion 末态，但下一帧事件里再写，**渲染永远读到状态值**，不与 motionManager 抢管线。切换动画 = tween 逐帧写中间值（easeInOutQuad 0.5s）。⚠️ 配置表是模块级常量时，运行态（`_on`/`_tw`）挂条目对象上会**跨模型实例残留**——每次进模型必须重置，否则重进皮肤带着上一场状态。
+
+**验证信源的选择（截图法三层假阴性，按成本递增别走弯路）**：
+1. 全图截图差分：idle 基线抖动（碧蓝大 idle 模型 21~44%）常常 ≥ 状态差异 → 假阴性；
+2. 区域化裁剪：裁剪盒若取「点击标记」而非「形变 drawable」的盒照样漏；布局抖动还会让两张截图尺寸不一致；
+3. 冻结 ticker + `core.update()` 手动步进：core.update 两帧对比自身不幂等，基线反而 45%，弃。
+**两种干净信源**：① **顶点直读**——`setParameterValueById` + `core.update()` + `getDrawableVertexPositions()` 前后对比（形变 drawable 数即证据，配一条必驱动参数如 ParamAngleX 做阳性对照）；② **beforeModelUpdate 探针 listener**（排在产品 stateApply 之后注册）逐帧记录渲染前参数值——看到 tween 中间值与终态往复即闭环「渲染必读到」。形变大（换装/戴墨镜级别）时截图法才可直接用。
+
+**探针时序坑**：算好点击坐标→等几秒→用旧坐标点击 = 假阴性（idle 演进让判定区移位，远超 2% 包围盒容差）。坐标计算与派发必须在**同一次 evaluate 里零间隔完成**。同理，读「参数当前值」要想到帧末 `loadParameters` 拉回——渲染前一刻才是真值。
+
+完整取证：§132；实例 ougen_8 脱鞋 + aersasi_2 墨镜。
