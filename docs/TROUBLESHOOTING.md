@@ -7000,3 +7000,34 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 **已排除的假设（别再重跑）**：restTick 写入被 loadParameters 覆盖（axw 同帧写后读回 0 推翻）；cm 实例不同/方法被遮蔽（同一性 true、原型方法 false=无遮蔽）；MotionState 无 isFinished 导致看门狗失效是主因（看门狗在 cg≠null 时本就不触发，主路径是库内置回落）；FadeOutTime 配置过长导致对抗（全库 FadeOutTime 均缺省=-1 → endTime=ut-1 即时掐）；物理/呼吸/focus 写 Angle 参数（物理输出不含、breath 已关、focus 写入在 save 之后被 load 撤销）。
 
 **涉及**：`gallery_src/index.html`（restTick/playedAt/play）、`.diag/_probe_exp_a.py`（复现+验证）、`_probe_state_trace.py`（entry 快照裁决时钟伪影）。相关 §21（残留复位原始设计）、§128（回落语义）、WF-16。
+
+
+## §134. idle9「卡在初始默认待机」真根因：ConstantClip 段 81% 曲线未导出（EMIT_CONST 默认关）——§133 的「数据实情」结论修正（2026-10-20）
+
+**现象**：§133 修复竞态后用户复测：ougen_8 的 idle9 依旧播放错误，「直接卡住，画面像初始默认待机」。
+
+**根因（对源 bundle 的 genericBindings 对账，旧机拷贝 `D:\Azur Lane Assets\files\AssetBundles\live2d\ougen_8.bundle`）**：AnimationClip 的三容器里，碧蓝实测 **m_DenseClip 恒为 0**、姿势部分烘成 **m_ConstantClip 整段定值曲线**、微动是 m_StreamedClip。`extract_motions.py` 只导 streamed 段，ConstantClip 的导出开关 `EMIT_CONST`（L2D_MOTION_EMIT_CONST 环境变量）**默认关**：
+
+| clip | 源 bindings | 已导(streamed) | 丢失(constant) | 丢失率 |
+|---|---|---|---|---|
+| idle9 | 109 | 16 | 93 | 85% |
+| 默认 idle | 582 | 64 | 518 | 89% |
+| login | 582 | 173 | 409 | 70% |
+| 全 55 组 | 23326 | 4487 | **18839** | **81%** |
+
+idle9 的 93 条定值里 **9 条与默认 idle 不同**（Param345=-1.28、Param372=-0.92、Param91/97/352/494/500/502/506=1.0）——丢失后播 idle9 时这些姿势参数停在上个动作的值上 → **姿势切不过去 = 用户看到的「卡在默认待机」**。
+
+**§133 结论修正**：§133 第 ② 层当时判「idle9 数据实情零可见参数、目视近静止」是**错的**——那 16 条小曲线只是微动层，姿势层在未导出的 93 条定值里。§133 第 ③ 层竞态修复本身仍成立（真实场景 login→idle9 实测姿势正确落地依赖它）。**教训：对账维度必须是「每组 binding 数 vs 磁盘曲线数」，文件级对账（源 clip=磁盘=model3 引用、空曲线 0）查不出「每组合法但内容缺 81%」**——上一轮 5 样本动作全量对账就是这样放过的。
+
+**修法（WF 规训全流程）**：
+1. 备份现行 → `AL_ASSETS_ROOT=<旧机源包根> L2D_MOTION_EMIT_CONST=1 py -3 scripts/extract_motions.py --name ougen_8 --out .diag/l2d_const_test`
+2. 换入前四项审计（全 PASS）：① idle9=109 ② 共有 4487 条曲线 Segments **零差异**（零回退）+ Meta(Duration/Loop/Fps)一致 ③ constant 段格式 `[0,v,0,duration,v]` ④ 总数=bindings 23326
+3. `L2D_SRC_DIR=<临时目录> py -3 scripts/apply_live2d_motions.py --yes`（自带备份到 Output/_OLD_bak）
+4. **换入后必须重算 motion_chain.json**：曲线集变了映射表过期。⚠️ `build_motion_chain_map.py --models <单个>` 是**整表覆盖写**（不是合并）——只跑一个模型会把其它 4 样本的映射清掉（本轮实际发生，3 分钟内重算全 5 样本恢复）。判据：跑完打印「模型数=N」，N ≠ 预期即覆盖事故。
+5. 浏览器验证（权威信源=参数直读，非截图）：play(idle9) → 9 个姿势参数**精确等于定值**（实测 9/9，Param345=-1.28 实测 -1.28）；切回默认 idle 全部回 0（实测 9/9 归零，constant 定值=复位指令的实锤）；截图差分 54%（远超 idle 基线抖动 21~44%，姿势大切换佐证）；WF-16 ALL PASS。
+
+**待办（未做，等用户验收）**：其余 4 样本（antu_2/aersasi_2/aersasi_3/qiershazhi_2）与全库 269 的 EMIT_CONST 重导；全库重导后曲线总数 2,662,615 会涨约 5 倍，motion_chain.json 全量重算，且 §25 全量覆写事故规训适用（对照组零回退+分批换入）。
+
+**已排除的假设**：headless 时钟伪影主导（§133 判据套用——本轮 login→idle9 在真实开场场景下姿势正确落地，排除时序因素）；idle9 moc3 本身无姿势绑定（9 参数定值差就是绑定证据）；磁盘 motion3.json 损坏（格式审计全过）。
+
+**涉及**：`scripts/extract_motions.py`（EMIT_CONST 开关，未改代码——开关本来就是为此设计的，只是生产从未打开）、`scripts/apply_live2d_motions.py`、`scripts/build_motion_chain_map.py`（覆盖写行为）、`Output/Live2D/ougen_8/motion/`（已换入）、`Output/gallery_v2/motion_chain.json`（5 样本重算）。相关 §133（上轮竞态，仍有效）、§21（残留复位，与 constant 定值互补：前端 ticker 复位是兜底，constant 是数据侧权威复位）、live2d-motion-extraction-audit 技能第 1/2 步（理论早写了，本轮是生产打开+症状闭环）。
