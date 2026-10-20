@@ -1437,6 +1437,7 @@ async function renderLive2D(s, sk){
        用户触发的动作一律 FORCE：库的 state.reserve() 会拒绝 ≤ 当前优先级的请求（idle 占 IDLE=1），
        不 FORCE 就连点第二个部位都放不出来。回落 idle 交给运行时（见 ②），不再需要定时器。 */
     const played=new Set();
+    const playedAt=Object.create(null);
     const play=(g,pr)=>{ if(!g) return false;
       try{ playVoice(g);
         /* 动态标签：播出即同步显示当前组（非待机动作播放中显示动作名，便于回落前后对照） */
@@ -1445,7 +1446,7 @@ async function renderLive2D(s, sk){
            会让动作被 reserve 拒掉（实测 FORCE 才能在 currentGroup 里看到 login）。 */
         try{ if(g!=='login' && mm.state && mm.state.currentGroup==='login' && mm.state.complete) mm.state.complete(); }catch(e){}
         mm.startMotion(g,0,pr||MP.FORCE);
-        if(!idleSet.has(g)) played.add(g); return true; }catch(e){ return false; } };
+        if(!idleSet.has(g)){ played.add(g); playedAt[g]=performance.now(); } return true; }catch(e){ return false; } };
     try{ window.__l2play=play; }catch(e){}
     /* ---------- 眼神跟随 ----------
        不用 mdl.focus()：它绕 focusController，实测 target 变了但 x 不更新（headless 与真机都可能），
@@ -1464,22 +1465,29 @@ async function renderLive2D(s, sk){
        的参数回落到 moc3 默认值（= 加载时的静止位，因为这些参数在静止态本就没人动）。
        两条约束防止误伤：① 只碰播过的 clip 驱动过的参数，物理/眨眼/口型等 clip 无关参数一律不动；
        ② 只在回到 idle（或队列空）时才复位，且先等 REST_DELAY 让上一条 clip 的淡出跑完，再线性渐变过去。 */
-    const REST_DELAY=400, REST_MS=700, cm=im.coreModel;
-    let rest=null;
-    const restTick=()=>{ const cg=mm.state&&mm.state.currentGroup;
-      if(cg&&!idleSet.has(cg)){ rest=null; return; }
-      if(!rest){ const idleS=paramSets[(cg&&idleSet.has(cg))?cg:idleGroup]||paramSets[idleGroup]; if(!idleS||!played.size) return;
-        const want=new Set(); played.forEach(g=>{ (paramSets[g]||new Set()).forEach(p=>{ if(!idleS.has(p)) want.add(p); }); });
-        played.clear();
-        const items=[];
-        want.forEach(p=>{ let i=-1; try{ i=cm.getParameterIndex(p); }catch(e){}
-          if(i>=0) try{ items.push([i, cm.getParameterValueByIndex(i), cm.getParameterDefaultValue(i)]); }catch(e){} });
-        if(!items.length) return;
-        rest={items, t0:performance.now()+REST_DELAY}; return; }
-      const el=performance.now()-rest.t0; if(el<0) return;
-      const k=Math.min(1, el/REST_MS);
-      for(const it of rest.items) try{ cm.setParameterValueByIndex(it[0], it[1]+(it[2]-it[1])*k); }catch(e){}
-      if(k>=1) rest=null; };
+     const REST_DELAY=400, REST_MS=700, cm=im.coreModel;
+     let rest=null;
+      const restTick=()=>{ const cg=mm.state&&mm.state.currentGroup;
+        if(cg&&!idleSet.has(cg)){ rest=null; return; }
+        if(!rest){ const idleS=paramSets[(cg&&idleSet.has(cg))?cg:idleGroup]||paramSets[idleGroup]; if(!idleS||!played.size) return;
+          /* play() 到 createMotion 登记之间有网络加载窗口：startMotion 是 async，played 先加、
+             paramSets[g] 后到。不等的话本帧就消费 played → 空集 → clear() 把动作吞掉，残留永不复位
+             （2026-10-20 铁证：__REST 日志 ['build','idle',1,0]+['empty',0]）。等登记或超时再消费。 */
+          let loading=false; const nowMs=performance.now();
+          played.forEach(g=>{ if(!paramSets[g] && (mm.motionGroups[g]||[])[0]===undefined
+              && nowMs-(playedAt[g]||0)<5000) loading=true; });
+          if(loading) return;
+          const want=new Set(); played.forEach(g=>{ (paramSets[g]||new Set()).forEach(p=>{ if(!idleS.has(p)) want.add(p); }); });
+          played.clear();
+          const items=[];
+          want.forEach(p=>{ let i=-1; try{ i=cm.getParameterIndex(p); }catch(e){}
+            if(i>=0) try{ items.push([i, cm.getParameterValueByIndex(i), cm.getParameterDefaultValue(i)]); }catch(e){} });
+          if(!items.length) return;
+          rest={items, t0:performance.now()+REST_DELAY}; return; }
+         const el=performance.now()-rest.t0; if(el<0) return;
+         const k=Math.min(1, el/REST_MS);
+         for(const it of rest.items) try{ cm.setParameterValueByIndex(it[0], it[1]+(it[2]-it[1])*k); }catch(e){}
+        if(k>=1) rest=null; };
     app.ticker.add(restTick);
     /* 眼睛参数用 **LOW 优先级的 ticker** 写：它在 Live2DModel.update（NORMAL）之后、
        app.render 之前执行，此时 loadParameters 已经把动作/物理值铺完，写进去才留到本帧绘制。

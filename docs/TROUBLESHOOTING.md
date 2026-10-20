@@ -6957,3 +6957,46 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 **已排除的假设**（别再重跑）：ShoseOff 无视觉绑定（顶点直读推翻：7 drawable 形变）；Param326 家族才是视觉载体而 ShoseOff 是纯逻辑标志（两者都驱动：ShoseOff→7 个、Param326→5 个 drawable；home motion 0s 的脱鞋态是 Param325=1+326=1+341=1，但直接 set ShoseOff 同样产生视觉）；「鞋在画面底部」（ougen_8 是腿部近景模型，V 空间 y>0 即鞋区）；点击坐标换算有 bug（v6 全链路 debug：lp/pv/hitAll/pill 全通）。
 
 **涉及**：`gallery_src/index.html`（STATE_TOGGLES/stateApply/toggleState/onDown/onUp/onCancel）、`scripts/diag/l2d_state_param_scan.py`（全库状态参数扫描器）。相关 §130（本条修正其「idle6=脱鞋」误判）、§131、WF-16。
+
+## §133. idle9「卡住」真相：restTick 竞态吞掉 played → login 残留永不复位（2026-10-20）
+
+**现象**：用户报「ougen_8 的 idle9 无法播放，直接卡住了，其它动作可能也有类似问题」。
+
+**裁决（三层，勿混）**：
+1. **idle9 本身没有冻结**——队列 entry 时间正常推进、fadeWeight=1、16 条 ParamNNN 曲线持续写入。首轮「冻结」是探针误诊（盯了 idle9 不驱动的 ParamAngleX/Y）。
+2. **idle9 数据实情**：只含 16 条小幅度 ParamNNN 曲线（极差 4.0，零标准可见参数）→ 目视主体近乎静止。idle10 同样。属数据事实，非 bug；观感问题留产品层决策。
+3. **真 bug（已修）**：login 把 ParamAngleX 写到 -28 后残留复位渐变从未发生 → 头部拧死，叠加 ② 造成「卡住」观感。
+
+**根因（__REST 日志铁证：['build','idle',1,0]+['empty',0]）**： 里  先执行； 是 **async**（未预载组要先 fetch 再 createMotion 才登记 ）。加载窗口内 currentGroup 还是旧 idle 组（∈idleSet）→ restTick 立即消费 played，但  尚未登记 → 空集 → want=∅ →  提前把这组动作吞掉 → 它真正播完后残留永不复位。
+
+**修法（gallery_src/index.html restTick）**： 记录 play 时刻；消费前若  未登记且  且距 play <5s → 本帧不消费（等登记）；超时按空集消费防死等。
+
+**验证（实验 A，禁 login 排除开场竞态后）**：play(touch_idle7) 4s 残留（ay=-8.3/ax=2/az=9.99）→ play(idle9) → REST_DELAY 400ms 保持 → 700ms 线性渐变 → ay 回 -0.78、axw 铁证 [2,0,1,0]（k=1 写 0 读回 0）。WF-16 回归 ALL PASS。其它动作抽查（touch_body/login/touch_drag1）：管线泛化生效；login/drag 组在 headless 下「不回落」是时钟伪影（见下），真机不受影响。
+
+**headless 时钟伪影（重要判据，勿再当 bug 查）**：vendored 库动作时钟 = （onTickerUpdate 累计，_render 时传 internalModel.update）→ **PIXI Ticker 低帧率下 deltaMS 被 maxElapsedMS cap → 时钟慢于真实时间数倍** → entry 的  finished 判定迟迟不达 → 动作「播不完」、回落延迟、restTick 与 fadeOut 末帧写入交错出现稳态残差。**识别法**：entry.et 固定而真实时间远超仍 fin:0、_userTimeSeconds 恒 0 不可用、fadeWeight 却在推进。**验证时序敏感逻辑必须绕开自然 finished**：直接切 idleSet 组（play(idle9)）触发 restTick 路径，或用 localStorage 注入禁开场 login（gallery.opt.v1）。
+
+**已排除的假设（别再重跑）**：restTick 写入被 loadParameters 覆盖（axw 同帧写后读回 0 推翻）；cm 实例不同/方法被遮蔽（同一性 true、原型方法 false=无遮蔽）；MotionState 无 isFinished 导致看门狗失效是主因（看门狗在 cg≠null 时本就不触发，主路径是库内置回落）；FadeOutTime 配置过长导致对抗（全库 FadeOutTime 均缺省=-1 → endTime=ut-1 即时掐）；物理/呼吸/focus 写 Angle 参数（物理输出不含、breath 已关、focus 写入在 save 之后被 load 撤销）。
+
+**涉及**：（restTick/playedAt/play）、（复现+验证）、（entry 快照裁决时钟伪影）。相关 §21（残留复位原始设计）、§128（回落语义）、WF-16。
+
+
+## §133. idle9「卡住」真相：restTick 竞态吞掉 played → login 残留永不复位（2026-10-20）
+
+**现象**：用户报「ougen_8 的 idle9 无法播放，直接卡住了，其它动作可能也有类似问题」。
+
+**裁决（三层，勿混）**：
+1. **idle9 本身没有冻结**——队列 entry 时间正常推进、fadeWeight=1、16 条 ParamNNN 曲线持续写入。首轮「冻结」是探针误诊（盯了 idle9 不驱动的 ParamAngleX/Y）。
+2. **idle9 数据实情**：只含 16 条小幅度 ParamNNN 曲线（极差 4.0，零标准可见参数）→ 目视主体近乎静止。idle10 同样。属数据事实，非 bug；观感问题留产品层决策。
+3. **真 bug（已修）**：login 把 ParamAngleX 写到 -28 后残留复位渐变从未发生 → 头部拧死，叠加 ② 造成「卡住」观感。
+
+**根因（__REST 日志铁证：['build','idle',1,0]+['empty',0]）**：`play(g)` 里 `played.add(g)` 先执行；`mm.startMotion` 是 **async**（未预载组要先 fetch 再 createMotion 才登记 `paramSets[g]`）。加载窗口内 currentGroup 还是旧 idle 组（∈idleSet）→ restTick 立即消费 played，但 `paramSets[g]` 尚未登记 → 空集 → want=∅ → `played.clear()` 提前把这组动作吞掉 → 它真正播完后残留永不复位。
+
+**修法（gallery_src/index.html restTick）**：`playedAt[g]=performance.now()` 记录 play 时刻；消费前若 `paramSets[g]` 未登记且 `motionGroups[g][0]===undefined` 且距 play <5s → 本帧不消费（等登记）；超时按空集消费防死等。
+
+**验证（实验 A，禁 login 排除开场竞态后）**：play(touch_idle7) 4s 残留（ay=-8.3/ax=2/az=9.99）→ play(idle9) → REST_DELAY 400ms 保持 → 700ms 线性渐变 → ay 回 -0.78、axw 铁证 [2,0,1,0]（k=1 写 0 读回 0）。WF-16 回归 ALL PASS。其它动作抽查（touch_body/login/touch_drag1）：管线泛化生效；login/drag 组在 headless 下「不回落」是时钟伪影（见下），真机不受影响。
+
+**headless 时钟伪影（重要判据，勿再当 bug 查）**：vendored 库动作时钟 = `elapsedTime += Ticker.shared.deltaMS`（onTickerUpdate 累计，_render 时传 internalModel.update）→ **PIXI Ticker 低帧率下 deltaMS 被 maxElapsedMS cap → 时钟慢于真实时间数倍** → entry 的 `endTime < userTime` finished 判定迟迟不达 → 动作「播不完」、回落延迟、restTick 与 fadeOut 末帧写入交错出现稳态残差。**识别法**：entry.et 固定而真实时间远超仍 fin:0、_userTimeSeconds 恒 0 不可用、fadeWeight 却在推进。**验证时序敏感逻辑必须绕开自然 finished**：直接切 idleSet 组（play(idle9)）触发 restTick 路径，或用 localStorage 注入禁开场 login（gallery.opt.v1）。
+
+**已排除的假设（别再重跑）**：restTick 写入被 loadParameters 覆盖（axw 同帧写后读回 0 推翻）；cm 实例不同/方法被遮蔽（同一性 true、原型方法 false=无遮蔽）；MotionState 无 isFinished 导致看门狗失效是主因（看门狗在 cg≠null 时本就不触发，主路径是库内置回落）；FadeOutTime 配置过长导致对抗（全库 FadeOutTime 均缺省=-1 → endTime=ut-1 即时掐）；物理/呼吸/focus 写 Angle 参数（物理输出不含、breath 已关、focus 写入在 save 之后被 load 撤销）。
+
+**涉及**：`gallery_src/index.html`（restTick/playedAt/play）、`.diag/_probe_exp_a.py`（复现+验证）、`_probe_state_trace.py`（entry 快照裁决时钟伪影）。相关 §21（残留复位原始设计）、§128（回落语义）、WF-16。

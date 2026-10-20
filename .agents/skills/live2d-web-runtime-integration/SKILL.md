@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.7
+version: 1.10.8
 ---
 
 # Live2D 网页运行时集成
@@ -570,3 +570,28 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 **探针时序坑**：算好点击坐标→等几秒→用旧坐标点击 = 假阴性（idle 演进让判定区移位，远超 2% 包围盒容差）。坐标计算与派发必须在**同一次 evaluate 里零间隔完成**。同理，读「参数当前值」要想到帧末 `loadParameters` 拉回——渲染前一刻才是真值。
 
 完整取证：§132；实例 ougen_8 脱鞋 + aersasi_2 墨镜。
+
+## 16. 残留复位竞态 + headless 时钟伪影（2026-10-20，version 1.10.8）
+
+### 16.1 「消费型状态机 + async 登记」竞态（动作播完不复位的通型）
+
+**通型**：页面侧有「播过什么 → 之后怎么处理」的消费型状态（如残留复位 restTick 的 `played` 集合）。`mm.startMotion` 是 **async**（未预载组先 fetch 再 createMotion，页面侧的登记（如 paramSets）在 resolve 后才发生）。若消费逻辑按帧跑且触发条件（currentGroup 回到 idleSet）在**加载窗口内就成立**（切组是 async、旧组还在），消费会读到**未登记的空集** → 按空集处理 → **这组动作被吞**，后续一切依赖该登记的逻辑静默失效。
+
+**判据（日志形态）**：消费日志出现 `built ... 0`（want 为空）+ 随后 `empty`，而这组动作明明刚播过——不是没播，是被吞了。
+
+**修法**：登记时刻用 `playedAt[g]=performance.now()` 之类的**独立时间戳**；消费前检查「登记未完成 && 加载占位（`motionGroups[g][0]===undefined`）&& 距 play < 超时」→ 本帧跳过不消费；超时按空集消费防死等。超时取网络加载上限量级（本地服务 5s 足够）。
+
+### 16.2 headless 时钟伪影：动作「播不完/不回落」先查时钟再查逻辑
+
+**机制**：vendored pixi-live2d-display 的动作时钟不是 `performance.now()`，是 `elapsedTime += Ticker.shared.deltaMS`（onTickerUpdate 累计、_render 时传 internalModel.update）。**PIXI Ticker 低帧率下 deltaMS 被 maxElapsedMS cap**（headless swiftshader ~1.2s/帧）→ 动作时钟慢于真实时间数倍 → entry 的 `endTime < userTime` finished 判定迟迟不达 → 动作不结束、不回落、与复位渐变交错的稳态残差。
+
+**识别法（三个信号）**：
+- entry 快照 `et` 固定、真实时间远超 `st+dur` 仍 `fin:0`；
+- `queueManager._userTimeSeconds` 恒 0（该字段不走主时钟，别用它判推进）；
+- fadeWeight 却正常推进（0→1）——updateParameters 在跑，只是时钟刻度慢。
+
+**绕开法（验证时序敏感逻辑的标准姿势）**：不要等动作自然 finished——**直接切一个 idleSet 组**（`play('idleX')`）让消费逻辑的触发条件立即成立；开场 login 的 300ms 定时器竞态用 `localStorage.setItem('gallery.opt.v1', '{"login":false}')` + reload 排除。entry/state/调用流三层插桩模板见 `scripts/diag/l2d_motion_state_trace.py`（包 mm.startMotion/startRandomMotion/state.reserve/setCurrent/complete 记调用流 + queueManager._motions 快照）。
+
+**已排除的假设（别重跑）**：restTick 写入被 loadParameters 覆盖（同帧写后读回即推翻——save→load 在同一调用栈，外部 ticker 插不进中间）；cm 实例不同/方法遮蔽（`cm===stage.children[0].internalModel.coreModel` + 原型方法 hasOwnProperty 判定）；FadeOutTime 过长导致对抗（全库缺省=-1 → endTime=ut-1 即时掐，对抗仅 1-2 帧）；物理/呼吸/focus 写 Angle 参数（物理输出不含、breath 已关、focus 写在 save 后被 load 撤销）。
+
+完整取证：§133。
