@@ -10,11 +10,14 @@ sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import cdp_slot            # 端口 / profile 不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
 CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT, PROFILE = cdp_slot.slot(ROOT, 'intv')
+# INTV_URL / INTV_MODELS 可覆盖默认的旧画廊(8777)与固定 4 模型清单：
+# 本项目画廊(8778, 5 样本)回归用 INTV_URL=http://127.0.0.1:8778/gallery_v2/index.html
+GALLERY_URL = os.environ.get('INTV_URL', 'http://127.0.0.1:8777/gallery_v2/index.html')
 proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
   '--use-angle=swiftshader', '--window-size=1280,900',
-  'http://127.0.0.1:8777/gallery_v2/index.html'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  GALLERY_URL], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 import chrome_tree; chrome_tree.install(proc)   # 异常退出也要收整棵树，见该模块 docstring
 w = None
 for _ in range(90):
@@ -119,7 +122,9 @@ JS = r"""(async(key)=>{ try{
 """
 os.makedirs(os.path.join(ROOT, '.diag', 'size_shots'), exist_ok=True)
 allok = True
-for k in ['anninvwang_2', 'aersasi_2', 'aersasi_3', 'lafeiii_3']:
+_models_env = os.environ.get('INTV_MODELS')
+for k in ([m.strip() for m in _models_env.split(',') if m.strip()] if _models_env
+          else ['anninvwang_2', 'aersasi_2', 'aersasi_3', 'lafeiii_3']):
     out = None
     for _try in range(6):
         try:

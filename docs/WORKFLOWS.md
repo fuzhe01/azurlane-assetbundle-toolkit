@@ -3118,3 +3118,23 @@ mask 256→1024/2048 只能让阶梯变细；4x 超采样 + mask 4096 + 2D 降�
 - 拖拽：把 moc3 里未登记的 `TouchDrag*` drawable 补成互动区（ougen_8 30 + 14 = 44 个）；**Ctrl/⌘ + 左键按住**才进互动（普通左键仍是平移）：按下即播 `touch_drag*` 并强制 loop（按住期间持续动），松手停 loop 并回拖拽前的 idle；`touchdragN` 优先映射 `touch_dragN`，没有该组再轮转到现有 drag 组。
 
 - 2026-10-19 修正：Ctrl 拖拽不再写死 touch_drag1；按点击命中的 `touch_dragN`/`touchdragN` 交给 dragGroupOf，缺失的组按编号轮转到现有 drag 组。
+
+### WF-41: ConstantClip 姿势层重导换入（EMIT_CONST 批量流水 — 2026-10-21）
+
+**场景**：`L2D_MOTION_EMIT_CONST=1` 重导 motion（姿势定值层补齐 §134），换入正式目录并全链验证。适用于 1 个模型到全库 269。
+
+**流程**（每步判据缺一不可）：
+1. 重导：`AL_ASSETS_ROOT="D:/Azur Lane Assets" L2D_MOTION_EMIT_CONST=1 py -3 scripts/extract_motions.py --name <模型> --out .diag/l2d_const_test`。⚠️ `--out` 给到**共同父目录**（`.diag/l2d_const_test`），extract 自建 `<模型>/motion/` 单层；给到 `<模型>` 级会成双层，`apply_live2d_motions.py` 的模型发现（`SRC/<模型>/motion`）扫不到 → 干跑只报 1 个模型时先查目录层级。
+2. 四项审计：`py -3 scripts/diag/l2d_const_audit_batch.py`（A 逐 clip binding 数=磁盘曲线数；B 现网 streamed 曲线 Id 集合⊆新版；C 段格式可解析；D 总数对账）。**段长表必须含 id=0（InverseStepped=2 元素）**，漏 0 全组误报。
+3. 换入：干跑看清单 → `L2D_SRC_DIR=.diag/l2d_const_test py -3 scripts/apply_live2d_motions.py --yes`（自动备份 `Output/_OLD_bak/l2d_motion_<时间戳>`；曲线变少会 BLOCKED）。
+4. chain 重算：`py -3 scripts/build_motion_chain_map.py --models <全样本列表> --write`，跑完**必核对打印「模型数=N」**（整表覆盖写，单模型跑=清表事故）。
+5. 验证（本项目画廊 8778，参数直读为权威）：交互回归 `INTV_URL=http://127.0.0.1:8778/gallery_v2/index.html INTV_MODELS=<逗号列表> py -3 scripts/diag/interact_verify.py`；姿势落值用 `scripts/diag/l2d_pose_anchor_pick.py` 挑锚点 → `POSE_SKIN/POSE_GROUP/POSE_EXPECT/POSE_BACK/POSE_URL` 驱动 `l2d_const_pose_verify.py`。
+
+**判据（姿势验证假阴性谱系，三坑全实测过）**：
+- 采样必须 **settle 轮询收敛**，固定 sleep 会踩 fade 混合中间态（实测期望×0.784 权重假 FAIL）；
+- 期望值超参数范围会被 clamp（定值 280 / 范围 0..10 → 实测 10 是**正确**值，游戏内同行为），锚点挑选时跳过或按 clamp 后值；
+- **姿势基态随组**：回零判据=切回后实测 ≈ 切回组的**磁盘 constant 定值**（`POSE_BACK` 数据闭环），不能拿开场 baseline 或数学 0 当基准；切回组无该参数曲线（无复位指令）则豁免。
+
+**踩坑记录**：`apply` 干跑「将换入 1 个模型」+曲线总数不变 → 源目录双层（见流程 1）；探针连 8777 的是**旧画廊**（写死 URL），验证本项目必须 `INTV_URL`/`POSE_URL` 指 8778；`l2d_const_pose_verify.py` 的 ROOT 曾是两层 dirname（cdp_slot 在 `scripts/`），已改三层。
+
+**涉及**：`scripts/extract_motions.py`、`scripts/apply_live2d_motions.py`、`scripts/build_motion_chain_map.py`、`scripts/diag/l2d_const_audit_batch.py`、`scripts/diag/l2d_pose_anchor_pick.py`、`scripts/diag/interact_verify.py`、`scripts/diag/l2d_const_pose_verify.py`、`scripts/diag/serve_gallery_8778.py`（8778 本项目画廊启动器，8777 被旧画廊占用时用）。相关：§134（根因）、§134 续（判据三坑）、§25（全量覆写规训——全库 264 模型批次适用）、WF-16（前端回归六件套）。

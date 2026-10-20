@@ -7031,3 +7031,16 @@ idle9 的 93 条定值里 **9 条与默认 idle 不同**（Param345=-1.28、Para
 **已排除的假设**：headless 时钟伪影主导（§133 判据套用——本轮 login→idle9 在真实开场场景下姿势正确落地，排除时序因素）；idle9 moc3 本身无姿势绑定（9 参数定值差就是绑定证据）；磁盘 motion3.json 损坏（格式审计全过）。
 
 **涉及**：`scripts/extract_motions.py`（EMIT_CONST 开关，未改代码——开关本来就是为此设计的，只是生产从未打开）、`scripts/apply_live2d_motions.py`、`scripts/build_motion_chain_map.py`（覆盖写行为）、`Output/Live2D/ougen_8/motion/`（已换入）、`Output/gallery_v2/motion_chain.json`（5 样本重算）。相关 §133（上轮竞态，仍有效）、§21（残留复位，与 constant 定值互补：前端 ticker 复位是兜底，constant 是数据侧权威复位）、live2d-motion-extraction-audit 技能第 1/2 步（理论早写了，本轮是生产打开+症状闭环）。
+
+### §134 续. 4 样本批量换入与验证判据三坑（2026-10-21）
+
+**续 ougen_8 的 §134 主流程，antu_2 / aersasi_2 / aersasi_3 / qiershazhi_2 同流程换入**：binding 对账 4 模型 71117=71117（逐 clip 全等）、streamed 共有 28693 条零回退、constant 段格式合法（⚠️ 段 id=0 是 InverseStepped=后 2 元素，审计解析表必须含 `{0:2,1:7,2:1,3:3}`，漏 0 会全组误报格式错）。`apply` 后 motion_chain 全 5 样本重算（模型数=5 核对过）。8778 本项目画廊 WF-16 交互回归 5/5 ALL PASS；每模型抽 1 idle 变体 6 姿势参数运行时**精确落值**（24/24）。
+
+**验证判据三坑（姿势参数直读的假阴性谱系，全部实测踩中）**：
+1. **fade 混合中间态**：固定 sleep 2.5s 采样落在 FadeIn 窗口内，实测 = 期望×权重（-45 实测 -35.286，恰 0.784）→ 判 FAIL 但数据无错。修法：**settle 轮询收敛**（每 2.5s 采一次直到达标，上限 12 轮），收敛轮次本身是有用信号。
+2. **超范围定值被 clamp**：aersasi_2 idle2 的 Param9 定值 280，但 moc3 参数范围 0..10 → 运行时 clamp 到 10。**源游戏引擎内同样被 CubismCore clamp，游戏显示值就是 10**——期望值必须取 `min(max(定值,paramMin),paramMax)`（`core.getParameterIndex/MinimumValue/MaximumValue` 运行时可查），否则假阴性。
+3. **姿势基态随组（组错位）**：每个 idle 变体的 constant 定值就是**该组的姿势基态**（aersasi_3：idle8 的 Param25=30，切回 idle 后=15 = idle 组自己的定值，逐参数吻合）。回零判据**不能**拿「开场 login 混合态 baseline」或「固定切 idle 组」当基准——正确做法 `POSE_BACK` 数据闭环：切回后实测 ≈ 切回组的**磁盘 constant 定值**；切回组无该参数曲线（无复位指令）则豁免（aersasi_2 的 4 参数默认 idle 无曲线 → 保持上组值是数据语义，游戏内同行为）。
+
+**探针基建修复**：`l2d_const_pose_verify.py` 原有 `ROOT` 两层 dirname → `ROOT/scripts`=废路径（cdp_slot 在 `scripts/` 不在 `scripts/diag/`），靠 script-dir 规则侥幸能跑，参数化重构后即炸——改三层 dirname 与 interact_verify 对齐。两探针（interact_verify / const_pose_verify）已加 env 参数化（`INTV_URL`/`INTV_MODELS`、`POSE_SKIN`/`POSE_GROUP`/`POSE_EXPECT`/`POSE_BACK`/`POSE_URL`），支持指向本项目 8778 画廊批量验证。
+
+**涉及**：`scripts/diag/interact_verify.py`、`scripts/diag/l2d_const_pose_verify.py`（双双 env 参数化）、`scripts/diag/l2d_const_audit_batch.py`（四项审计入库版）、`scripts/diag/l2d_pose_anchor_pick.py`（锚点挑选入库版）、`Output/Live2D/{antu_2,aersasi_2,aersasi_3,qiershazhi_2}/motion/`（已换入，备份 `Output/_OLD_bak/l2d_motion_20261020_233405`）。**待办：其余 264 模型**（全库曲线 2,662,615 → 预计 ×~2.5，motion_chain 全量重算）。

@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-20
+> **生成时间**: 2026-10-21
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python ≥3.13（本机实测 3.14，UnityPy 1.25.4 可跑；项目约定 3.13）
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`
@@ -67,7 +67,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 | 指标 | 数值 |
 |---|---|
 | motion 文件 | **8154** 条（0 未引用 / 0 悬空引用；shell 仅剩 7 条资产层真为空，见下） |
-| 曲线总数 | 全库 **2,662,615**（2026-09-24 全量重导：944,136 → 2,662,615，×2.82）。⚠️ **2026-10-20 发现全库仍缺 ConstantClip 定值段（平均 ~81%）**：`L2D_MOTION_EMIT_CONST` 生产从未打开，姿势层定值曲线整段未导出 →「播 idle9 卡在默认待机」根因（§134）。**ougen_8 已换入**（4487→23326 条，9 姿势参数精确落值实测）；**其余 268 模型待重导**（换入后需重算 motion_chain + §25 规训） |
+| 曲线总数 | 全库 **2,662,615**（2026-09-24 全量重导：944,136 → 2,662,615，×2.82）。⚠️ **2026-10-20 发现全库仍缺 ConstantClip 定值段（平均 ~81%）**：`L2D_MOTION_EMIT_CONST` 生产从未打开，姿势层定值曲线整段未导出 →「播 idle9 卡在默认待机」根因（§134）。**2026-10-21 本机 5 样本已全部换入**（4487→23326 + 4 样本 28693→71117，合计 52019→94443 条，binding 对账 71117=71117 零回退；24 姿势参数运行时精确落值实测）；**其余 264 模型待重导**（换入后需重算 motion_chain + §25 规训） |
 | PartOpacity 换装曲线 | 79 模型（`gaoxiong_7` 3548 条、`kebensi_2` 2940 条、`chaijun_3` 2492 条等），此前整层丢弃 |
 | 审计 | shell **7** / misassign **0** / `clips 8154`（`scripts/diag/l2d_motion_audit.py`，2026-09-24 全库） |
 | HitAreas（model3） | min 3 / max 78 / mean 12.3，**无 0 判定区模型**（2026-09-24 `fix_model3.py` 全库补登 `Touch*`）。⚠️ 其中**多数框静止态落在画布外**（抽样 11 模型 323/379=85%）——那是**换装/互动按钮的停放位**，播对应动作时随部件进画面才可点，**不是脏数据、不得按几何批量删**（2026-09-27 逐动作组实测，见 §51 / `l2d_hit_offcanvas.py --sweep`） |
@@ -82,7 +82,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 > ▸ **状态切换交互（2026-10-20，§132）**：部分 TouchDragN 不是「动作」而是游戏代码 set 的**状态开关**（首例 ougen_8 拖鞋=切 `ShoseOff` 穿/脱；aersasi_2 墨镜=切 `touch_drag1`）。前端 `STATE_TOGGLES` 配置表 + `stateApply` 挂 `beforeModelUpdate`（渲染前写值，零 monkey-patch）+ 0.5s tween。判据工具 `scripts/diag/l2d_state_param_scan.py`（零 motion/physics 驱动 + 0..1 值域 + 开关型显示名，全库 32 候选）；**接线必须经游戏画面对照确认语义**，aersasi_3「弹出/选择」对、antu_2 彩蛋系**未接线**。§130 旧「idle6=脱鞋」结论已修正（§132）。
  > ▸ **动作完整性与目视（2026-10-20）**：5 样本动作**全量**对账通过（源 clip=磁盘=model3 引用=空曲线 0：ougen_8 55 / antu_2 104 / aersasi_2 28 / aersasi_3 82 / qiershazhi_2 36，共 305 组）。Live2D 面板新增**「▶ 全部」顺序播放按钮**（从当前组逐个播完，每组 6s，pill 显示 `组名 [i/N]`；再点/手动选/切皮肤即停）——目视验收入口。
  > ▸ **残留复位竞态修复（2026-10-20，§133）**：用户报「idle9 卡住」裁决为三层——idle9 本体不冻结（探针误诊）；~~idle9 数据实情零可见参数~~（**§134 修正：85% 曲线未导出，非数据实情**）；**真 bug 是 restTick 竞态**：`play()` 先 `played.add`，`startMotion` async 加载窗口内 restTick 即消费 played → `paramSets[g]` 空集 → `clear()` 吞掉该组 → login 残留（ParamAngleX -28°）永不复位。修法：`playedAt` 记时刻 + 登记未完成且 <5s 本帧不消费。验证（禁 login 干净实验）：残留 ay=-8.3 → 0.4s 延迟 + 0.7s 渐变 → 回 -0.78，k=1 写 0 读回 0 铁证；WF-16 ALL PASS。**headless 时钟伪影判据（§133，勿再当 bug 查）**：动作时钟=累计 `Ticker.shared.deltaMS`，低帧率被 maxElapsedMS cap → entry finished 延迟数倍 → 验证时序逻辑必须绕开自然 finished（直接切 idleSet 组）。
- > ▸ **ConstantClip 定值段换入 ougen_8（2026-10-20，§134）**：源 bundle 对账发现 `EMIT_CONST` 生产从未打开 → 姿势定值曲线平均 **81% 未导出**（ougen_8 18839/23326）。「播 idle9 卡在初始默认待机」= 姿势参数（9 条定值）停在旧动作值。ougen_8 已按 WF 规训换入（备份→EMIT_CONST=1 重导→四项审计零回退→apply --yes→chain 重算），实测 9 姿势参数精确落值、切回 idle 全归零、截图差分 54%、WF-16 ALL PASS。⚠️ `build_motion_chain_map.py --models <单个>` 是**整表覆盖写**（本轮清掉过其它 4 样本映射，已重算恢复）——跑完必查「模型数=N」。**待办：其余 4 样本 + 全库 269 重导**（曲线总量 ×~5，motion_chain 全量重算）。
+ > ▸ **ConstantClip 定值段换入 5 样本（2026-10-20/21，§134）**：源 bundle 对账发现 `EMIT_CONST` 生产从未打开 → 姿势定值曲线平均 **81% 未导出**（ougen_8 18839/23326）。「播 idle9 卡在初始默认待机」= 姿势参数（9 条定值）停在旧动作值。ougen_8 已按 WF 规训换入（备份→EMIT_CONST=1 重导→四项审计零回退→apply --yes→chain 重算），实测 9 姿势参数精确落值、切回 idle 全归零、截图差分 54%、WF-16 ALL PASS。**2026-10-21 其余 4 样本（antu_2/aersasi_2/aersasi_3/qiershazhi_2）同流程换入**：binding 对账 71117=71117、streamed 28693 条零回退、段格式合法；8778 本项目画廊 WF-16 5/5 ALL PASS + 每模型 6 姿势参数精确落值 + 回零对切回组磁盘定值闭环（姿势基态随组：不同 idle 变体各有定值）。⚠️ `build_motion_chain_map.py --models <单个>` 是**整表覆盖写**（本轮清掉过其它 4 样本映射，已重算恢复）——跑完必查「模型数=N」。**待办：其余 264 模型重导**（曲线总量 ×~2.5，motion_chain 全量重算）。
 > ⚠️ **动效验证必须在播放窗口内高频采样**：运行时把每条 idle 解析成 `isLoop:false`（全 269 模型一致的既有特性），idle 只播一次即回静；等 ~12s 后两次快照比对会因短 idle(5~8s) 已播完而假报 `moved=0`。
 > ⚠️ **aersasi_2/ougen_8 肢体抖动（§116，进行中）**：重建版 .moc3/.physics3 与 AS 版逐字节/逐字段一致已**否证**「提取/物理数值」两条；`L2D_MOTION_EMIT_CONST=1` 换入 A/B 实测 **idle 内波形不变** ⇒ **否证**「真抖动=constant 曲线缺失」（常量曲线只在**切动作复位**轴上生效，idle 循环内部无复位）。待办：真抖动按「切换轴」CDP 目视、动作复位按「切段复位」另测；改用 `scripts/diag/l2d_jitter_probe.py`（读参数名走 `_parameterIds`）。
 > **2026-10-19 复核（审计轮）**：idle3 的肩部曲线本身就是 `-24 ↔ -0.25` 每 0.667s 交替（10 个来回），`DenseClip.curveCount=0`、meta 总段数 1611 / 257 曲线 ⇒ 是**稀疏作者关键帧**，且与 AS 版逐字段相同 ⇒ 不是提取/接线造成的。运行时 `physics=true`、`breath` 参数数 0（呼吸层已关）。无头只有 ~2fps，测不出高频观感，需游戏内同 clip 对照。
