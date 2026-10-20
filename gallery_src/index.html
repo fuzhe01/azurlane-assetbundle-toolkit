@@ -1489,7 +1489,7 @@ async function renderLive2D(s, sk){
            cm.setParameterValueById('ParamEyeBallY', -eyeT.y); }catch(e){} },
       null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
     const bar=document.getElementById('l2bar');
-    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+拖拽</b>互动 · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
+    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2SeqAll" title="从当前组开始逐个播完全部动作，每组约 6 秒（305 组约半小时一轮）；再点一次或手动选动作即停">▶ 全部</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+拖拽</b>互动 · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
     const sel=document.getElementById('l2Motion');
     const fillSel=()=>{ const cur=sel.value;
       sel.innerHTML=groups.map(g=>`<option value="${g}">${g}${voice[g]?'（语音）':''}</option>`).join('');
@@ -1512,7 +1512,28 @@ async function renderLive2D(s, sk){
       const tc=talkCount(sk.key);
       if(vp) vp.textContent=(n?('语音 '+n+' 组'):'该皮肤无语音')+(tc?' · '+tc:'');
       fillSel(); });
-    sel.onchange=()=>{ play(sel.value); };
+    /* ---------- 「▶ 全部」顺序播放（目视验收用，2026-10-20）----------
+       从当前选中组开始逐个播完 groups 全部动作；每组固定 6s——够看姿态与运动过程（长动作
+       main 类只能看前段，目视完整时长请手动选组）；播完/再点一次/手动选动作/切皮肤即停。
+       idle 类自循环无所谓时长，非 idle 类 6s 后被下一组 FORCE 打断符合目视节奏。 */
+    let seqAllOn=false, seqAllT=0, seqAllIdx=0;
+    const SEQ_ALL_MS=6000;
+    const stopSeqAll=(btn)=>{ seqAllOn=false; clearTimeout(seqAllT);
+      const b=btn||document.getElementById('l2SeqAll'); if(b){ b.textContent='▶ 全部'; b.classList.remove('on'); } };
+    const stepSeqAll=()=>{ if(!seqAllOn) return;
+      if(seqAllIdx>=groups.length){ stopSeqAll();
+        const pill=document.getElementById('l2Hit'); if(pill) pill.textContent='顺序播放完毕（'+groups.length+' 组）';
+        return; }
+      const g=groups[seqAllIdx];
+      if(play(g)){ sel.value=g;
+        const pill=document.getElementById('l2Hit');
+        if(pill) pill.textContent=g+'  ['+(seqAllIdx+1)+'/'+groups.length+'] ▸ 顺序播放'; }
+      seqAllIdx++;
+      seqAllT=setTimeout(stepSeqAll, SEQ_ALL_MS); };
+    document.getElementById('l2SeqAll').onclick=(e)=>{ if(seqAllOn){ stopSeqAll(e.target); return; }
+      seqAllOn=true; seqAllIdx=Math.max(0, groups.indexOf(sel.value));
+      e.target.textContent='■ 停止'; e.target.classList.add('on'); stepSeqAll(); };
+    sel.onchange=()=>{ stopSeqAll(); play(sel.value); };
     document.getElementById('l2Replay').onclick=()=>{ play(sel.value); };
     document.getElementById('l2Fit').onclick=resetFraming;
     document.getElementById('l2Full').onclick=()=>{ if(document.fullscreenElement) document.exitFullscreen(); else viewEl.requestFullscreen().catch(()=>{}); };
@@ -1805,7 +1826,7 @@ async function renderLive2D(s, sk){
     window.addEventListener('blur',onCancel);
     window.addEventListener('pointermove',onMove);
     window.addEventListener('pointerup',onUp);
-    my.off=()=>{ stopSkinVoice(); ro.disconnect(); try{mdl.internalModel.off('beforeModelUpdate', stateApply);}catch(e){}
+    my.off=()=>{ stopSeqAll(); stopSkinVoice(); ro.disconnect(); try{mdl.internalModel.off('beforeModelUpdate', stateApply);}catch(e){}
       wrap.removeEventListener('wheel',onWheel);
       wrap.removeEventListener('pointerdown',onDown); wrap.removeEventListener('dblclick',onDbl);
       wrap.removeEventListener('pointercancel',onCancel);
