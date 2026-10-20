@@ -68,6 +68,55 @@ def parse_curve_ends(curves):
     return out
 
 
+def parse_curve_full(curves):
+    """同 parse_curve_ends，但额外识别「单段定值」：{pid: {'start','end','const'}}。
+
+    const = 定值（None 表示动画曲线）。判据：整条曲线恰一个类型段且为
+    InverseStepped(0)/Stepped(2)，首尾值相同（[0,v,0,dur,v] / [t,v,2,v] 形态）。
+    §134 续：ConstantClip 姿势层全是这种段——形态开关参数（0/N 两态）靠它识别。
+    """
+    out = {}
+    for c in curves or []:
+        if c.get('Target') != 'Parameter':
+            continue
+        pid = c.get('Id')
+        seg = c.get('Segments') or []
+        if len(seg) < 2 or pid is None:
+            continue
+        v0, v1 = float(seg[1]), float(seg[-1])
+        is_const = ((len(seg) == 5 and seg[2] == 0) or (len(seg) == 4 and seg[2] == 2))
+        out[pid] = {'start': v0, 'end': v1,
+                    'const': (v0 if (is_const and abs(v0 - v1) < 1e-9) else None)}
+    return out
+
+
+def find_switch_params(full_by_group, min_groups=5):
+    """识别「形态开关」参数（§134 续回落修法的数据侧判据）。
+
+    判据：在 ≥min_groups 个组里以定值出现，且全部定值恰两种：零态 + 唯一非零态 V。
+    实锤案例 antu_2/Param148：48 组定值 ∈ {0, 10}（装饰/形态切换）——idle11 无曲线，
+    drag 末态 10 回落 idle11 被拉回 0 → 装饰瞬间消失（现行 norm 计分对此完全盲）。
+    摆动参数（-20↔+20 动画、16 组定值全 0）不满足「唯一非零态」→ 不误判。
+    返回 {pid: 非零态值 V}。
+    """
+    const_vals = {}
+    for _g, curves in full_by_group.items():
+        for pid, c in curves.items():
+            v = c.get('const')
+            if v is not None:
+                const_vals.setdefault(pid, []).append(round(v, 4))
+    switches = {}
+    for pid, vals in const_vals.items():
+        if len(vals) < min_groups:
+            continue
+        distinct = sorted(set(vals))
+        nonzero = [v for v in distinct if abs(v) > 0.5]
+        zeroish = [v for v in distinct if abs(v) <= 0.5]
+        if len(nonzero) == 1 and zeroish:
+            switches[pid] = nonzero[0]
+    return switches
+
+
 def load_model3(model_dir):
     """返回 (model3 文件路径, FileReferences.Motions dict) 或 None。"""
     cands = sorted(glob.glob(os.path.join(model_dir, '*.model3.json')))
@@ -107,53 +156,82 @@ def build_model_chain(model_dir, model):
     if not idle_groups:
         return None
 
-    idle_curves = {}
-    for g in idle_groups:
-        ce = load_group_curve_ends(model_dir, motions, g)
-        if ce:
-            idle_curves[g] = ce
+    def load_full(g):
+        entries = motions.get(g) or []
+        if not entries or not entries[0].get('File'):
+            return None
+        f = os.path.join(model_dir, entries[0]['File'])
+        if not os.path.isfile(f):
+            return None
+        try:
+            j = json.load(open(f, encoding='utf-8'))
+        except Exception:
+            return None
+        return parse_curve_full(j.get('Curves'))
+
+    full = {}
+    for g in groups:
+        cf = load_full(g)
+        if cf:
+            full[g] = cf
+    idle_full = {g: cf for g, cf in full.items() if IDLE_RE.match(g)}
+
+    # 形态开关集（§134 续）：两态定值参数。硬约束——候选 idle 的开关值必须等于动作末值。
+    switches = find_switch_params(full)
 
     # 每个参数在全部待机候选首帧中的量纲（max-min），用于归一化
     param_range = {}
-    for ce in idle_curves.values():
-        for p, (s, _e) in ce.items():
+    for ce in idle_full.values():
+        for p, c in ce.items():
             r = param_range.get(p)
+            s = c['start']
             param_range[p] = (s, s) if r is None else (min(r[0], s), max(r[1], s))
 
     chain = {}
     for a in actions:
-        a_end = load_group_curve_ends(model_dir, motions, a)
-        if not a_end:
+        a_full = full.get(a)
+        if not a_full:
             continue
-        end_val = {p: e for p, (_s, e) in a_end.items()}
-        cands = []
-        for g, ce in idle_curves.items():
-            start_val = {p: s for p, (s, _e) in ce.items()}
-            common = [p for p in start_val if p in end_val]
-            if not common:
-                continue
-            raw = 0.0
-            norm = 0.0
-            n_miss_rng = 0
-            for p in common:
-                d = end_val[p] - start_val[p]
+        end_val = {p: c['end'] for p, c in a_full.items()}
+        n_action = len(end_val)
+        # 开关参数交集（仅统计用）：前端 restTick 豁免这些参数（状态保持语义），
+        # 它们在 score 里也按「保持」计（无断崖），见 score 注释。
+        a_switches = {p: v for p, v in switches.items() if p in end_val}
+
+        def score(g):
+            """全参数计分。漏参数（idle 无曲线）按 (end - 0)² 计入——切回后被 restTick
+            拉回 0 的断崖；**开关参数例外**（前端 restTick 豁免，值保持 end，断崖=0）。"""
+            ce = idle_full[g]
+            raw = norm = 0.0
+            n_miss_rng = n_common = 0
+            for p, ev_ in end_val.items():
+                if p in ce:
+                    sv = ce[p]['start']
+                    n_common += 1
+                elif p in switches:
+                    continue          # 开关参数：前端保持不复位，无断崖、无差异
+                else:
+                    sv = 0.0          # 摆动/姿势残留：restTick 拉回 0 的断崖
+                d = ev_ - sv
                 raw += d * d
-                lo, hi = param_range.get(p, (start_val[p], start_val[p]))
+                lo, hi = param_range.get(p, (sv, sv))
                 rng = hi - lo
                 if rng > 1e-9:
                     norm += (d / rng) ** 2
                 else:
                     n_miss_rng += 1
-            denom = len(common) - n_miss_rng
+            denom = n_action - n_miss_rng
             norm = (norm / denom) if denom else float('inf')
-            cands.append({'group': g, 'raw_sse': round(raw, 4),
-                          'norm': round(norm, 4), 'n_params': len(common)})
+            return {'group': g, 'raw_sse': round(raw, 4),
+                    'norm': round(norm, 4), 'n_params': n_common,
+                    'n_leak': n_action - n_common}
+
+        cands = [score(g) for g in idle_full]
         if not cands:
             continue
-        # 2026-10-19 最终口径：不再用覆盖度闸门（它把 ougen touch_idle14/idle9 这种
-        # 只覆盖 26% 但末帧完全重合的候选排除掉，反而选了 norm 2.54 的 idle11）。
+
         # touch_drag* 是循环短动作，用 raw_sse（不除 range）；touch_idle* 用 norm。
-        n_action = len(end_val)
+        # 两者现已含漏参数（按 end-0 计入），覆盖度不再是盲区。
         metric = 'raw_sse' if a.startswith('touch_drag') else 'norm'
         cands.sort(key=lambda x: (x[metric], -x['n_params'],
                                   LEGACY_PREF.index(x['group'])
@@ -165,18 +243,20 @@ def build_model_chain(model_dir, model):
             'best': None if fb else best['group'],
             'best_norm': None if fb else best_m,
             'metric': metric,
-            # 无公共参数（如 effect）时前端回落默认 idleGroup
             'fallback': fb,
             'n_idle_cands': len(idle_groups),
             'n_action_params': n_action,
             'best_coverage': round((best['n_params'] / n_action) if n_action else 0.0, 3),
             'leak_n_params': (n_action - best['n_params']) if not fb else None,
+            'n_switch_params': len(a_switches),
+
             'runners_up': [{'group': c['group'],
                             'norm': None if c['norm'] == float('inf') else c['norm'],
                             'raw_sse': c['raw_sse'],
                             'n_params': c['n_params']} for c in cands[:5]],
         }
     return {'model': model, 'idle_groups': idle_groups,
+            'switch_params': switches,
             'n_actions': len(chain), 'chain': chain}
 
 
@@ -234,9 +314,10 @@ def main():
 
     if args.write:
         out = os.path.join(GALLERY_OUT, 'motion_chain.json')
-        payload = {'version': 1,
+        payload = {'version': 2,
                    'idle_re': IDLE_RE.pattern,
                    'models': {m: {'idle_groups': r['idle_groups'],
+                                  'switch_params': r.get('switch_params', {}),
                                   'chain': r['chain']}
                               for m, r in results.items()}}
         with open(out, 'w', encoding='utf-8') as f:

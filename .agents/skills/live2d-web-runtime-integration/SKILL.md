@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.8
+version: 1.10.9
 ---
 
 # Live2D 网页运行时集成
@@ -595,3 +595,23 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 **已排除的假设（别重跑）**：restTick 写入被 loadParameters 覆盖（同帧写后读回即推翻——save→load 在同一调用栈，外部 ticker 插不进中间）；cm 实例不同/方法遮蔽（`cm===stage.children[0].internalModel.coreModel` + 原型方法 hasOwnProperty 判定）；FadeOutTime 过长导致对抗（全库缺省=-1 → endTime=ut-1 即时掐，对抗仅 1-2 帧）；物理/呼吸/focus 写 Angle 参数（物理输出不含、breath 已关、focus 写在 save 后被 load 撤销）。
 
 完整取证：§133。
+
+## 17. 状态开关的值域坑 / slider 模式 / restTick 开关豁免（2026-10-21，version 1.10.9）
+
+### 17.1 on/off 不能硬编码——值域坑（墨镜只变深浅的根因）
+
+状态开关参数的值域**不是统一的 0..1**：aersasi_2/touch_drag1 实测范围 **0..10**（`core.getParameterMaximumValue`），硬编码 `on:1` 只到 10% 渐变位 → 观感「只变深浅不是穿戴」。**配置表必须省略 on/off、运行时解析**（on=max、off=min，`getParameterIndex` 拿 ix 后读 min/max）。验证信源：产品逻辑态（`STATE_TOGGLES[key][i]._on` 从 off 变 max）+ 顶点直读形变数（墨镜 on 态 609 drawable 形变）。**帧末 evaluate 读参数值=假阴性**（loadParameters 拉回、stateApply 下一帧才重申）——别用参数直读验证状态切换。
+
+### 17.2 slider 型 drag：拖动调值不是开关
+
+需求形态：某些 TouchDragN 是**拖动位移连续调参数**（颜色深浅类），非穿戴开关。实现要点：条目加 `mode:'slider'`；onDown 时记 `参数初值+起点 x`；onMove 按 `(cx-x0)/240*(max-min)` 连续写值并同步更新 `_on` 快照（stateApply 的每帧重申消费它——闭环成立）；onUp 只结束拖动、值保持。点击（非拖动）slider 区走原 toggle 两端切换。**哪些模型哪些参数是 slider 语义要扫描+游戏对照确认，别拍脑袋接线**。
+
+### 17.3 restTick 必须豁免「形态开关」参数（回落断崖真根因）
+
+**通型**：残留复位逻辑（§21 restTick）把「播过的 clip 驱动、idle 不驱动的参数」拉回默认值。**两态装饰开关**（数据侧识别：≥5 组以定值出现且值集恰 {0, V}，如 antu_2/Param148 ∈{0,10}）也是「idle 不驱动」成员 → 切回 idle 被拉回 0 → **装饰瞬间消失 = 用户报的「回落完全不衔接」**。游戏语义是**状态保持**（拖完戴着）。修法：`build_motion_chain_map.py` 的 `find_switch_params` 把开关集写进表（v2 的 `switch_params`），前端 restTick 的 want 构造排除 `switchParams`。**注意与姿势参数的区分**：姿势基态参数（每个 idle 变体不同值、多态）不满足两态判据，仍正常复位。
+
+### 17.4 回落选组的「漏参数断崖」盲区（计分口径）
+
+只对「动作与 idle 共有参数」求差异的 metric，对**漏参数（idle 无曲线、被拉回 0）的断崖完全盲**——低覆盖候选（leak 84/293）赢过高覆盖（leak 4）。正确口径：**全参数计分**，漏参数按 `(end-0)²` 计入（开关参数例外：前端豁免保持，断崖=0 跳过）。**硬约束方案已否证**：把开关匹配当 idle 候选的硬排除——姿势组合参数混进开关集 → 全候选被排除 → 退回软分 = 约束白做；且排除路径返回占位分 0.0 会污染排序。
+
+完整取证：§135；判据工具 `scripts/diag/l2d_pose_anchor_pick.py`（锚点）+ motion_chain.json v2。

@@ -7044,3 +7044,20 @@ idle9 的 93 条定值里 **9 条与默认 idle 不同**（Param345=-1.28、Para
 **探针基建修复**：`l2d_const_pose_verify.py` 原有 `ROOT` 两层 dirname → `ROOT/scripts`=废路径（cdp_slot 在 `scripts/` 不在 `scripts/diag/`），靠 script-dir 规则侥幸能跑，参数化重构后即炸——改三层 dirname 与 interact_verify 对齐。两探针（interact_verify / const_pose_verify）已加 env 参数化（`INTV_URL`/`INTV_MODELS`、`POSE_SKIN`/`POSE_GROUP`/`POSE_EXPECT`/`POSE_BACK`/`POSE_URL`），支持指向本项目 8778 画廊批量验证。
 
 **涉及**：`scripts/diag/interact_verify.py`、`scripts/diag/l2d_const_pose_verify.py`（双双 env 参数化）、`scripts/diag/l2d_const_audit_batch.py`（四项审计入库版）、`scripts/diag/l2d_pose_anchor_pick.py`（锚点挑选入库版）、`Output/Live2D/{antu_2,aersasi_2,aersasi_3,qiershazhi_2}/motion/`（已换入，备份 `Output/_OLD_bak/l2d_motion_20261020_233405`）。**待办：其余 264 模型**（全库曲线 2,662,615 → 预计 ×~2.5，motion_chain 全量重算）。
+
+## §135. 四联修：STATE_TOGGLES 值域坑 / 回落断崖（开关保持语义）/ mail 手掌取证 / 判定区动态性（2026-10-21）
+
+**④ 墨镜只变深浅（值域坑）**：`STATE_TOGGLES` 写 `on:1`，但 aersasi_2/touch_drag1 参数范围 **0..10**（运行时 `core.getParameterMaximumValue` 实测）→ on=1 只到 10% 渐变位 = 观感「墨镜只变深浅」。修法：**on/off 省略即运行时解析**（on=max、off=min），配置表删硬编码值（ShoseOff 0..1 解析结果与旧值一致，零回归）。验证：产品路径 Ctrl+点击 touchdrag1 区 → `st0=0→st1=10`（产品逻辑态）+ **609 drawable 顶点形变**（视觉生效铁证）。同时新增 `mode:'slider'` 框架（拖动位移连续调参数、松手保持，水平 240px=全量程）——用户要求的「滑动调节颜色深浅」类 drag 交互；具体模型接线等扫描（扫描器判据需按 §134 续改：EMIT_CONST 后「零 motion 驱动」失效，改「两态定值」）。
+
+**③ 回落不衔接的真根因是两层（不是选错组）**：
+- **层 1（主因）——restTick 把「形态开关」拉回 0**：antu_2/Param148 是动作驱动的两态装饰开关（48 组定值 ∈{0,10}；idle15/16/25=10、idle11 无曲线）。touch_drag11/12 末态=10，回落 idle11 后 restTick 把它拉回 0 → **装饰瞬间消失 = 用户看到的「完全不衔接」**。**修法：开关保持语义**——`build_motion_chain_map.py` 识别两态开关集写进表 v2 的 `switch_params`，前端 restTick 的 want 构造豁免 `switchParams`（游戏同语义：拖完戴着，切 idle 不摘）。验证：播 touch_drag11 → 回落 idle11 后 **Param148=10 全程保持**（50s 内 10 轮采样）。
+- **层 2——漏参数断崖盲区**：旧计分只对「动作与 idle 共有参数」求差异，**漏掉的参数（idle 无曲线）被拉回 0 的断崖完全没计入** → 低覆盖候选（idle25 只覆盖 71%）赢过高覆盖（idle10 覆盖 99%）。修法：**全参数计分**（漏参数按 `(end-0)²` 计入；开关参数例外——前端保持、断崖=0）。touch_idle12 实测：best 从 idle25（leak=84）→ idle13（总分最低，断崖 84→48）。
+- **排查中踩掉的三个坑**（复用价值）：① 开关硬约束全排除（姿势组合参数混进开关集 → 33 候选全灭 → 退回软分=约束白做）——正确做法不是约束而是**前端豁免**；② 排除路径返回占位分 0.0 被当真实分排序（被排除者永远第一）；③ 探针长 JS 单 evaluate 卡死（CDP awaitPromise）——**拆小步分次 evaluate**。
+
+**② mail 手掌消失（取证闭环，无可修 bug）**：三重验证全正常——mail 驱动 Beimian（背影）手参数（A: 0.5~3.6s=-30、B 分段 -10/+10，运行时中段实测 -30 精确落值）；**部件 310/310 全可见**（非部件开关）；顶点直读：set Beimian_Hand_A/B=-30/-10 → **15 个手部 drawable 形变**（keyform 绑定正常）。「手掌消失」= mail 转身（ParamAngleY=-11.8°）+ 背面手切换 + **游戏内信件 overlay 我们没有**（空手做持信姿势）的源动画特性。
+
+**① 互动区点击无反应（静态 0 死区，动态待用户案例）**：5 样本静态映射全通（63/12/51/31/16 个区全有组映射或拖拽/状态区）。本轮实测到的动态无反应场景：**headless 下探针扫描点与点击间隙模型 idle 推进 → 区移位**（真机用户看着点不存在此问题）；多重命中随机轮换（A3 设计）。**待用户给具体案例（哪个模型哪个动作哪个区）再精准取证**。已知框架问题：判定区可视化已只画 inView 区，geomOf 退化区自动出局。
+
+**探针基建坑（本轮新证）**：自写 CDP 探针必须带 `--enable-unsafe-swiftshader --use-angle=swiftshader`（缺了 headless Edge 起不来，tab 列表空）；`cdp_slot.slot(ROOT, ...)` 的 ROOT **必须传绝对路径**（传 "." 时 profile 解析坏 → Chrome 附着失败）；`ev` 解包是 `result.result.value` 两层（少一层全是 None 假象）。
+
+**涉及**：`gallery_src/index.html`（STATE_TOGGLES 运行时解析 + slider 模式 + restTick 开关豁免 + switchParams 读取）、`scripts/build_motion_chain_map.py`（parse_curve_full/find_switch_params/全参数计分，表 v2）、`Output/gallery_v2/motion_chain.json`（v2：5 模型 switch_params 170/25/29/86/93）。相关：§132（状态切换）、§134 续（姿势验证三坑）、§21（restTick 由来——本轮给它加了开关豁免）。
