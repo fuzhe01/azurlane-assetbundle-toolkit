@@ -6919,3 +6919,20 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 **脱鞋**：`idle6` 本身就是对应动作；也可以继续用参数/部件面板手动调 `PartOpacity`/参数验证。
 
 **涉及**：`scripts/fix_model3.py`、`Output/Live2D/*/*.model3.json`、`gallery_src/index.html`（TouchDrag* 补区）。相关 §18/§26、WF-40。
+## §131. astc_encoder import 被 archspec `..` 路径间歇 PermissionError 掐死 → 贴图提取静默全跳过（2026-10-20）
+
+**现象**：`reconstruct_live2d.py` 报"还原成功"，但 `texture_*.png` 缺失；`l2d_tex_completeness` 报 missing。直接探针 `d.image` 抛 `PermissionError: archspec\cpu\..\json\cpu\microarchitectures.json`。
+
+**根因链**：`d.image` → UnityPy `Texture2DConverter.py:9 import astc_encoder` → `astc_encoder/encoder.py:8 host()` → archspec `schema.py:68` 用 `Path(__file__).parent / ".." / "json" / "cpu"` 构路径（`absolute()` 不消解 `..`）→ open 该带 `..` 的路径被**间歇性**拒绝（err 13）。碧蓝贴图 fmt=48（ASTC_RGBA_8x8）必须走 astc_encoder 的 decompress，**不能** stub 假模块降级。`extract_textures` 的 `except Exception: continue` 把异常吞到零日志。
+
+**判据（定位过程）**：同一时间点，纯 `import astc_encoder` 的进程 10/10 OK、先 import UnityPy 的进程 100% FAIL 是**假象**——真正模式是**时间窗间歇**：dotdot 路径坏窗口可持续数分钟；flat（normpath 后）路径在全部几十次测试中 100% OK；ctypes `CreateFileW` 两条路径从未失败（Win32 层干净）⇒ 拦截发生在原始路径字符串层（安全软件过滤驱动按路径形态拦），与进程状态、UnityPy、ACL 均无关。
+
+**修法（两件套，已落地）**：
+1. `scripts/astc_import_patch.py`：`ensure_astc_importable()` 先试直接 import（好窗口零开销），PermissionError 则用 `os.path.normpath` 后的路径预填 `archspec.cpu.schema` 四个 LazyDictionary 的 `_data`（LazyDictionary 的 factory 是模块级函数对象，**patch `_load` 无效**，必须预填 `_data`），再 import。任何会 `data.image` 的脚本（export_assets / compose_paintings_v2 / extract_spine_v2 / extract_paintingface / l2d_tex_completeness 等）都应接。
+2. `reconstruct_live2d.py` 的 `extract_textures` 失败改写 `ERRORS.log`（不再静默）。
+
+**已排除的假设**（别再重跑）：非 UnityPy import 顺序（dotdot3 分阶段探针：基线阶段就 FAIL）；非杀软"信用累积"（reconstruct 前后均有好坏窗口）；非 Python/CRT 层（CreateFileW OK）；非 ACL（flat 与 dotdot 是同一文件）；非 archspec 版本 bug（同一路径时好时坏）。坏窗口成因（哪个安全软件）未查死，不影响修复有效性。
+
+**验证**：antu_2/aersasi_2/aersasi_3/qiershazhi_2 重跑全部出贴图（13.5MB+7.1MB 等），`l2d_tex_completeness` 5/5 全绿、`l2d_texorder_check` 5/5。
+
+**涉及**：`scripts/astc_import_patch.py`、`scripts/reconstruct_live2d.py`、`scripts/diag/l2d_texture_decode_diag.py`（原 `_probe_tex.py`，通用贴图解码诊断）。相关 §130、WF-15。

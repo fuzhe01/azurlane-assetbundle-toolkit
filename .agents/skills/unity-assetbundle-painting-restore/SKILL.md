@@ -1,7 +1,7 @@
 ---
 name: unity-assetbundle-painting-restore
 description: Unity AssetBundle 立绘数据驱动还原流程（以碧蓝航线项目为蓝本）。当需要从 Unity 游戏的 AssetBundle 中还原静态立绘（多层 UI 合成）、提取 Spine 动态立绘、解析 PPtr 依赖关系定位 Mesh/Sprite，或排查还原结果"颠倒/比例错/层错位/黑洞/脸部白块/头部发黑/贴遮挡条"类系统性坐标、画框与图层问题时使用。触发词：立绘还原、立绘合成、AssetBundle 立绘、Spine 提取、PPtr、externals、CAB、图层错位、比例不对、颠倒、黑洞、画框、脸部白块、白脸洞、face 槽、paintingface、mRawSpriteSize、m_IsActive、关闭图层、激活位、头部发黑、遮挡条、NOT ABLE TO DISPLAY、覆盖率扫描、重跑、影响面扫描。
-version: 1.10.0
+version: 1.11.0
 ---
 
 # Unity AssetBundle 立绘数据驱动还原
@@ -14,6 +14,13 @@ version: 1.10.0
   `from UnityPy import config` + `config.FALLBACK_UNITY_VERSION = "2022.3.62f3"`——
   本游戏新版 bundle 把 UnityFS 头部的 `unity_version` 伪装成 `5.x.x`，不设回退则较新包全部加载失败。
   写/改任何读 bundle 的脚本后，先 `grep FALLBACK_UNITY_VERSION scripts/` 核对每个入口脚本都已设置（v2 管线脚本齐全，旧导出脚本曾漏设导致 ~80 背景包导出失败）。
+- **前置铁律二（任何走 `Texture2D.data.image` 解码的脚本）**：import UnityPy 后接
+  `from astc_import_patch import ensure_astc_importable` + `ensure_astc_importable()`。
+  否则 `import astc_encoder`（ASTC 贴图解码必需，fmt=48）会经 archspec 懒加载带 `..` 的
+  json 路径，在部分 Windows 机器上被安全软件**间歇性** PermissionError 掐死；脚本里
+  `except Exception: continue` 会把贴图静默丢光、产物"看起来成功"。判据与排查方法见
+  docs/TROUBLESHOOTING.md §131；探针 `scripts/diag/l2d_texture_decode_diag.py`。
+  ⚠️ 症状是**间歇**的：同一脚本昨天好今天坏≠代码回退，先跑贴图对账闸门再定位。
 - 目录约定（碧蓝航线项目，路径 `D:\Azur Lane Assets`）：
   - 源包：`AssetBundles/`（含 `dependencies` 单包、`painting/`、`paintingface/`、`spinepainting/` 等子目录）
   - 脚本：`scripts/`，输出：`Output/Paintings_v2/`、`Output/Spine_v2/`

@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-19
+> **生成时间**: 2026-10-20
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python ≥3.13（本机实测 3.14，UnityPy 1.25.4 可跑；项目约定 3.13）
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`
@@ -63,6 +63,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 
 ### 2.5 Live2D 模型还原 ✅（2026-09-21 动作层重建；2026-09-22 补齐 9 个 bundle → 269 模型；2026-09-26 修 5 个贴图索引错绑）
 269/269 还原、纹理拼接正确、HitAreas 已全库补登真判定区。输出 `Output/Live2D/{舰名}/`，**4.7GB**（2026-09-24 实测，曲线补齐后从 ~3.9GB 涨上来）。脚本 `reconstruct_live2d.py` / `fix_model3.py` / `extract_motions.py`。
+> **本机重建（2026-10-20，5 样本预览线）**：新机 clone 后 Output 为空，先重建 5 个验收样本（ougen_8 / antu_2 / aersasi_2 / aersasi_3 / qiershazhi_2）——贴图/motion/HitAreas 全部重跑，`tex_completeness` 5/5 全绿、`texorder` 5/5、motion 全非空曲线。⚠️ 贴图提取曾被 archspec `..` 路径间歇 PermissionError 静默跳过（`extract_textures` 异常 continue 无日志），修复两件套：`scripts/astc_import_patch.py`（import astc_encoder 前预填 archspec 懒加载数据，避开带 `..` 的路径）+ 失败写 ERRORS.log（不再静默）。取证见 `docs/TROUBLESHOOTING.md` §131。全库 269 重跑时**必须**先接 astc_import_patch。
 | 指标 | 数值 |
 |---|---|
 | motion 文件 | **8154** 条（0 未引用 / 0 悬空引用；shell 仅剩 7 条资产层真为空，见下） |
@@ -342,6 +343,7 @@ motion 大面积失效源于我们自己的解析器（帧 0 护栏 + 曲线名�
 - **运行**：`启动资产浏览器.bat`（→ `_gallery_server.py`：8777 端口 + `allow_reuse_address` + 端口占用即复用 + 结尾 `pause`，杜绝闪退）。file:// 下立绘/语音可看，Spine `fetch` 被 CORS 拦需走 .bat。
 - **运行时库台账**（2026-09-26）：`vendor/` 4 个第三方 JS 只在 gitignore 目录里，版本/来源/sha256 记进 **`gallery_src/vendor/MANIFEST.json`**（3 个的 URL 当日重新下载按哈希逐字节对拍命中），换机器跑 `py -3 scripts/fetch_gallery_vendor.py` 补齐（**哈希+字节数双对上才落盘**，`--check` 只校验）。⚠️ **唯一残留缺口**：`vendor/spine/spine-all.js`（实测 3.8.75，非旧文档写的 3.8.99）没有可按哈希校验的下载源——本机这份与上游官方 3.8 构建不同（499623B ≠ 501448B），只能从 `tools/spine-viewer/spine-runtime/` 取，而 `tools/` 也在 gitignore。要彻底封掉需二选一：把 501KB 提交进仓库（先确认 Spine Runtimes License 允许），或改用可哈希校验的上游构建并回归 Spine 播放。**未拍板**。
 - **限制**：~~Live2D 暂只显示贴图~~ **已接动作播放**（2026-09-20，`vendor/live2d/` 三脚本本地就位，见 §6.7）；Live2D/Spine 标签均需走本地服务器（file:// 下 fetch 被 CORS 拦）。运行时库的可复现性与那条未拍板的残留缺口见上一条。
+- **5 样本 Live2D 预览线（2026-10-20）**：元数据输入（inputs/azdata + inputs/gamecfg 共 11 项）缺失 ⇒ `build_gallery_index.py` 完整链跑不通 ⇒ **手写最小 `Output/gallery_v2/index.js`**（5 船纯 Live2d 皮肤，`live2d`+`live2dBase` 字段齐；`hasCn:false` 无中文名映射）。vendor 4/4 就位（哈希全对上：live2d 三件 + spine 官方构建；本机沙箱/直连均不可达，副本取自旧机 `D:\Azur Lane Assets\Output\gallery_v2\vendor\`，`fetch --check` 4/4 绿）。`motion_chain.json` 已生成（5 模型 / 226 动作）。8777 服务器资源全 200（含 5 模型 model3/moc3/贴图/motion）。**待用户浏览器验收 drag 拖鞋**（ougen_8 Ctrl/⌘+左键拖鞋子区）。⚠️ MANIFEST 曾因 f2ef0c0 改 patched.js 未回写 sha 而漂移，已修（bytes/sha 换成实测）。
 
 ---
 

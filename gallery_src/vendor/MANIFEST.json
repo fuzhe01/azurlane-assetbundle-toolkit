@@ -53,9 +53,9 @@
     },
     {
       "path": "Output/gallery_v2/vendor/live2d/pixi-live2d-display-cubism4.min.js",
-      "version": "0.4.0 + 本地补丁 colorpatch-20261019（MultiplyColor/ScreenColor）",
-      "bytes": 227011,
-      "sha256": "725a35668d9679e41db59eec8997d188750ae1f43bade11b84ec5f05e3436df6",
+      "version": "0.4.0 + 本地补丁 colorpatch-20261020（MultiplyColor/ScreenColor + touch_idle 无条件 best 回落）",
+      "bytes": 232737,
+      "sha256": "d4b28730fce9ee0ceb798af8f3f4cded09e38d531731ad0e5c94fb3af48ec323",
       "license": "MIT（上游 0.4.0）；本文件为 MIT 代码的本地补丁版",
       "sources": [
         {
