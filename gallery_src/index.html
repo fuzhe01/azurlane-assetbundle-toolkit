@@ -1239,10 +1239,18 @@ async function renderLive2D(s, sk){
     /* 画质：强制 ≥2x 渲染（vendored pixi RESOLUTION 默认 1，高 DPI 屏会糊）。
        resolution = max(2, devicePixelRatio)：标准屏至少 2x，P1440/4K 屏再顶到 DPR 倍率。
        autoDensity=true 让 canvas 的 CSS 尺寸仍等于视口、只把后端 buffer 放大 → 清晰且不撑垮布局。
-       与下方 refit()/contentBox() 全用 CSS 尺寸（clientWidth/Height）无关：那只是取景数学，不碰渲染分辨率。 */
+       与下方 refit()/contentBox() 全用 CSS 尺寸（clientWidth/Height）无关：那只是取景数学，不碰渲染分辨率。
+       ---- 渲染 A/B 诊断开关（2026-10-21 手掌消失排查）----
+       真实 GPU 上 8778 新前端手消失而 8777 旧前端完整（headless swiftshader 全正常，无法远程复现）。
+       二分定位三个新前端独有渲染项，URL 参数一键切换（默认全开=现状）：
+         ?noaa   → antialias:false（关 WebGL MSAA）
+         ?res1   → resolution:1（回到旧前端 1x 渲染）
+         ?nomask → 跳过 mask buffer 调大（用 Cubism 默认，=旧前端行为） */
+    const _AB=new URLSearchParams(location.search);
     const _L2D_DPR=(window.devicePixelRatio||1);
-    const app=new PIXI.Application({backgroundAlpha:0, resizeTo:wrap, antialias:true,
-      resolution:Math.max(2,_L2D_DPR), autoDensity:true});
+    const app=new PIXI.Application({backgroundAlpha:0, resizeTo:wrap,
+      antialias:!_AB.has('noaa'),
+      resolution:_AB.has('res1')?1:Math.max(2,_L2D_DPR), autoDensity:true});
     wrap.appendChild(app.view); my.app=app;
     const L2M=PIXI.live2d.Live2DModel;
     const mdl=await L2M.from(P+model+'/'+sk.live2dBase+'.model3.json',{autoInteract:false});
@@ -1250,6 +1258,9 @@ async function renderLive2D(s, sk){
        所以 N 必须 ≥ 画布长边 × √maskCount 才能 1:1；只按 DPR 给 1024/2048 在 mask 多时仍会放大出阶梯。
        统一按模型实际 mask 数算（不需要逐模型配置），上限 8192。 */
     try{
+      if(_AB.has('nomask')){
+        try{ window.__maskDbg={skipped:true}; }catch(e){}
+      }else{
       const _r=mdl.internalModel.renderer;
       let _mc=1;
       try{ const _cm=_r._clippingManager;
@@ -1261,6 +1272,7 @@ async function renderLive2D(s, sk){
       while(_n<_need && _n<8192) _n*=2;   // 2 的幂；mask 多时自动到 8192
       _r.setClippingMaskBufferSize(_n);
       try{ window.__maskDbg={mc:_mc,long:_long,n:_n}; }catch(e){}
+      }
     }catch(e){ try{ window.__maskDbg={err:String(e)}; }catch(_){} }
     if(my.cancelled||seq!==_l2seq){ app.destroy(true,{children:true}); return; }
     app.stage.addChild(mdl);
