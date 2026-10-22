@@ -7061,3 +7061,21 @@ idle9 的 93 条定值里 **9 条与默认 idle 不同**（Param345=-1.28、Para
 **探针基建坑（本轮新证）**：自写 CDP 探针必须带 `--enable-unsafe-swiftshader --use-angle=swiftshader`（缺了 headless Edge 起不来，tab 列表空）；`cdp_slot.slot(ROOT, ...)` 的 ROOT **必须传绝对路径**（传 "." 时 profile 解析坏 → Chrome 附着失败）；`ev` 解包是 `result.result.value` 两层（少一层全是 None 假象）。
 
 **涉及**：`gallery_src/index.html`（STATE_TOGGLES 运行时解析 + slider 模式 + restTick 开关豁免 + switchParams 读取）、`scripts/build_motion_chain_map.py`（parse_curve_full/find_switch_params/全参数计分，表 v2）、`Output/gallery_v2/motion_chain.json`（v2：5 模型 switch_params 170/25/29/86/93）。相关：§132（状态切换）、§134 续（姿势验证三坑）、§21（restTick 由来——本轮给它加了开关豁免）。
+
+### §136. 手掌消失排查：假说否证链与 A/B 诊断开关（2026-10-22，进行中）
+
+**现象**：真实浏览器 ougen_8 mail（及其它角色部分动作）手掌不显示；8777/8778 两画廊均出现（其 motion 数据同源为 2026-10-16 EMIT_CONST 版，mtime 实证；「昨天 8777 完整」系观察时机差异）。
+
+**已否证假说（别重跑）**：
+1. **手型参数驱动**：`?freezehand`（每帧把所有 Hand 参数钉回默认值，headless 实证 mail t+2s Beimian_Hand_A -30→0）在用户真实浏览器**仍消失** → 排除参数路径。
+2. **mask buffer 上限**：`?nomask`（回 vendor 默认 256）真实浏览器仍消失 → 排除 §127 的 8192 因子。注意 8777 上限本就是 2048 也消失，双画廊互证。
+3. **MSAA**：`?noaa` 仍消失。
+4. **2x 渲染分辨率**：`?res1` 仍消失。
+5. **headless 可测维度全绿**：真 GPU（RTX 4070 D3D11，去掉 swiftshader 参数）headless 三案例手部 bbox 肤色判据全部 ✓；Emulation 4K DPR2 亦 ✓；drawable op/vis/culling/keyform/贴图索引（手全在 texture_00）全正常。
+6. **换入前后数据差**：换入前旧版 idle 无手型曲线、mail 仅 2 条 0.27s 微动（手停默认位）——但 freezehand 已模拟该状态仍消失，数据差不是直接原因。
+
+**当前状态**：远程可测维度穷尽，用户有头浏览器是唯一复现环境。已部署 `?handdebug` 可视化诊断开关（手部 mesh 画框：绿=状态正常/红=异常 + 数值板 op/vis/blend/ro + vis=0 总数），headless 冒烟回归 ALL PASS；**遗留问题**：数值板在 headless 验证中 NO_BOX（选择器 `#l2wrap > div[style*="z-index:30"]` 未命中，下次修）。待用户真实浏览器 `?handdebug` 截图定位断点（框内无像素但数值全绿 → 渲染裁剪；数值红 → 状态层）。
+
+**环境坑（2026-10-22）**：`py -3` 被 Python 3.15 接管（依赖在 3.14）→ 一律用 `py -3.14`；8778 服务器会随机器重启死亡 → `powershell -ExecutionPolicy Bypass -File .diag/start_8778.ps1` 重启。**CDP 探针 ev 解包层次坑复发两次**：cmd() 已解一层 result，ev 再解一层会变成 `result.result.value` 三层（错误形态：全部返回 None）——写新探针时先跑 `1+1` 冒烟。
+
+**涉及**：`gallery_src/index.html`（?noaa/?res1/?nomask/?mask4096/?mask8192/?freezehand/?handdebug 七个诊断开关）。相关：§125（multiply）、§127（mask 上限由来）、§135（§④ 值域坑同轮）。

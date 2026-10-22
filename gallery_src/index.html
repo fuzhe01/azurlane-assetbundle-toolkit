@@ -1793,6 +1793,56 @@ async function renderLive2D(s, sk){
       try{ const _p=document.getElementById('l2Hit');
         if(_p) _p.textContent='[诊断] Hand 参数已冻结为默认值'; }catch(e){}
     }
+    /* ?handdebug[=mesh,mesh,...] 手掌消失可视化诊断（2026-10-22）：
+       对指定 mesh（默认 ougen_8 手部清单+ArtMesh29）实时画框 + 左上角数值板。
+       绿框=mesh 状态正常（op≥0.05 且 vis=1），红框=状态异常（op=0 / vis=0）。
+       判读：框内无像素但数值全正常 → 渲染层裁剪（mask/blend/GPU 路径）；
+       数值异常（op=0/vis=0）→ 状态层（参数/数据驱动它隐藏）。
+       blend 数值：0=Normal 1=Additive 2=Multiplicative（Additive 浅色内容在亮页面上近似隐形）。
+       底部附全局统计：当前 vis=0 的 drawable 总数。
+       用法：?handdebug（默认清单）或 ?handdebug=ArtMesh29,ArtMesh111（其它模型）。 */
+    if(_AB.has('handdebug')){
+      const _hdspec=_AB.get('handdebug');
+      const _HD=_hdspec?_hdspec.split(',').map(s=>s.trim()).filter(Boolean)
+        :['ArtMesh111','ArtMesh112','ArtMesh114','ArtMesh117','ArtMesh119',
+          'ArtMesh359','ArtMesh159','ArtMesh29'];
+      const _hdG=new PIXI.Graphics(); app.stage.addChild(_hdG);
+      const _hdBox=document.createElement('div');
+      _hdBox.style.cssText='position:absolute;left:8px;top:8px;z-index:30;'
+        +'background:rgba(10,13,24,.85);color:#7fff7f;font:11px/1.6 Consolas,monospace;'
+        +'padding:6px 9px;border-radius:4px;pointer-events:none;white-space:pre';
+      wrap.appendChild(_hdBox);
+      const _hdTick=()=>{ try{
+        _hdG.clear();
+        const lines=[], ros=core.getDrawableRenderOrders();
+        const dvis=core.getDrawableDynamicFlagIsVisible;
+        let nInvis=0; const nd=core.getDrawableCount();
+        for(let i=0;i<nd;i++){ if(!dvis(i)) nInvis++; }
+        for(const id of _HD){
+          const ix=core.getDrawableIndex(id);
+          if(ix<0){ lines.push(id+' ×无此mesh'); continue; }
+          const op=+core.getDrawableOpacity(ix).toFixed(2);
+          const vis=dvis(ix)?1:0;
+          const bl=core.getDrawableBlendMode?core.getDrawableBlendMode(ix):'?';
+          lines.push(id+' op='+op+' vis='+vis+' blend='+bl+' ro='+ros[ix]);
+          const p=core.getDrawableVertexPositions(ix);
+          if(!p||p.length<4) continue;
+          let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+          for(let k=0;k+1<p.length;k+=2){
+            const st=toStage(p[k],p[k+1]);
+            if(st[0]<x0)x0=st[0]; if(st[0]>x1)x1=st[0];
+            if(st[1]<y0)y0=st[1]; if(st[1]>y1)y1=st[1];
+          }
+          const bad=(op<0.05||!vis);
+          _hdG.lineStyle(2, bad?0xff3355:0x33ff88, 0.9);
+          _hdG.drawRect(x0,y0,x1-x0,y1-y0);
+        }
+        lines.push('—— vis=0 drawable 总数: '+nInvis+'/'+nd);
+        lines.push('mask='+(JSON.stringify(window.__maskDbg)||'?'));
+        _hdBox.textContent=lines.join('\n');
+      }catch(e){} };
+      app.ticker.add(_hdTick);
+    }
     const toggleState=(t,via)=>{ if(!t) return false;
       try{
         if(t._on===undefined||t._on===null) t._on=stateCurOn(t);
