@@ -3138,3 +3138,34 @@ mask 256→1024/2048 只能让阶梯变细；4x 超采样 + mask 4096 + 2D 降�
 **踩坑记录**：`apply` 干跑「将换入 1 个模型」+曲线总数不变 → 源目录双层（见流程 1）；探针连 8777 的是**旧画廊**（写死 URL），验证本项目必须 `INTV_URL`/`POSE_URL` 指 8778；`l2d_const_pose_verify.py` 的 ROOT 曾是两层 dirname（cdp_slot 在 `scripts/`），已改三层。
 
 **涉及**：`scripts/extract_motions.py`、`scripts/apply_live2d_motions.py`、`scripts/build_motion_chain_map.py`、`scripts/diag/l2d_const_audit_batch.py`、`scripts/diag/l2d_pose_anchor_pick.py`、`scripts/diag/interact_verify.py`、`scripts/diag/l2d_const_pose_verify.py`、`scripts/diag/serve_gallery_8778.py`（8778 本项目画廊启动器，8777 被旧画廊占用时用）。相关：§134（根因）、§134 续（判据三坑）、§25（全量覆写规训——全库 264 模型批次适用）、WF-16（前端回归六件套）。
+
+## WF-42 全量画廊重建：从空 Output 到可用画廊的编排（2026-10-23）
+
+**触发**：新机 clone / Output 被清空 / 用户要"跑一次全量生成完整画廊"。
+
+### 判据（每阶段跑完看什么）
+| 阶段 | 命令 | 判据 |
+|---|---|---|
+| Live2D | `rebuild_live2d_full.py --all --yes` | model3.json 数 = 期望模型数（源 bundle 262 → 模型 262+）；`l2d_tex_completeness.py` missing/extra=0 |
+| 动作回落表 | `build_motion_chain_map.py` | 产物 motion_chain.json 的**模型数 = 实际模型数**（该脚本 `--models` 是整表覆盖写，单模型调用会清掉其它映射） |
+| Spine | `run_v2_full.py --only spine` | Output/Spine_v2 目录数 ≈ 源主包数（本项目 235 个约 15 秒） |
+| 依赖清单 | `export_dependency_manifest.py` | **静态立绘的硬前提**，缺它每张立绘都 fail（报 `No such file: Output/dependency_manifest.json`） |
+| 静态立绘 | `run_v2_full.py --only static` | 日志 `ok=N fail=0`；约 2 秒/张（本项目 4454 张 ≈ 2.5h） |
+| 索引 | `build_gallery_index.py` | 末尾 `DONE {...}` 的 skins/live2d/spine 数与产物一致 |
+| 运行时库 | `fetch_gallery_vendor.py` | Output/gallery_v2/vendor 存在 |
+
+### 踩坑
+1. **编排脚本用 pwsh 7 启动，不要用 powershell.exe**：DSH 写的 `.ps1` 是 UTF-8 无 BOM，Windows PowerShell 5.1 按 ANSI 读会把中文注释吃进字符串 →
+   `字符串缺少终止符` 解析错误，且 `Start-Process -PassThru` 只给你一个立刻退出的 pid **不给任何日志**。
+   判据：无日志 + 进程秒退 ⇒ 先用重定向启动抓 stderr，再决定换解释器。
+2. **元数据缺失时索引用空占位跑通**：`build_gallery_index.py` 经 `extract_cv_voice` 模块级 `load_table()` 硬依赖
+   `inputs/gamecfg/character_voice.json`（缺失直接 FileNotFoundError 崩在 import 期）。
+   把 `inputs/azdata/*.json` 与 `inputs/gamecfg/*.json` 建成 `{}` 占位即可降级跑通（中文名走 `ship_name_map` 兜底，
+   阵营/稀有度会为 0）。**跑完要删掉占位**，否则 `check_inputs.py` 会把它们当"漂移"并掩盖真实缺失。
+3. **`Output/WikiData/ship_data.json` 也被硬依赖**（模块级 json.load），空数组 `[]` 占位。
+4. **关机必须是健康检查的后果，不是流程的结局**：编排脚本末尾校验 模型数≥200 且 index.js>10KB 才
+   `shutdown /s /t 120`，不达标只留日志。关机前 120 秒可用 `shutdown /a` 取消。
+5. 编排脚本 `scripts/run_full_gallery.ps1`（`-SkipPaintings` 跳过最大头、`-NoShutdown` 只跑不关）。
+
+**涉及**：`scripts/run_full_gallery.ps1`、`scripts/rebuild_live2d_full.py`、`scripts/run_v2_full.py`、
+`scripts/export_dependency_manifest.py`、`scripts/build_gallery_index.py`、`scripts/fetch_gallery_vendor.py`。
