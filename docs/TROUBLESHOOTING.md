@@ -7079,3 +7079,64 @@ idle9 的 93 条定值里 **9 条与默认 idle 不同**（Param345=-1.28、Para
 **环境坑（2026-10-22）**：`py -3` 被 Python 3.15 接管（依赖在 3.14）→ 一律用 `py -3.14`；8778 服务器会随机器重启死亡 → `powershell -ExecutionPolicy Bypass -File .diag/start_8778.ps1` 重启。**CDP 探针 ev 解包层次坑复发两次**：cmd() 已解一层 result，ev 再解一层会变成 `result.result.value` 三层（错误形态：全部返回 None）——写新探针时先跑 `1+1` 冒烟。
 
 **涉及**：`gallery_src/index.html`（?noaa/?res1/?nomask/?mask4096/?mask8192/?freezehand/?handdebug 七个诊断开关）。相关：§125（multiply）、§127（mask 上限由来）、§135（§④ 值域坑同轮）。
+
+### §137. 手掌消失排查第二轮：真实浏览器取证通路建成 + 软件/硬件渲染偏差（2026-10-23，进行中）
+
+**本轮建成的取证通路（关键，后续都靠它）**
+- `?ship=<id>&motion=<组名>`（`gallery_src/index.html` 末尾）：真实浏览器打开即直达模型并自动播指定动作。
+  原先诊断脚本只能模拟点击卡片，**浏览器侧的真实点击路径无法自动化**；有了这两个参数，默认 profile /
+  真实扩展 / 真实 DPI 的环境才可被自动取证。
+- `?diagpost=<url>&diagframes=N&diagstep=ms`：页面把全部 842 个 drawable 的
+  `op / vis / ro / bbox` + WebGL vendor/renderer + Hand 参数值 POST 回本地接收端
+  `scripts/diag/hand_diag_sink.py`（8780 端口）。真实浏览器**零操作**即可拿数与 headless 逐一对账。
+- `scripts/diag/l2d_hand_probe.py`：CDP 探针，支持 `--dpr`（小数）/`--headed`/`--no-emul`（系统真实 DPI）/
+  `--gpu`（真 GPU 而非 SwiftShader）/`--isolate`（只画手部）/`--scan`（逐 mesh 隔离渲染求肤色占比）/
+  `--forcevis`（强制显示 op=1 却 vis=0 的部件）/`--pre`（复刻「▶ 全部」的动作切换残留）。
+- `scripts/diag/l2d_motion_curve_diff.py`：两份 motion3.json 逐曲线对账（lost/gained/段数与值域变化）。
+
+**本轮否证（别重跑）**
+1. **DPR 1.5（用户显示器 2560x1600 @150%）**：Emulation 精确注入 1.5 后 headless 与 DPR=1 结果一致；`?res1` 同理。
+2. **有头真实 GPU / 系统真实 DPI（不设 Emulation）**：skin 0.147~0.211，全绿。
+3. **全屏（#l2Full）/ 参数面板**：skin 0.14~0.21，全绿。
+4. **动作切换残留（复刻「▶ 全部」3 连切后播 mail）**：skin 0.34/0.53，全绿。
+5. **完整播放周期含回落（0~10.8s，12 帧）**：skin 0.13~0.25，全绿；ArtMesh29 在动作后段 vis 由 0 变 1（正常时序）。
+6. **新旧 motion 数据**：8777 的 mail.motion3.json 是 **393KB/2026-10-16**，8778 是 **182KB/2026-10-20**，
+   **并非同源**（§136 此条结论有误，已更正）；121 条曲线的段数被压缩（如 Beimian_Hand_B 38→26），
+   但换入旧版后手部像素与状态**完全一致** → 数据差不是直接原因。
+7. **mask**：手部 7 个 mesh 的 `maskCount=0`，不走遮罩路径。
+8. **model3.json 差异**：8777 与 8778 的 42 处差异**全部在 HitAreas 点击判定区顺序**，与渲染无关。
+9. **真实浏览器 vs 真 GPU headless 逐 drawable 对账**：842 个 mesh 的 op/vis 一致（ro 整体差 2 系状态偏移）。
+
+**新发现 1（重要，会影响今后所有对照）：SwiftShader 与真 GPU 的 vis 不一致**
+默认探针一直带 `--use-angle=swiftshader`（软件渲染）。实测 `ArtMesh255~258`（op=1）在 SwiftShader 下
+`vis=1`、在真 GPU D3D11 下 `vis=0`，用户真实浏览器（ANGLE/NVIDIA RTX 4070 D3D11）与真 GPU 一致。
+⇒ **凡是对账「可见性/像素」，headless 必须加 `--gpu` 走真 GPU**，否则会得到系统性偏差的假结论。
+（`l2d_hand_probe.py --gpu` 已内置；`WebGL debug renderer` 字符串会随 diagpost 回传，可当场核对。）
+
+**新发现 2：§136 的手部 mesh 清单是错的**
+`ArtMesh111/112/114/117/119/359/159` 在 `--scan` 全量肤色扫描里**没有一个**出现在肤色占比>0.3 的名单中
+（它们不是皮肤部件，可能是袖口/手套）。此前所有"手部正常"的判据都在看这 7 个 mesh，**判据本身盲**。
+
+**新发现 3：19 个「op=1 却 vis=0」的 mesh 已逐个定性**
+`ArtMesh17~31`（15 个，右下角一叠）= 叠加后皮肤像素 +7.8 万、差异区覆盖整片 → **备用皮肤层**，非手指；
+`ArtMesh255~258`（4 个，左中）= 强制显示后肤色占比 0.1% → 衣服/道具。两组都不是"消失的手掌"。
+
+**handdebug 数值板两个真 bug（2026-10-23 修复）**
+1. `const dvis=core.getDrawableDynamicFlagIsVisible` —— **解构方法引用丢失 this**，内部 `this._model` 为
+   undefined → 整个 tick 抛异常被空 catch 吞掉 → 数值板永远空白。改为箭头函数转调
+   `(i)=>core.getDrawableDynamicFlagIsVisible(i)`。
+2. 数值板 DOM 无稳定 id，headless 只能用 `div[style*="z-index:30"]` 匹配（匹配不到）。已加 `id="l2handdbg"`。
+   另把 catch 从空吞改为把异常栈写进数值板——静默 catch 让这两个 bug 藏了很久。
+
+**当前状态**：状态层与渲染层在可自动化到的所有维度上都正常；真实浏览器已能零操作取数（`?ship=&motion=&diagpost=`）。
+**剩下必须人眼确认的一步**：用户在真实浏览器打开
+`http://127.0.0.1:8778/gallery_v2/index.html?ship=ougen_8&motion=mail`（或加 `&handdebug` 看红框/数值板），
+确认手掌是否仍消失、消失时红框落在哪个部位——那是唯一还没有数据的一环。
+
+**环境坑**：本机沙箱在 workspace-write 模式下会禁止 Chromium 创建 Mojo 命名管道
+（`FATAL mojo platform_channel.cc: Check failed ... 0x5`），浏览器起不来；且 Git 的 credential helper 是 sh 包装，
+同样卡在命名管道。两者都需要 `danger-full-access` 才能跑。
+
+**涉及**：`gallery_src/index.html`（?ship/?motion/?diagpost、handdebug 修 bug）、
+`scripts/diag/l2d_hand_probe.py`、`scripts/diag/hand_diag_sink.py`、`scripts/diag/l2d_motion_curve_diff.py`。
+相关：§136（第一轮否证链，其中"同源""手部清单"两条已由本轮更正）。

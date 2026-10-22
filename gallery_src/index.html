@@ -1808,14 +1808,17 @@ async function renderLive2D(s, sk){
           'ArtMesh359','ArtMesh159','ArtMesh29'];
       const _hdG=new PIXI.Graphics(); app.stage.addChild(_hdG);
       const _hdBox=document.createElement('div');
+      _hdBox.id='l2handdbg';   /* 稳定 id：headless 验证靠它取数（旧选择器 div[style*=z-index:30] 匹配不到） */
       _hdBox.style.cssText='position:absolute;left:8px;top:8px;z-index:30;'
         +'background:rgba(10,13,24,.85);color:#7fff7f;font:11px/1.6 Consolas,monospace;'
         +'padding:6px 9px;border-radius:4px;pointer-events:none;white-space:pre';
       wrap.appendChild(_hdBox);
       const _hdTick=()=>{ try{
         _hdG.clear();
-        const lines=[], ros=core.getDrawableRenderOrders();
-        const dvis=core.getDrawableDynamicFlagIsVisible;
+        const lines=[]; let ros=[]; try{ ros=core.getDrawableRenderOrders()||[]; }catch(e){ ros=[]; }
+        /* 必须保留 this：解构方法引用（const f=obj.m; f()）会让 this=undefined，
+           内部 this._model 直接炸（2026-10-23 实证：数值板一直空白就是这个）。 */
+        const dvis=(i)=>core.getDrawableDynamicFlagIsVisible(i);
         let nInvis=0; const nd=core.getDrawableCount();
         for(let i=0;i<nd;i++){ if(!dvis(i)) nInvis++; }
         for(const id of _HD){
@@ -1824,7 +1827,7 @@ async function renderLive2D(s, sk){
           const op=+core.getDrawableOpacity(ix).toFixed(2);
           const vis=dvis(ix)?1:0;
           const bl=core.getDrawableBlendMode?core.getDrawableBlendMode(ix):'?';
-          lines.push(id+' op='+op+' vis='+vis+' blend='+bl+' ro='+ros[ix]);
+          lines.push(id+' op='+op+' vis='+vis+' blend='+bl+' ro='+(ros.length?ros[ix]:'?'));
           const p=core.getDrawableVertexPositions(ix);
           if(!p||p.length<4) continue;
           let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
@@ -1840,7 +1843,7 @@ async function renderLive2D(s, sk){
         lines.push('—— vis=0 drawable 总数: '+nInvis+'/'+nd);
         lines.push('mask='+(JSON.stringify(window.__maskDbg)||'?'));
         _hdBox.textContent=lines.join('\n');
-      }catch(e){} };
+      }catch(e){ try{ _hdBox.textContent='[handdebug 异常] '+(e&&e.stack?String(e.stack).split('\n').slice(0,2).join(' | '):String(e)); }catch(_){} } };
       app.ticker.add(_hdTick);
     }
     const toggleState=(t,via)=>{ if(!t) return false;
@@ -2764,6 +2767,93 @@ bgSync();
    以前这里直接 renderGrid() → 第一屏是未排序的原序（VTuber 联动与 -META 变体排最前），
    用户报的"随便点一个筛选再回来才正常"就是这个（2026-09-26；由 126e16e 引入）。 */
 apply();
+
+/* ?ship=<id> 直达（2026-10-23）：探针与分享链接用。
+   诊断脚本原先只能模拟点击卡片，"真实浏览器点击路径"无法自动化复现；
+   有了这个参数，真实浏览器打开即落到目标模型，真实 GPU/DPI/扩展环境才可被自动取证。
+   参数缺失或未命中时什么都不做，不影响正常打开流程。 */
+(function(){
+  try{
+    const sp=new URLSearchParams(location.search).get('ship');
+    const go=()=>{ try{
+      const s=((window.GALLERY&&GALLERY.ships)||[]).find(x=>x.id===sp);
+      if(!s) return;
+      openShip(s);
+      const sk=(s.skins||[])[0]; if(sk) setSkin(sk);
+      const tb=[...document.querySelectorAll('#mTabs .tab')].find(x=>x.dataset.k==='live2d');
+      if(tb && !tb.classList.contains('dis')) tb.click();
+      /* &motion=<组名>：模型就绪后自动播该动作（真实浏览器取证用；__l2play 是页面自己的播放入口） */
+      const mo=new URLSearchParams(location.search).get('motion');
+      if(mo){ let n=0; const w=()=>{ n++;
+        if(window.__l2play){ try{ const s2=document.getElementById('l2Motion');
+          if(s2) s2.value=mo; window.__l2play(mo); }catch(e){} }
+        else if(n<80) setTimeout(w,400); };
+        setTimeout(w,600); }
+    }catch(e){} };
+    /* &diagpost=<url>：把真实浏览器的渲染诊断 POST 回本地接收端（scripts/diag/hand_diag_sink.py）。
+       手掌消失只在用户真实浏览器复现，CDP 探针跑独立 profile 拿不到「默认 profile + 真实扩展 +
+       真实 GPU 合成」那一层；让页面自己把全部 drawable 状态回传，才能真正对账。 */
+    const dp=new URLSearchParams(location.search).get('diagpost');
+    if(dp){
+      const _dq=new URLSearchParams(location.search);
+      const diagFrames=Math.max(1, Math.min(12, parseInt(_dq.get('diagframes')||'1',10)||1));
+      const diagStep=Math.max(200, parseInt(_dq.get('diagstep')||'600',10)||600);
+      let left=diagFrames, n=0;
+      const snap=()=>{ n++;
+        try{
+          const app=(typeof l2State!=='undefined'&&l2State)?l2State.app:null;
+          const mdl=app&&app.stage&&app.stage.children[0];
+          if(!mdl||!mdl.internalModel){ if(n<150) setTimeout(snap,400); return; }
+          const im=mdl.internalModel, core=im.coreModel, ppu=im.pixelsPerUnit||1;
+          const cux=im.width/ppu, cuy=im.height/ppu, sc=mdl.scale.x;
+          const toStage=(vx,vy)=>[mdl.x+(vx+cux/2)*ppu*sc, mdl.y+(cuy/2-vy)*ppu*sc];
+          let ros=[]; try{ ros=core.getDrawableRenderOrders()||[]; }catch(e){ ros=[]; }
+          const nd=core.getDrawableCount(), rows=[];
+          for(let i=0;i<nd;i++){
+            let bb=null;
+            try{ const p=core.getDrawableVertexPositions(i);
+              if(p&&p.length>=4){ let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+                for(let k=0;k+1<p.length;k+=2){ const s2=toStage(p[k],p[k+1]);
+                  if(s2[0]<x0)x0=s2[0]; if(s2[0]>x1)x1=s2[0];
+                  if(s2[1]<y0)y0=s2[1]; if(s2[1]>y1)y1=s2[1]; }
+                if(x1>=x0&&y1>=y0) bb=[Math.round(x0),Math.round(y0),Math.round(x1),Math.round(y1)]; }
+            }catch(e){}
+            let id='?', op=null, vis=null;
+            try{ id=core.getDrawableId(i); }catch(e){}
+            try{ op=+core.getDrawableOpacity(i).toFixed(3); }catch(e){}
+            try{ vis=core.getDrawableDynamicFlagIsVisible(i)?1:0; }catch(e){}
+            rows.push({i:i,id:id,op:op,vis:vis,ro:ros.length?ros[i]:null,bb:bb});
+          }
+          let vend='?', rnd='?';
+          try{ const gl=app.renderer&&app.renderer.gl, dbg=gl&&gl.getExtension('WEBGL_debug_renderer_info');
+            if(dbg){ vend=gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL); rnd=gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL); } }catch(e){}
+          let hp=[]; try{
+            /* 参数 ID 的唯一可靠来源是 core._model.parameters.ids（高层 getParameterId
+               在部分封装里不存在/返回空 → 之前手部参数恒为 []） */
+            const _ids=(core._model&&core._model.parameters&&core._model.parameters.ids)||null;
+            if(_ids){ for(let i=0;i<_ids.length;i++){ const pid=_ids[i];
+              if(/Hand|hand/.test(pid)) hp.push([pid, +core.getParameterValueByIndex(i).toFixed(2)]); } }
+          }catch(e){}
+          const payload={frame:n, ts:Date.now(), t:Math.round(performance.now()),
+            url:location.href, dpr:devicePixelRatio,
+            bufW:app.renderer.width, bufH:app.renderer.height,
+            cssW:document.getElementById('l2wrap').clientWidth,
+            cssH:document.getElementById('l2wrap').clientHeight,
+            res:app.renderer.resolution, vendor:vend, renderer:rnd,
+            mdl:{x:+mdl.x.toFixed(2),y:+mdl.y.toFixed(2),scale:+mdl.scale.x.toFixed(5)},
+            handParams:hp, drawables:rows};
+          fetch(dp,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)})
+            .then(()=>{ try{ const b=document.getElementById('l2Hit');
+              if(b) b.textContent='诊断已回传 '+rows.length+' 个 drawable（第'+n+'帧）'; }catch(e){} })
+            .catch(()=>{})
+            .then(()=>{ left--; if(left>0) setTimeout(snap, diagStep); });
+        }catch(e){ if(n<150) setTimeout(snap,400); }
+      };
+      setTimeout(snap,1500);
+    }
+    if(sp) setTimeout(go, 500);
+  }catch(e){}
+})();
 </script>
 </body>
 </html>

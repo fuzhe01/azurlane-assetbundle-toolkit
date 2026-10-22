@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.9
+version: 1.10.10
 ---
 
 # Live2D 网页运行时集成
@@ -615,3 +615,50 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 只对「动作与 idle 共有参数」求差异的 metric，对**漏参数（idle 无曲线、被拉回 0）的断崖完全盲**——低覆盖候选（leak 84/293）赢过高覆盖（leak 4）。正确口径：**全参数计分**，漏参数按 `(end-0)²` 计入（开关参数例外：前端豁免保持，断崖=0 跳过）。**硬约束方案已否证**：把开关匹配当 idle 候选的硬排除——姿势组合参数混进开关集 → 全候选被排除 → 退回软分 = 约束白做；且排除路径返回占位分 0.0 会污染排序。
 
 完整取证：§135；判据工具 `scripts/diag/l2d_pose_anchor_pick.py`（锚点）+ motion_chain.json v2。
+
+## 18. 真实浏览器取证通路 + 渲染路径偏差（2026-10-23，version 1.10.10）
+
+**为什么需要**：模型在 headless 全绿、用户真实浏览器却有部件缺失时，继续在 headless 里换参数只是空转。
+缺的往往不是"更多假说"，而是**在用户那一层环境里取数**的能力。
+
+### 18.1 页面侧三个取证参数（正本 `gallery_src/index.html` 末尾初始化段）
+- `?ship=<id>`：打开即直达模型（+自动切 Live2D 标签）。
+- `?motion=<组名>`：模型就绪后**走页面自己的 `window.__l2play`** 自动播该动作。
+  ⚠️ 诊断脚本直接调 `motionManager.startMotion` 会绕过语音/标签/回落映射，是典型假阴性（本项目 AGENTS.md 明令禁止）。
+- `?diagpost=<url>&diagframes=N&diagstep=ms`：把**全部 drawable** 的 `op/vis/ro/bbox` + WebGL
+  vendor/renderer + Hand 参数值 POST 回本地接收端（`scripts/diag/hand_diag_sink.py`）。
+  ⇒ 用户/默认 profile 环境**零操作**就能拿到与 headless 同格式的数据做逐一对照。
+- 参数不支持时的表现：不带 `ship` 也要能执行 `diagpost`（把两者放在同一个 IIFE 里时，
+  早退 `if(!sp) return;` 会让回传代码整段失效——本项目踩过）。
+
+### 18.2 判据：headless 对账必须走真 GPU
+`--use-angle=swiftshader`（软件渲染）与真 GPU（D3D11）在 **drawable 的 `vis` 上会不同**：
+实测同一模型同一动作，`ArtMesh255~258`（op=1）在 SwiftShader 下 `vis=1`、真 GPU 下 `vis=0`，
+真 GPU 与用户浏览器（ANGLE/NVIDIA D3D11）一致。
+⇒ 凡是对账「可见性 / 像素」，headless 必须 `--gpu`；把 `WEBGL_debug_renderer_info` 的 renderer 字符串
+随数据一起回传，当场就能核对两侧是否同一路径。**不要用软件渲染的绿旗去否证真实浏览器的问题。**
+
+### 18.3 判据必须落在正确的 mesh 上（否则一直是盲的）
+用手指/手掌这类无语义命名的 mesh 时，"猜一组 ArtMesh 编号当手部"会静默失效：本项目 §136 猜的
+7 个 ArtMesh 全部不是皮肤部件，据此得出的"手部正常"结论无意义。
+⇒ 用**逐 mesh 隔离渲染扫描**（patch `getDrawableOpacity` 只留目标 → render → 统计肤色占比）。
+肤色占比 >0.9 的才是皮肤部件；再按 bbox 位置区分脸/手。
+对"op=1 却 vis=0"的部件，用**叠加式强制显示**（只把目标 `getDrawableDynamicFlagIsVisible` patch 成 true，
+其余保持原值，比较 patch 前后像素差异）定性：差异区就是该部件本身，避免把遮罩关系打乱。
+
+### 18.4 坑：解构方法引用会丢 this，诊断 ticker 静默死亡
+```js
+const dvis = core.getDrawableDynamicFlagIsVisible;  // ✗ this 丢失，内部 this._model 报错
+const dvis = (i) => core.getDrawableDynamicFlagIsVisible(i);  // ✓
+```
+外层再套 `try{...}catch(e){}` 空吞 → 诊断面板永远空白，看起来像"没有异常"。
+⇒ 诊断/调试代码的 catch **必须把异常写进可读位置**（本项目把 `e.stack` 前两行写进诊断面板后一眼定位）。
+
+### 18.5 用户环境复现失败时的正确交付
+1. 先穷举**可自动化**的维度并逐条否证（DPR/有头/系统 DPI/全屏/动作切换残留/完整周期/数据版本/mask/model3），
+   把否证结论连同"判据方法"一起入库——否证本身也是资产。
+2. 打通 `?ship=&motion=&diagpost=` 后，剩下唯一一环是**人眼确认现象是否仍存在**；
+   这时向用户要的不是"帮我跑脚本"，而是"打开这个链接看一眼，红框落在哪/数值板最后一行是多少"。
+
+**涉及**：`gallery_src/index.html`（三个取证参数）、`scripts/diag/l2d_hand_probe.py`、
+`scripts/diag/hand_diag_sink.py`、`scripts/diag/l2d_motion_curve_diff.py`、`scripts/diag/hand_skin_map.py`。
