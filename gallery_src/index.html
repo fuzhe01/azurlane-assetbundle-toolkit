@@ -1774,6 +1774,25 @@ async function renderLive2D(s, sk){
         }
       }catch(e){} } };
     mdl.internalModel.on('beforeModelUpdate', stateApply);
+    /* ?freezehand 诊断开关（2026-10-21 手掌消失排查终局对照）：
+       把所有参数名含 Hand 的参数每帧钉回 moc3 默认值 = 模拟 EMIT_CONST 换入前
+       （无 constant 曲线、参数停默认位）的手部状态。用户真实浏览器对照：
+       手恢复完整 → 「手掌消失」= 手型曲线的数据语义（源动画持信手型），
+       非渲染 bug；仍消失 → 渲染层问题（mask/GPU），另查。 */
+    if(_AB.has('freezehand')){
+      const _frz=()=>{ try{
+        /* coreModel 没有 getParameterIds 方法（实测 undefined）——参数 ID 的
+           唯一来源是内部 _model.parameters.ids（582 个，含 ShoseOff 等） */
+        const ids=(core._model&&core._model.parameters&&core._model.parameters.ids)||[];
+        for(let i=0;i<ids.length;i++){
+          if(/Hand/i.test(String(ids[i])))
+            core.setParameterValueByIndex(i, core.getParameterDefaultValue(i));
+        }
+      }catch(e){} };
+      mdl.internalModel.on('beforeModelUpdate', _frz);
+      try{ const _p=document.getElementById('l2Hit');
+        if(_p) _p.textContent='[诊断] Hand 参数已冻结为默认值'; }catch(e){}
+    }
     const toggleState=(t,via)=>{ if(!t) return false;
       try{
         if(t._on===undefined||t._on===null) t._on=stateCurOn(t);
