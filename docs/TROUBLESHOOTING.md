@@ -7237,3 +7237,129 @@ norm 值高达 1739 说明某些参数 range 极小被异常放大）。**当前
 `scripts/diag/l2d_hand_probe.py`（缓存修复 + --abparam/--findop/--follow/--params 等）、
 `scripts/diag/l2d_fallback_rank.py`、`scripts/diag/l2d_fallback_metric_ab.py`。
 先读：§138（其中「左腿根因」一节已被本条更正）。
+
+### §140. 换装互动区（方案 A）：参数面板自动列装扮 + 两个判据陷阱（2026-10-23）
+
+**需求**：用户要求"把脱穿鞋/眼镜/丝袜这些 drag 互动区实现出来，还可能有调节的渐变互动区"。
+全库规模不允许逐个接 HitAreas（104 个有换装能力的模型、2000+ 参数），故采用**方案 A**：
+不接图上的具体按钮，而是把模型自带的装扮参数**自动列成面板**（开关→按钮、渐变→滑块），
+一次覆盖全部模型。
+
+**数据链路**
+1. `scripts/diag/l2d_costume_params_scan.py` —— 扫全库 motion3.json 的定值曲线，
+   按「在不同动作间被锁成不同档位」筛出候选（恒定 1 档的没有可调空间，剔除）。
+2. `scripts/diag/l2d_costume_export.py` —— 导出 `Output/gallery_v2/costume_params.json`
+   （192 模型 / 747 条：开关 460、渐变 287，69 KB）。
+3. `gallery_src/index.html` —— 参数面板新增「换装 N」分区：开关型按钮循环切档、渐变型滑块、
+   每档「↺ 复位默认」。
+
+**全库结构事实（决定方案边界）**
+| 分类 | 模型数 | 依据 |
+|---|---|---|
+| 有换装互动能力 | **104** | moc3 里 Touch* drawable ≥10 且有 touch_drag/touch_idle 动作组 |
+| 仅基础三区 | 158 | moc3 里只有 3 个 Touch（head/body/special），**游戏本身没有换装交互** |
+
+例：`bulaimodun_4`（有 `ParamGlasses2` 眼镜参数）、`aimierbeierding_3`（有 `ParamShoeRUp` 鞋参数）
+都被判为后者——参数存在但**没有任何动作驱动、也没有互动区**，属游戏未启用的残留。
+
+**⚠️ 判据陷阱一：`visible=False` 全假阴性（像素哈希在 headless 下取不到画面）**
+在 `--headless=new --gpu` 下 `g.drawImage(app.view,…)` 取到的**全是 0**
+（哈希里 `nz0` = 非零像素 0 个），导致「模型右移 40px」都判定"画面无变化"。
+⇒ **不能用画布像素哈希判"参数有没有视觉效果"**。改用**不依赖像素的等价判据**：
+写入参数后 `core.update()`，比较全部 drawable 的 `opacity` / `dynamicFlagIsVisible` 是否变化。
+使用该判据后，`benningdun_2` 从「0 条有可见效果」变成「2 条」（`GloveTransparency_L/R`
+分别改动 6 / 15 个 drawable）——旧判据把真结果吞掉了。
+
+**⚠️ 判据陷阱二：读回参数值必须在 `core.update()` 之后**
+Cubism 的参数写入先进待应用队列，不 `update()` 就读 `getParameterValueById` 会读到旧值，
+把「可写」误判成「不可写」。两个脚本因此一度结论矛盾（20 可写 vs 0 可写）。
+
+**⚠️ 前端坑：面板只构建一次 + 数据晚到 → 换装分区永久缺失**
+`l2PanelBtn` 原先只在首次打开时 `buildL2Panel`。换装表是异步 fetch，若面板先被打开就永远没有
+「换装」分区。修法：`_rebuildPanel` 钩子 + 数据到达回调 `requestPanelRebuild()`，
+且用「先声明 null 后赋值」的容器跨过 TDZ（直接引用后定义的函数会 ReferenceError）。
+
+**⚠️ 前端坑：pins 与 ticker 必须跨重建共享**
+数据晚到会重建面板；若每次重建都新建 `pins` 对象和 ticker，旧 ticker 会用旧快照覆盖新值，
+表现为「点了按钮值又弹回去」。修法：`window.__costumePins` 单一来源 + `__costumePinBound`
+只注册一次 ticker；换皮肤时按 `__costumePinsFor` 比对清空，防跨模型串味。
+
+**验证**：`scripts/diag/l2d_costume_ui_verify.py --ship <模型>`
+四项判据：数据加载 / 换装分区出现 / 点按钮参数值真的变 / 画面有变化。
+`ougen_8` 前三项通过（该模型 `Stock1` 可写但无可见部件，第 4 项按新判据应跳过）。
+
+**涉及**：`gallery_src/index.html`（换装分区 + 面板重建钩子 + pins 单例）、
+`scripts/diag/l2d_costume_params_scan.py`、`l2d_costume_export.py`、
+`l2d_costume_writable_probe.py`、`l2d_costume_ui_verify.py`、
+`l2d_costume_write_diag.py`、`l2d_canvas_hash_diag.py`、
+`l2d_toucharea_inventory.py`、`Output/gallery_v2/costume_params.json`。
+相关：§132/§135（状态开关）、§139（findop 判据边界）。
+
+### §141. 互动区全量提取：换信号源修正 §140 的漏项（2026-10-23）
+
+**用户提问引出的真问题**：「为什么提取出来的互动区不包括所有开关型和渐变型参数？
+但是包含 touch_drag17 的脱穿鞋等互动区？意思是为什么只提取出来部分参数互动区」
+
+**答案：§140 用错了信号源，漏掉了全部换装开关类。**
+
+`ShoseOff`（ougen_8 的脱穿鞋）实测：
+- 驱动它的动作组 **46 个**（几乎全部动作）
+- 出现过的值 **只有 0**（1 档）
+- 被 §140 的规则「恒定值 = 无可调空间」剔除
+
+**真实机制**：脱鞋是**运行时代码 `setParameterValueById` 写参数**（§132 已确认），
+动作曲线里恒为 0。从曲线数据看永远"只有 1 档"，所以这类参数被系统性漏掉。
+`touch_drag17` 能被用是因为页面 `STATE_TOGGLES` **硬编码**了
+`{trigger:'touchdrag17', id:'ShoseOff'}` —— 人工接的个案，不是自动发现。
+
+**信号源对比（这是本轮的核心认知）**
+
+| 信号 | 来源 | 能证明什么 | 漏什么 |
+|---|---|---|---|
+| 参数曲线多档值 | motion3.json | 动作**曾经**把参数设成不同值 | **漏掉所有运行时代码写的开关** |
+| **Touch\* drawable** | **moc3** | **互动区存在（第一性证据）** | 不说明效果 |
+
+**全库盘点（正确口径，`l2d_touch_drawable_scan.py`）**
+| 指标 | 数量 |
+|---|---|
+| moc3 里 `Touch*` drawable | **4919** |
+| Drag 类 / Idle 类 | 1693 / 2392 |
+| 已登记进 model3.json 的 HitAreas | 2786 |
+| **存在但未登记（前端原本点不到）** | **1299** |
+
+ougen_8 实例：moc3 有 **44 个** Touch drawable，`HitAreas` **只登记 3 个**（touch_drag1/2/3）。
+漏登记最多：`chaijun_6`（70 个）、`xiafei_4`（49）、`feiteliekaer_4`（39）。
+
+**落地（方案 A+）**
+1. `scripts/diag/l2d_touch_drawable_scan.py` —— 以 moc3 的 Touch* 为第一信号全库盘点。
+2. `scripts/diag/l2d_toucharea_export.py` → `Output/gallery_v2/touchareas.json`
+   （142 模型 / 4085 个互动区，含 1299 未登记，307 KB）。
+3. `gallery_src/index.html` 参数面板新增**「互动区 N（已登记 M）」**分区：
+   - 已登记 + 有同名动作组 → 按钮显示 `▶`，点击播该动作组 + 高亮 bbox
+   - 已登记 + 无动作组 → 显示 `定位`，只高亮位置
+   - **未登记 → 灰显 + 标「未登记」**，点击只高亮（这是本次核心诉求：让原本看不见的互动区可见可定位）
+
+**⚠️ 明确边界：清单不回答「点了什么效果」**
+实测 `--findop TouchDrag17` 只得到 `{Param500: 1}` —— 那是**该 drawable 自身的显隐参数**，
+与它触发的 `ShoseOff` 无数据关联。效果映射只存在于游戏代码，资产里推不出来。
+⇒ 本清单用于**发现与定位**，语义仍需目视确认或用户标注。
+
+**⚠️ 验收判据再修正（三个假象，都已踩过）**
+1. 画布像素哈希：headless(`--gpu`) 下 `drawImage(app.view)` 取到全 0 缓冲（哈希含 `nz0`），
+   "模型右移 40px"都判无变化 ⇒ 判据完全失效。
+2. 前后两次全量 drawable 快照直接比：呼吸/眨眼会在两次采样间改变状态 ⇒ **假阳性**
+   （曾让 `GloveSwitch_L` 显示"有变化"，实际它改动 0 个 drawable）。
+3. 点按钮后**立即**回读参数值：面板 pin 由 ticker 下一帧才重申，立即读必然读到动作铺回的值
+   （0→0）⇒ **假阴性**。
+⇒ 唯一可靠判据：**写到参数两端、中间停掉动作、点名出具体哪些 drawable 的 opacity/visible 变了**，
+   并要求 changed > 0。用该判据实测：`Stock1` 改动 16 个 drawable（ougen_8）、
+   `GloveSwitch_L` 改动 2 个（benningdun_2）。
+
+**验证**：`l2d_costume_ui_verify.py` 三项判据（数据加载 / 分区出现 / 点名 drawable）在
+`ougen_8`、`benningdun_2` 上全 PASS；`l2d_toucharea_ui_verify.py` 四项判据
+（含「未登记的 TouchDrag17 出现在面板」）在 `ougen_8`（41 区）、`chaijun_6`（208 区）上全 PASS。
+
+**涉及**：`gallery_src/index.html`（互动区分区）、`scripts/diag/l2d_touch_drawable_scan.py`、
+`l2d_toucharea_export.py`、`l2d_toucharea_ui_verify.py`、`l2d_costume_ui_verify.py`、
+`l2d_costume_writable_probe.py`、`Output/gallery_v2/touchareas.json`。
+先读：§140（其"判据陷阱"一节已被本条扩充与修正）。

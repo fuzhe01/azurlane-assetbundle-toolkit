@@ -70,7 +70,11 @@ SETPARAM = arg("--setparam", "")   # 形如 ShoseOff=1：直接写参数（状�
 ABPARAM = arg("--abparam", "")     # 参数名：在同一帧内对比 0 与 1 两态（排除动作相位干扰）
 FOLLOW = arg("--follow", 0, int)   # 播完跟踪：采样 N 次 currentGroup/isFinished（验回落去向）
 FINDOP = arg("--findop", "")       # 目标 mesh：扫描哪个参数能改变它的 opacity/visible
+SETPARAMS = arg("--setparams", "") # 批量设参数 "A=1,B=2,C=3"（--setparam 的多参数版）
+PARAMSIN = arg("--paramsin", "")   # 从 JSON 文件读参数值批量注入（配合 --params 采集的快照）
+DIFFBOX = arg("--diffbox", "")     # 区域 "x0,y0,x1,y1"（CSS px）：--bisect 只看这块的像素变化
 FORCEVIS = [x for x in (arg("--forcevis", "") or "").split(",") if x]
+BISECT_FILE = arg("--bisect", "")  # 参照参数快照 JSON：二分找出让目标区域恢复的最小参数集
 DIAGSTEP = arg("--diagstep", 700, int)
 TAG = arg("--tag", "") or ("head" if HEADED else "hl") + f"_dpr{DPR:g}_{MOTION}"
 URL = f"http://127.0.0.1:{SRV}/gallery_v2/index.html"
@@ -297,6 +301,54 @@ def main():
           return 'set '+k+' = '+v;
         }catch(e){ return 'ERR:'+e.message; } })()""" % (json.dumps(_k), float(_v))
         print("[setparam]", ev(sp_js, awaitp=False))
+
+    # ---- 1.5b) 从快照注入参数（--paramsin file.json，配合 --diffbox 做区域差分实验）----
+    # 用途：A 动作区域正常、B 动作异常时，把 A 采集到的参数值整套搬到 B 上，
+    # 再配合区域差分二分，定位「哪几个参数负责这块区域」。
+    if PARAMSIN:
+        try:
+            snap = json.load(open(PARAMSIN, encoding="utf-8"))
+            vals = snap.get("vals") or snap
+        except Exception as e:
+            proc.terminate()
+            raise SystemExit("读参数快照失败: %s" % e)
+        pi_js = """(()=>{ try{
+          const {app,mdl}=window.__hp; const core=mdl.internalModel.coreModel;
+          const V=%s; let n=0;
+          try{ mdl.internalModel.motionManager.stopAllMotions(); }catch(e){}
+          const set=()=>{ for(const k in V){ try{ core.setParameterValueById(k, V[k]); n++; }catch(e){} } };
+          set();
+          PIXI.Ticker.shared.add(set, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+          try{ app.render(); }catch(e){}
+          return 'injected '+Object.keys(V).length+' params ('+n+' writes)';
+        }catch(e){ return 'ERR:'+e.message; } })()""" % json.dumps(vals)
+        print("[paramsin]", str(ev(pi_js, awaitp=False))[:300])
+
+    # ---- 1.5c) 区域差分自检（--diffbox + --params）：只在注入前后比较指定区域 ----
+    if DIFFBOX and not BISECT_FILE:
+        bxv = [int(v) for v in DIFFBOX.split(",")]
+        dd_js = r"""(()=>{ try{
+          const {app,mdl}=window.__hp; const core=mdl.internalModel.coreModel;
+          const box=%s, cw=app.renderer.width, ch=app.renderer.height;
+          const wrap=document.getElementById('l2wrap');
+          const sx=cw/(wrap.clientWidth||cw), sy=ch/(wrap.clientHeight||ch);
+          const cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+          const g=cv.getContext('2d',{willReadFrequently:true});
+          const sub=()=>{ g.clearRect(0,0,cw,ch); g.drawImage(app.view,0,0,cw,ch);
+            const X0=Math.max(0,Math.floor(box[0]*sx)), Y0=Math.max(0,Math.floor(box[1]*sy));
+            const X1=Math.min(cw,Math.ceil(box[2]*sx)), Y1=Math.min(ch,Math.ceil(box[3]*sy));
+            const w=X1-X0,h=Y1-Y0,out=[];
+            const d=g.getImageData(X0,Y0,w,h).data;
+            let skin=0;
+            for(let i=0;i<d.length;i+=4){ const r=d[i],gg=d[i+1],b=d[i+2];
+              if(r>110&&gg>60&&b>40&&r>gg&&gg>=b&&(r-b)>18&&(r-gg)>6) skin++; }
+            return {w:w,h:h,px:w*h,skin:skin}; };
+          try{ core.update(); }catch(e){}
+          try{ app.renderer.render(app.stage); }catch(e){}
+          const s=sub();
+          return JSON.stringify({box:box,px:s.px,skinPx:s.skin,skinRatio:+(s.skin/Math.max(1,s.px)).toFixed(4)});
+        }catch(e){ return 'ERR:'+e.message; } })()""" % json.dumps(bxv)
+        print("[diffbox]", str(ev(dd_js, awaitp=False))[:400])
 
     # ---- 1.6) 同帧双态对比（--abparam <参数名>）：固定其它一切，只改这一个参数 ----
     # 为什么必须同帧：两次独立会话的动作相位不同，整图差异能到 50%（全是姿势差），
@@ -637,6 +689,81 @@ def main():
         })()""" % json.dumps(FINDOP)
         fo = ev(fo_js)
         print("[findop]", str(fo)[:1500])
+
+    # ---- 1.5c) 参数二分定位（--bisect params.json + --diffbox）----
+    # 前提：已确认「注入参照动作的全部参数」能显著改变目标区域（--paramsin + --diffbox 可验）。
+    # 做法：以肤色像素数为目标，逐个参数试「设成参照值」，按增量排序后贪心累加，
+    # 找到「用最少参数把肤色拉到全量注入的 90%」的最小集合。
+    if BISECT_FILE:
+        try:
+            snap = json.load(open(BISECT_FILE, encoding="utf-8"))
+            ref = snap.get("vals") or snap
+        except Exception as e:
+            proc.terminate()
+            raise SystemExit("读参照快照失败: %s" % e)
+        if not DIFFBOX:
+            proc.terminate()
+            raise SystemExit("--bisect 需要配 --diffbox x0,y0,x1,y1")
+        bxv = [int(v) for v in DIFFBOX.split(",")]
+        bi_js = r"""(async()=>{
+          const t=ms=>new Promise(r=>setTimeout(r,ms));
+          const {app,mdl}=window.__hp; const core=mdl.internalModel.coreModel;
+          const REF=%s, BOX=%s;
+          try{ mdl.internalModel.motionManager.stopAllMotions(); }catch(e){}
+          const ids=(core._model&&core._model.parameters&&core._model.parameters.ids)||[];
+          const cur={}; for(let i=0;i<ids.length;i++){ try{cur[ids[i]]=core.getParameterValueByIndex(i);}catch(e){} }
+          const cw=app.renderer.width, ch=app.renderer.height;
+          const wrap=document.getElementById('l2wrap');
+          const sx=cw/(wrap.clientWidth||cw), sy=ch/(wrap.clientHeight||ch);
+          const cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+          const g=cv.getContext('2d',{willReadFrequently:true});
+          const X0=Math.max(0,Math.floor(BOX[0]*sx)), Y0=Math.max(0,Math.floor(BOX[1]*sy));
+          const X1=Math.min(cw,Math.ceil(BOX[2]*sx)), Y1=Math.min(ch,Math.ceil(BOX[3]*sy));
+          const W=X1-X0, H=Y1-Y0;
+          const skinCount=()=>{ g.clearRect(0,0,cw,ch); g.drawImage(app.view,0,0,cw,ch);
+            const d=g.getImageData(X0,Y0,W,H).data; let n=0;
+            for(let i=0;i<d.length;i+=4){ const r=d[i],gg=d[i+1],b=d[i+2];
+              if(r>110&&gg>60&&b>40&&r>gg&&gg>=b&&(r-b)>18&&(r-gg)>6) n++; }
+            return n; };
+          const draw=()=>{ try{ core.update(); }catch(e){}
+            try{ app.renderer.render(app.stage); }catch(e){} };
+          const setP=(k,v)=>{ try{ core.setParameterValueById(k,v); }catch(e){} };
+          const reset=()=>{ for(const k in cur) setP(k,cur[k]); };
+          draw(); const base=skinCount();
+          /* 全量注入作为目标 */
+          for(const k in REF) setP(k,REF[k]);
+          draw(); const full=skinCount();
+          reset(); draw();
+          const gain=full-base;
+          if(Math.abs(gain)<50) return JSON.stringify({note:'全量注入对该区域几乎无影响', base:base, full:full});
+          /* 单参数增益排序 */
+          const solo=[];
+          const keys=Object.keys(REF);
+          let i=0;
+          for(const k of keys){
+            if(Math.abs((REF[k]||0)-(cur[k]||0))<1e-6) continue;
+            setP(k,REF[k]); draw(); const v=skinCount(); setP(k,cur[k]);
+            if(v-base>0) solo.push({k:k, d:v-base});
+            if(((i++)%%30)===0) await t(0);
+          }
+          solo.sort((a,b)=>b.d-a.d);
+          /* 贪心累加 */
+          reset();
+          const chosen=[], steps=[]; let last=base;
+          for(const it of solo){
+            setP(it.k, REF[it.k]); draw();
+            const v=skinCount();
+            steps.push({k:it.k, solo:it.d, cum:v, delta:v-last});
+            last=v; chosen.push(it.k);
+            if(v-base >= gain*0.9) break;
+          }
+          reset(); draw();
+          return JSON.stringify({box:BOX, basePx:base, fullPx:full, gain:gain,
+            n_changed:solo.length, chosenN:chosen.length, chosen:chosen,
+            top:solo.slice(0,15), steps:steps});
+        })()""" % (json.dumps(ref), json.dumps(bxv))
+        r = ev(bi_js)
+        print("[bisect]", str(r)[:4000])
 
     # ---- 播完跟踪（--follow N）：动作结束后落在哪个组，是「回落对不对」的唯一判据 ----
     # 只看 currentGroup / isFinished；不依赖画面，因此不受低帧率伪影影响。

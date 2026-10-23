@@ -1080,6 +1080,34 @@ function renderVoice(){
   };
   Promise.all([loadVoiceMap(), loadWords()]).then(draw,draw);
 }
+/* ---------- 换装参数表（costume_params.json，由 scripts/diag/l2d_costume_export.py 产出）----------
+   结构 {模型key: [{id,label,kind:'switch'|'slider',vals:[...]}, ...]}。
+   来源是全库 motion3.json 的定值曲线分析：只收「在不同动作间被锁成不同档位」的参数
+   （恒定值的参数没有可调空间，已被导出侧过滤）。
+   ⚠️ 这是**方案 A**：不逐个接 HitAreas 互动区，而是把模型自带的装扮参数直接列成面板，
+      一次性覆盖全部 192 个有换装能力的模型；命中率不依赖人工确认语义。
+   全库 262 个模型里有 158 个 moc3 只有 head/body/special 三个 Touch，游戏本身没有换装交互。 */
+let _costumeP=null, COSTUME=null;
+/* ---------- 全部互动区清单（touchareas.json，由 scripts/diag/l2d_toucharea_export.py 产出）----------
+   结构 {模型key: {drag:[{drawable,registered,group}], idle:[...], hitarea_names:[...]}}。
+   来源是 **moc3 里的 Touch* drawable**（互动区存在与否的第一性证据），
+   而不是 model3.json 的 HitAreas —— 实测 ougen_8 有 44 个 Touch drawable，
+   HitAreas 只登记了 3 个；未登记的 1299 个互动区前端原本完全点不到。
+   ⚠️ 该清单只回答「有哪些互动区 / 登记没登记 / 有无同名动作组」，
+      **不回答「点了什么效果」**：效果映射只存在于游戏代码，资产里推不出来。 */
+let _touchP=null, TOUCHAREAS=null;
+try{ Object.defineProperty(window,'TOUCHAREAS',{get:()=>TOUCHAREAS,configurable:true}); }catch(e){}
+function loadTouchAreaMap(){ return _touchP||(_touchP=(async()=>{
+    try{ const r=await fetch('./touchareas.json'); if(!r.ok) return {};
+      const j=await r.json(); return (j&&typeof j==='object')?j:{}; }catch(e){ return {}; }
+    })().then(j=>{ TOUCHAREAS=j; return j; })); }
+/* 暴露给探针/调试台：模块级 let 不会挂到 window，验证脚本读不到（2026-10-23 实测踩到）。
+   只读引用，不提供改写入能力。 */
+try{ Object.defineProperty(window,'COSTUME',{get:()=>COSTUME,configurable:true}); }catch(e){}
+function loadCostumeMap(){ return _costumeP||(_costumeP=(async()=>{
+    try{ const r=await fetch('./costume_params.json'); if(!r.ok) return {};
+      const j=await r.json(); return (j&&typeof j==='object')?j:{}; }catch(e){ return {}; }
+    })().then(j=>{ COSTUME=j; return j; })); }
 /* ---------- 皮肤语音（skin_voice.json，由 scripts/extract_cv_voice.py 从 cue/cv-*.b 导出）----------
    结构 {皮肤key: {cv, idx, src, l2d:{动作组:[路径]}, tap:{touch_body|touch_special|touch_head: 路径},
                   lines:[{cat,label,f,ev}]}}。
@@ -1556,14 +1584,17 @@ async function renderLive2D(s, sk){
     }
     /* 表是异步来的（本地小文件），回填后只刷新下拉标签与语音计数，不阻塞模型加载主流程。
        计数只算「模型里真的有的组」，否则会把表里其它类别（战斗/强化…）算进来说话数虚高。 */
-    Promise.all([loadVoiceMap(), loadWords()]).then(([m])=>{ const e=m[sk.key]||{}, map=e.l2d||{};
+    Promise.all([loadVoiceMap(), loadWords(), loadCostumeMap(), loadTouchAreaMap()]).then(([m])=>{ const e=m[sk.key]||{}, map=e.l2d||{};
       for(const g in map) if(Array.isArray(map[g])&&map[g].length)
         voice[g]=map[g].map(p=>new URL(P+p,location.href).href);
       const vp=document.getElementById('l2Voice');
       const n=groups.filter(g=>voice[g]).length;
       const tc=talkCount(sk.key);
       if(vp) vp.textContent=(n?('语音 '+n+' 组'):'该皮肤无语音')+(tc?' · '+tc:'');
-      fillSel(); });
+      fillSel();
+      /* 换装表可能比语音表晚到；数据到齐后若面板已开着，重建一次让它出现「换装」分区。
+         （面板只在打开时构建，不重建就会永久缺这一区，2026-10-23 实测踩到） */
+      try{ if(typeof rebuildPanelIfOpen==='function') rebuildPanelIfOpen(); }catch(e){} });
     /* ---------- 「▶ 全部」顺序播放（目视验收用，2026-10-20）----------
        从当前选中组开始逐个播完 groups 全部动作；每组固定 6s——够看姿态与运动过程（长动作
        main 类只能看前段，目视完整时长请手动选组）；播完/再点一次/手动选动作/切皮肤即停。
@@ -1727,11 +1758,16 @@ async function renderLive2D(s, sk){
     /* ---------- 参数/部件检查器（l2d.su 同款）：手调参数=变相表情，部件透明度=换装调试 ---------- */
     const idName=id=>(id&&id.string)||(typeof id==='string'?id:(id&&id.toString())||'?');
     let panelBuilt=false;
+    /* 数据晚到时要能重建面板：用「先声明后赋值」的容器跨过 TDZ
+       （rebuildPanelIfOpen 定义在下方，直接引用会 ReferenceError）。 */
+    let _rebuildPanel=null;
+    const requestPanelRebuild=()=>{ try{ if(_rebuildPanel) _rebuildPanel(); }catch(e){} };
     document.getElementById('l2PanelBtn').onclick=()=>{ const pn=document.getElementById('l2panel');
       const on=pn.classList.toggle('on'); document.getElementById('l2PanelBtn').classList.toggle('on',on);
-      if(on&&!panelBuilt){ panelBuilt=true;
+      if(on){ panelBuilt=true;
         try{ buildL2Panel(pn); }catch(e){ pn.innerHTML='<div style="padding:10px;color:#f66">面板构建失败：'+(e.message||e)+'</div>'; } } };
     const buildL2Panel=(pn)=>{
+      /* 数据晚到时重建：面板已开则立即重建一次（本函数定义后才有 _rebuildPanel 的值） */
       const pids=core._parameterIds||[], cids=core._partIds||[];   // 实测 wrapper 的自有数组（元素即名字符串）
       pn.innerHTML='<div class="pf"><input type="text" placeholder="过滤名称，如 cheek / hong / 脸红拼音…"></div>';
       const filter=pn.querySelector('.pf input');
@@ -1752,11 +1788,128 @@ async function renderLive2D(s, sk){
       for(let i=0;i<core.getParameterCount();i++){ const nm=idName(pids[i])||('Param'+i);
         gp.append(mkRow(nm, core.getParameterMinimumValue(i), core.getParameterMaximumValue(i), core.getParameterDefaultValue(i),
           ()=>core.getParameterValueByIndex(i), x=>core.setParameterValueByIndex(i,x))); }
+      /* ---------- 换装分区（方案 A，2026-10-23）----------
+         把该模型自带的装扮参数（衣服/丝袜/鞋/眼镜/手套/裙/翅膀…）列在最前面：
+         开关型给按钮（点一下切到下一档），渐变型给滑块（拖动实时生效），并给「复位默认」。
+         这些参数在游戏里就是靠动作里的**定值曲线**锁档，所以这里写值 + 每帧重申即可稳定。
+         ⚠️ 写值必须每帧重申：动作的 loadParameters 会把参数拉回曲线值，只在 oninput 里写会被下一帧覆盖。 */
+      let gs=null, pins=null;
+      try{ const cos=(COSTUME&&COSTUME[sk.key])||[];
+        /* 换皮肤/换模型必须清空上次的钉值：pins 是跨面板重建共享的，
+           不清会把上一个模型的装扮值写进新模型（参数同名时会串味）。 */
+        if(window.__costumePinsFor!==sk.key){
+          window.__costumePins=Object.create(null);
+          window.__costumePinsFor=sk.key;
+          window.__costumePinBound=false;   // 新模型重新绑 ticker（app 也可能已换）
+        }
+        if(cos.length){
+          gs=mkSec('换装 '+cos.length);
+          /* pins 与 pinTick 必须**跨面板重建保持同一份**：数据晚到会重建面板，
+             若每次新建 pins/ticker，旧 ticker 会用旧快照覆盖新值（实测点击后值被打回原值）。
+             做法：挂在闭包外的模型级对象上，只注册一次 ticker。 */
+          if(!window.__costumePins) window.__costumePins=Object.create(null);
+          pins=window.__costumePins;
+          if(!window.__costumePinBound){
+            window.__costumePinBound=true;
+            const pinTick=()=>{ const p=window.__costumePins;
+              try{ const cm2=l2State&&l2State.app&&l2State.app.stage.children[0];
+                const c2=cm2&&cm2.internalModel&&cm2.internalModel.coreModel; if(!c2) return;
+                for(const k in p) try{ c2.setParameterValueById(k, p[k]); }catch(e){} }catch(e){} };
+            app.ticker.add(pinTick, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+          }
+          for(const it of cos){
+            const ix=core.getParameterIndex(it.id);
+            if(ix<0) continue;
+            const lo=core.getParameterMinimumValue(ix), hi=core.getParameterMaximumValue(ix);
+            const dflt=core.getParameterDefaultValue(ix);
+            if(it.kind==='switch'){
+              const vals=(it.vals&&it.vals.length)?it.vals:[lo,hi];
+              const r=document.createElement('div'); r.className='prow'; r.dataset.nm=it.id.toLowerCase();
+              const n=document.createElement('span'); n.className='nm';
+              n.title=it.id+(it.label?'（'+it.label+'）':''); n.textContent=it.id;
+              const b=document.createElement('button'); b.style.width='auto'; b.style.padding='0 6px';
+              const cur=()=>{ try{ return +core.getParameterValueById(it.id); }catch(e){ return lo; } };
+              const paint=()=>{ b.textContent=String(cur()); };
+              b.onclick=()=>{ const v=cur();
+                let ni=vals.findIndex(x=>Math.abs(x-v)<1e-3);
+                ni=(ni<0)?0:((ni+1)%vals.length);
+                pins[it.id]=vals[ni]; try{ core.setParameterValueById(it.id, vals[ni]); }catch(e){}
+                paint(); };
+              const rb=document.createElement('button'); rb.textContent='↺'; rb.title='复位默认 ('+dflt+')';
+              rb.onclick=()=>{ pins[it.id]=dflt; try{ core.setParameterValueById(it.id, dflt); }catch(e){} paint(); };
+              paint(); r.append(n,b,rb); gs.append(r);
+            } else {
+              const row=mkRow(it.id+'', lo, hi, dflt,
+                ()=>core.getParameterValueById(it.id),
+                x=>{ pins[it.id]=x; core.setParameterValueById(it.id, x); });
+              gs.append(row);
+            }
+          }
+        }
+      }catch(e){ if(gs){ const w=document.createElement('div'); w.style.cssText='color:#f66;padding:4px';
+        w.textContent='换装区构建失败：'+(e.message||e); gs.append(w); } }
+      /* ---------- 全部互动区（方案 A+，2026-10-23）----------
+         模型自带的 Touch* drawable 全量列出（含 model3.json 未登记的）：
+         · 已登记 + 有同名动作组 → 点击直接播该动作组（等同图上点按钮）
+         · 已登记 + 无动作组     → 只做定位高亮（点了不会有动作）
+         · 未登记               → 灰显 + 标记「未登记」，点它只高亮位置，供定位用
+         目的：把 1299 个原本前端完全点不到/看不见的互动区暴露出来，
+         而不是继续依赖人工一条条猜。 */
+      try{ const ta=(TOUCHAREAS&&TOUCHAREAS[sk.key])||null;
+        if(ta && ((ta.drag||[]).length || (ta.idle||[]).length)){
+          const all=[...(ta.drag||[]), ...(ta.idle||[])];
+          const reg=all.filter(x=>x.registered).length;
+          const gt=mkSec('互动区 '+all.length+'（已登记 '+reg+'）');
+          let hlG=null;
+          const highlight=(drw)=>{
+            try{
+              const ix=core.getDrawableIndex(drw); if(ix<0) return false;
+              const p=core.getDrawableVertexPositions(ix);
+              if(!p||p.length<4) return false;
+              const im2=mdl.internalModel, ppu2=im2.pixelsPerUnit||1;
+              const cux2=im2.width/ppu2, cuy2=im2.height/ppu2, s2=mdl.scale.x;
+              const toStage2=(vx,vy)=>[mdl.x+(vx+cux2/2)*ppu2*s2, mdl.y+(cuy2/2-vy)*ppu2*s2];
+              let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+              for(let k=0;k+1<p.length;k+=2){ const st=toStage2(p[k],p[k+1]);
+                if(st[0]<x0)x0=st[0]; if(st[0]>x1)x1=st[0];
+                if(st[1]<y0)y0=st[1]; if(st[1]>y1)y1=st[1]; }
+              if(!hlG){ hlG=new PIXI.Graphics(); app.stage.addChild(hlG); }
+              hlG.clear(); hlG.lineStyle(2,0xffaa33,0.95).drawRect(x0,y0,x1-x0,y1-y0);
+              setTimeout(()=>{ try{ hlG.clear(); }catch(e){} },1600);
+              return true;
+            }catch(e){ return false; }
+          };
+          for(const it of all){
+            const r=document.createElement('div'); r.className='prow';
+            r.dataset.nm=it.drawable.toLowerCase();
+            const n=document.createElement('span'); n.className='nm';
+            n.title=it.drawable+(it.registered?'（已登记）':'（未登记）')+(it.group?' → '+it.group:'');
+            n.textContent=it.drawable;
+            if(!it.registered) n.style.opacity='0.55';
+            const b=document.createElement('button'); b.style.width='auto'; b.style.padding='0 6px';
+            const playable=!!(it.group && (mm.definitions[it.group]||[]).length);
+            b.textContent=playable?'▶':(it.registered?'定位':'未登记');
+            b.title=playable?('播放 '+it.group):(it.registered?'仅有判定区，无同名动作组':'未登记进 HitAreas');
+            b.onclick=()=>{ const ok=highlight(it.drawable);
+              if(playable && play){ play(it.group); try{ const s3=document.getElementById('l2Motion');
+                if(s3) s3.value=it.group; }catch(e){} } };
+            r.append(n,b);
+            gt.append(r);
+          }
+        }
+      }catch(e){ /* 互动区清单失败不影响其它分区 */ }
       const gc=mkSec('部件 '+core.getPartCount());
       for(let i=0;i<core.getPartCount();i++){ const nm=idName(cids[i])||('Part'+i);
         gc.append(mkRow(nm, 0, 1, 1, ()=>core.getPartOpacityByIndex(i), x=>core.setPartOpacityByIndex(i,x))); }
       filter.oninput=()=>{ const q=filter.value.trim().toLowerCase();
         pn.querySelectorAll('.prow').forEach(r=>{ r.style.display=(!q||r.dataset.nm.includes(q))?'':'none'; }); };
+    };
+    /* 面板已定义完成 → 挂上「数据晚到就重建」的钩子（见上方 requestPanelRebuild 的注释）。
+       换装表/语音表都是异步 fetch，面板可能先被打开；不挂这个钩子会永久缺「换装」分区。 */
+    _rebuildPanel=()=>{
+      const pn=document.getElementById('l2panel');
+      if(!pn || !pn.classList.contains('on')) return;
+      try{ buildL2Panel(pn); }catch(e){}
     };
     const clampPan=()=>{ const cw=wrap.clientWidth||1, ch=wrap.clientHeight||1;
       const lim=Math.max(cw,ch)*0.6;
