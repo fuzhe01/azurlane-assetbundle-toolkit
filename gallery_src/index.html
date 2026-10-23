@@ -1529,7 +1529,21 @@ async function renderLive2D(s, sk){
     const _durs=(chainModel&&chainModel.durations)||{};
     const _fallbackToIdle=()=>{
       try{
-        const g=idleGroup;
+        /* 回落目标**不能固定成 idleGroup**。要按 motion_chain.json 的 best 走：
+           best 是按「本动作末帧 vs 各 idle 变体首帧」的 raw_sse 算出来的衔接最优点
+           （ougen_8 的 touch_idle14 → idle9，raw_sse 666 明显低于 others 的 728~890）。
+           固定回 idle 会让「拖完鞋子 / 摆好姿势」类动作跳回完全不衔接的默认待机
+           ——用户 2026-10-24 实测报的就是这个。
+           优先级：FALLBACK_FIX 手工覆盖 > 本动作组的 best > idleGroup 兜底。 */
+        const fix=(_ff&&_ff[lastGroup])||null;
+        let g=null;
+        if(fix && fix!=='__hold__' && mm.definitions[fix]) g=fix;
+        if(!g){
+          const chainM=(chainModel&&chainModel.chain)||{};
+          const b=(chainM[lastGroup]||{}).best;
+          if(b && mm.definitions[b] && (mm.definitions[b]||[]).length) g=b;
+        }
+        if(!g) g=idleGroup;
         if(!g) return;
         const defs=mm.definitions[g]||[];
         if(!defs.length) return;

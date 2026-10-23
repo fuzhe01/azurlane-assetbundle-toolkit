@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.14
+version: 1.10.15
 ---
 
 # Live2D 网页运行时集成
@@ -822,6 +822,27 @@ if (priority === 1) {                      // IDLE
 - **旧产物可能是靠数据错误绕过问题的**：对照旧画廊发现它 41/55 个 clip 的 `Meta.Loop=True`，
   而 Unity `m_LoopTime` 真值是 `False`。旧版「从不回落」正是因为动作永不结束。
   **数据侧忠于源数据、功能侧自己补回落**，不要抄错误标记。
+
+### 回落目标别写成默认组（2026-10-24 实测）
+
+索引侧（motion_chain.json）会为每个动作算出 est = 「本动作末帧 vs 各待机变体首帧」
+衔接最优的那个组，实测 42 组里 27 组的 best 指向**具体变体**而非默认 idle。
+回落逻辑若图省事写死 idleGroup，这 27 组会全部跳回不衔接的待机
+（用户可见症状：脱完鞋/摆好姿势后人物「跳一下」回到另一个姿势）。
+
+优先级应为：手工覆盖表 > chain[组].best > idleGroup 兜底。
+验证用 erify_touch14.py <模型> <组名>，它同时打印「索引期望」与「实际停留」。
+
+### 「部件消失」先与基准逐 drawable 比，别数不可见数量
+
+getDrawableOpacity 里「842 个 drawable 中 530 个透明度≈0」看着像严重故障，
+其实是 Live2D 常态：模型同时准备正反面两套肢体（Zhengmian_* / Beimian_*），
+同一时刻只有一面可见。**不可见部件数不是缺陷判据。**
+
+正确判据是「同动作下，与可信基准逐 drawable 比不透明度」：一致则属源模型特性，
+不一致才是回归。实测 ougen_8 新旧 842 个里 841 个一致、仅 1 个 0.034→0.019，
+两边画面肉眼等同——用户报的「左腿缺失」在旧画廊里同样存在。
+工具：scripts/diag/ab_part_opacity.py。
 
 ### 验证要点
 

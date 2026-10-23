@@ -7452,3 +7452,49 @@ ougen_8 实例：moc3 有 **44 个** Touch drawable，`HitAreas` **只登记 3 �
 **涉及**：`gallery_src/index.html`、`scripts/build_motion_chain_map.py`、
 `scripts/diag/{verify_label_ticker,verify_switch_params,probe_looptime2,analyze_gallery_diff,verify_login_return2,compare_galleries,ensure_servers}.py`。
 相关：§134（ConstantClip 丢曲线，本轮已用 `L2D_MOTION_EMIT_CONST=1` 补齐并换入）、§135。
+
+## §144. 回落目标不能固定成默认 idle（touch_idle14 应回 idle9）+ 「部件消失」不是回归（2026-10-24）
+
+### A. 回落目标必须用 motion_chain.json 的 best
+
+**现象**：ougen_8 的 `touch_idle14`（脱鞋/摆姿势类）播完跳回完全不衔接的待机；
+索引 `motion_chain.json` 明明写着 `best: idle9`（raw_sse 666，明显低于 idle10 的 728 /
+idle11 的 760 / idle 的 833），运行时却停在 `idle`。
+
+**根因**：§143 那版 `_fallbackToIdle()` 把目标**写死成 `idleGroup`**，压根没读 `chain[组].best`。
+索引算对了、前端没用——两个环节各写各的。
+
+**修法**（`gallery_src/index.html`，优先级从高到低）：
+1. `FALLBACK_FIX[skin][组]`：手工覆盖（`__hold__` 或强制指定组）
+2. `chainModel.chain[lastGroup].best`：算法算出的衔接最优点
+3. `idleGroup`：兜底
+
+**验证**（`scripts/diag/verify_touch14.py`，可用第 2 参数指定任意组）：
+```
+touch_idle14 → 期望 idle9  实际 idle9   OK
+touch_idle1  → 期望 idle2  实际 idle2   OK
+main_1       → 期望 idle2  实际 idle2   OK
+```
+ougen_8 共 42 组，其中 27 组的 best 指向具体变体（idle9 有 7 组最多），
+分布合理；固定回 idle 会让这 27 组全部错配。
+
+### B. 「左脚/左腿/右手在 idle 里消失」不是本轮引入的回归
+
+**现象**：用户目视 ougen_8 报告 idle / idle9 / mail 中左脚、一部分左腿、右手缺失。
+
+**取证**（`scripts/diag/ab_part_opacity.py`，逐 drawable 比不透明度）：
+同一动作、同模型，旧画廊 vs 本仓库，842 个 drawable 里 **841 个完全一致**，
+仅 1 个从 `0.034` 变 `0.019`；不可见部件总数 旧 529 / 新 530。
+**两个画廊渲染出的画面肉眼等同**（截图并排比对，左腿同样缺失）。
+
+结论：这是**模型/源包自身的特性**，不是补入 ConstantClip 曲线的副作用。
+`l2d_const_audit_batch.py` 也确认定值曲线与 moc3 默认值逐条相符（A/B/C 全 0 fail、
+总数 23326 精确对账）。
+
+**顺带记一个容易误判的点**：`getDrawableOpacity` 统计出「842 个 drawable 里 530 个透明度≈0」
+看着像严重故障，实际是 Live2D 的常态——模型同时准备了正反面两套肢体
+（`Zhengmian_Hand_*` / `Beimian_Hand_*`），同一时刻只有一面可见。
+**不要用「不可见部件数」当缺陷判据**，要用「与基准逐 drawable 比对」。
+
+**涉及**：`gallery_src/index.html`、`scripts/diag/{verify_touch14,ab_part_opacity,probe_part_vanish}.py`。
+相关：§143（回落通道）、§134（ConstantClip）。

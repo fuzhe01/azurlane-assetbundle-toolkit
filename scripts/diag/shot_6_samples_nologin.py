@@ -45,6 +45,7 @@ TARGETS = [
     ('4_l2d_aersasi_2',      'aersasi_2',    'live2d'),
     ('5_l2d_aersasi_3',      'aersasi_3',    'live2d'),
     ('6_l2d_ougen_8',        'ougen_8',      'live2d'),
+    ('7_l2d_antu_2',         'antu_2',       'live2d'),
 ]
 
 

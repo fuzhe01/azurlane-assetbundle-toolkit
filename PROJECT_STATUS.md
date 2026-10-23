@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-24（动作数据补全 + 播完回落修复 + 6 样本目视验收）
+> **生成时间**: 2026-10-24（回落按 best 选组 + antu_2 加入样本 + 部件消失取证）
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python **3.15**（2026-10-23 起本机约定；UnityPy 1.25.4 无 cp315 预编译轮子，需源码编译，见 §2 Python 行）。⚠️ 本机同时装着 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（现固定 3.15），**跑之前先 `py -3 scripts/diag/check_env.py`** 确认实际解释器与依赖
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`（3.15 上必须走阿里云/腾讯云源，清华源连 sdist 都没有；需 MSVC BuildTools 编译 UnityPy + lz4）
@@ -359,6 +359,13 @@ motion 大面积失效源于我们自己的解析器（帧 0 护栏 + 曲线名�
   - **缺陷二：非循环动作播完不回 idle**。库的自动回落通道（`isFinished()`→`startRandomMotion`）在本工程从不成立（`getEndTime()` 恒 -1、`_finished` 不置位）。已改为按时长定时回落（`motion_chain.json` 新增 `durations`），回落必须用 **IDLE(1)** 优先级（`MotionState.start()` 对 2/3 要求先 reserve）。
     - 验证：ougen_8 / benningdun_2 / aersasi_3 三模型，播 login 后 12s 标签与 `currentGroup` 均正确回落到 idle 组。
   - ⚠️ **旧画廊的数据是错的、不能抄**：它 41/55 个 clip 的 `Meta.Loop=True`，而 Unity `m_LoopTime` 真值全部为 `False`；它是靠「动作永不结束」回避回落问题。**我们 55/55 与源数据一致**。详见 §143。
+  - **回落目标修正（2026-10-24 续）**：_fallbackToIdle 原先写死 idleGroup，导致索引算出的 est 被丢弃
+    （ougen_8 的 42 组里 27 组 best 指向具体变体）。已改为「手工覆盖 > chain[组].best > idleGroup 兜底」。
+    验证：touch_idle14→idle9（原错落 idle）、touch_idle1→idle2、main_1→idle2 全部符合期望。
+  - **「部件消失」已取证为源模型特性、非回归**：逐 drawable 比对旧画廊与本仓库（同动作 idle），
+    842 个中 841 个不透明度完全一致、仅 1 个 0.034→0.019，两边画面肉眼等同。
+    ⚠️ 注意「842 个 drawable 里 530 个透明度≈0」是 Live2D 常态（正反面两套肢体并存），不能当缺陷判据。
+  - **antu_2 已加入样本**（安土 / 海上传奇 / 战巡 / 104 组动作），7 样本目视验收 7/7 PASS；截图在 .diag/samples_final/。
   - 6 样本目视验收已通过（立绘 haitian_3 / Spine aersasi / Live2D benningdun_2·aersasi_2·aersasi_3·ougen_8），截图在 `.diag/samples_final/`。
 
 ---
