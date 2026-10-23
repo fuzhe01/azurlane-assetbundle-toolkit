@@ -7363,3 +7363,42 @@ ougen_8 实例：moc3 有 **44 个** Touch drawable，`HitAreas` **只登记 3 �
 `l2d_toucharea_export.py`、`l2d_toucharea_ui_verify.py`、`l2d_costume_ui_verify.py`、
 `l2d_costume_writable_probe.py`、`Output/gallery_v2/touchareas.json`。
 先读：§140（其"判据陷阱"一节已被本条扩充与修正）。
+
+### §142. 移除「Ctrl+拖拽触发互动区」（2026-10-23，用户指定）
+
+**变更**：按用户要求移除 2026-10-19 加的「Ctrl/⌘+左键拖拽 = 拖拽互动」整套设置。
+现在 Ctrl+左键与普通左键行为一致（都是平移画布），互动一律走**点击**。
+
+**保留项**（用户明确只要求移除拖拽触发，其余不动）：
+- Ctrl/⌘+滚轮缩放 —— 仍可用（裸滚轮留给页面滚动，不能劫持）
+- 普通左键点击互动区 —— 仍触发对应动作 / 状态开关
+- 拖拽类动作组（touch_drag*）—— 仍可从「动作」下拉或参数面板的互动区按钮触发
+
+**代码清理**（避免留死代码）：
+| 移除 | 位置 |
+|---|---|
+| `onDown` 里的 `if(e.ctrlKey||e.metaKey){...}` 整段（播 drag + 强制 loop + 松手回落） | 事件处理 |
+| `let dragPart/dragReturn` 变量声明 | 与上同批 |
+| `onMove` 的 `if(dragPart){...}` 分支 | 与上同批 |
+| `onUp` 的 `if(dragPart){...回落...}` 分支 | 与上同批 |
+| `onCancel` 的 `if(dragPart){...}` 分支 | 与上同批 |
+| `const forcedLoop=new Set()` 及 `createMotion` 里的 `forcedLoop.has(group)` 判断 | 只被拖拽用 |
+| `const setGroupLoop=(g,on)=>...` 函数 | 移除后已无调用点 |
+| 工具栏提示里的 `<b>Ctrl+拖拽</b>互动` 字样 | 界面文案 |
+
+**保留但改用途**：`dragGroupOf(n)` —— 点击路径仍在用（点 TouchDragN 补区时找同名 `touch_drag` 组），
+注释已更新说明它现在只服务点击。
+
+**验证**：`scripts/diag/l2d_ctrldrag_removed_verify.py` 三项判据全 PASS：
+1. Ctrl+拖拽后当前组**不**变成 `touch_dragN`
+2. 普通左键点击仍能触发动作（实测 `login → idle9`）
+3. Ctrl+滚轮缩放仍生效（`scale 0.1237 → 0.13743`）
+另跑 `l2d_toucharea_ui_verify.py`(4/4)、`l2d_costume_ui_verify.py`(3/3) 确认互动区与换装面板未受影响。
+
+**⚠️ 验收坑**：验证「点击是否还能触发」时不能瞎猜屏幕坐标——
+第一次点画布 30% 高处落在空白区，把"功能正常"误判成"点击失效"。
+必须用页面自己的数据（`TOUCHAREAS[skin].drag[].group` + `getDrawableVertexPositions` 算 bbox 中心）
+定位到真实互动区再点。
+
+**涉及**：`gallery_src/index.html`、`scripts/diag/l2d_ctrldrag_removed_verify.py`。
+相关：§132/§135（状态开关，点击路径不变）。

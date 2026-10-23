@@ -1471,7 +1471,8 @@ async function renderLive2D(s, sk){
     /* 每个 group 实际驱动的参数名集合，在 createMotion 拿到原始 json 时顺手登记（零额外请求）。
        下面的「残留复位」和 motion3.json 的曲线绑定集是同一份数据，不另开文件。 */
     const paramSets=Object.create(null);
-    const forcedLoop=new Set();   // Ctrl 拖拽按住期间强制 loop 的 drag 组
+    /* 循环接管：idle 组按 Meta.Loop 循环。
+       （原 forcedLoop 用于「Ctrl 拖拽按住期间强制 loop」，该功能已于 2026-10-23 按用户要求移除） */
     const curveId=(c)=>{ const i=c&&c.Id; return typeof i==='string'? i : (i&&i.string)||null; };
     const origCreateMotion=mm.createMotion.bind(mm);
     mm.createMotion=(json,group,def)=>{ const m=origCreateMotion(json,group,def);
@@ -1479,7 +1480,7 @@ async function renderLive2D(s, sk){
          touch_drag 与长动画（touch_head/touch_body/complete 等）虽 Meta.Loop 恒 True，但 vendored 库从不据此自动 loop——
          setIsLoop 必须手动调用；这里**只给 idle 组合调**，drag/长动画不 setLoop → 播完由 complete→
          shouldRequestIdleMotion 逐帧接管回落（touch_drag/touch_idle→best，其它长动作→idle），就是方案B的行为。 */
-      if((idleSet.has(group)||forcedLoop.has(group))&&json&&json.Meta&&json.Meta.Loop&&m.setIsLoop){
+      if(idleSet.has(group)&&json&&json.Meta&&json.Meta.Loop&&m.setIsLoop){
         m.setIsLoop(true); if(m.setIsLoopFadeIn) m.setIsLoopFadeIn(false); }
       try{ if(json&&json.Curves){ const s=paramSets[group]||(paramSets[group]=new Set());
           for(const c of json.Curves) if(c.Target==='Parameter'){ const id=curveId(c); if(id) s.add(id); } } }catch(e){}
@@ -1569,7 +1570,7 @@ async function renderLive2D(s, sk){
            cm.setParameterValueById('ParamEyeBallY', -eyeT.y); }catch(e){} },
       null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
     const bar=document.getElementById('l2bar');
-    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2SeqAll" title="从当前组开始逐个播完全部动作，每组约 6 秒（305 组约半小时一轮）；再点一次或手动选动作即停">▶ 全部</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+拖拽</b>互动 · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
+    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2SeqAll" title="从当前组开始逐个播完全部动作，每组约 6 秒（305 组约半小时一轮）；再点一次或手动选动作即停">▶ 全部</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
     const sel=document.getElementById('l2Motion');
     const fillSel=()=>{ const cur=sel.value;
       sel.innerHTML=groups.map(g=>`<option value="${g}">${g}${voice[g]?'（语音）':''}</option>`).join('');
@@ -1795,26 +1796,33 @@ async function renderLive2D(s, sk){
          ⚠️ 写值必须每帧重申：动作的 loadParameters 会把参数拉回曲线值，只在 oninput 里写会被下一帧覆盖。 */
       let gs=null, pins=null;
       try{ const cos=(COSTUME&&COSTUME[sk.key])||[];
-        /* 换皮肤/换模型必须清空上次的钉值：pins 是跨面板重建共享的，
-           不清会把上一个模型的装扮值写进新模型（参数同名时会串味）。 */
-        if(window.__costumePinsFor!==sk.key){
-          window.__costumePins=Object.create(null);
-          window.__costumePinsFor=sk.key;
-          window.__costumePinBound=false;   // 新模型重新绑 ticker（app 也可能已换）
-        }
+        /* 换皮肤/换模型必须**按模型隔离**钉值：pins 曾经是全局单例，
+           切模型后旧模型的参数值会写进新模型（同名参数串味），
+           实测把 ougen_8 的 ArtMesh255~258 写成了隐藏态。
+           改为 window.__costumePinsByModel[sk.key]，一个模型一份。 */
+        const _pinsByModel=(window.__costumePinsByModel=window.__costumePinsByModel||Object.create(null));
+        if(!_pinsByModel[sk.key]) _pinsByModel[sk.key]=Object.create(null);
         if(cos.length){
           gs=mkSec('换装 '+cos.length);
           /* pins 与 pinTick 必须**跨面板重建保持同一份**：数据晚到会重建面板，
              若每次新建 pins/ticker，旧 ticker 会用旧快照覆盖新值（实测点击后值被打回原值）。
              做法：挂在闭包外的模型级对象上，只注册一次 ticker。 */
-          if(!window.__costumePins) window.__costumePins=Object.create(null);
-          pins=window.__costumePins;
-          if(!window.__costumePinBound){
-            window.__costumePinBound=true;
-            const pinTick=()=>{ const p=window.__costumePins;
+          pins=_pinsByModel[sk.key];
+          /* ⚠️ ticker 必须绑在**当前 app** 上，且换模型时解绑旧的。
+             曾经用 window.__costumePinBound 全局只绑一次，结果切模型后：
+             新 app 没有这个 ticker，而旧 ticker 仍挂在旧 app 上、读的是 l2State.app（已指向新模型），
+             于是旧快照被每帧写进新模型 —— 实测导致 ougen_8 的 ArtMesh255~258 被隐藏
+             （2026-10-23：旧画廊 6 次采样恒 vis=1，新画廊第 0 次 vis=1、之后全 vis=0）。
+             正确做法：把 ticker 引用记在 app 上，每个 app 只绑一次；参数按 sk.key 隔离。 */
+          if(!app.__costumePinTick){
+            const pinTick=()=>{
+              const p=(window.__costumePinsByModel||{})[sk.key];
+              if(!p) return;
               try{ const cm2=l2State&&l2State.app&&l2State.app.stage.children[0];
                 const c2=cm2&&cm2.internalModel&&cm2.internalModel.coreModel; if(!c2) return;
+                /* 只在当前模型的 coreModel 上写当前模型的钉值 */
                 for(const k in p) try{ c2.setParameterValueById(k, p[k]); }catch(e){} }catch(e){} };
+            app.__costumePinTick=pinTick;
             app.ticker.add(pinTick, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
           }
           for(const it of cos){
@@ -2076,12 +2084,12 @@ async function renderLive2D(s, sk){
       const pill=document.getElementById('l2Hit');
       if(pill) pill.textContent=(t.label||t.id)+' ▸ '+v.toFixed(1); };
     const sliderEnd=t=>{ if(t&&t._sl){ t._sl=null; } };
-    let dragging=false,px=0,py=0,moved=0,dragPart=null,dragReturn=null,stateDown=null;
+    let dragging=false,px=0,py=0,moved=0,stateDown=null;   // dragPart/dragReturn 已随 Ctrl+拖拽一并移除
     const localHit=(cx,cy)=>{ const r=wrap.getBoundingClientRect();
       const lp=mdl.toLocal(new PIXI.Point(cx-r.left, cy-r.top));
       const pv=P2V(lp.x/ppu, lp.y/ppu); return hitAt(pv.x, pv.y); };
-    /* 拖拽区优先：落在 touch_drag* 上时不平移画面，松手按拖动距离决定「拖拽动作」还是「点击」。
-       拖动方向没分组时按编号轮转到现有的 touch_drag1..3，避免 44 个区里有区点不出动作。 */
+    /* 拖拽区→动作组的编号映射（点击路径仍在用：点 TouchDragN 补区时找同名 touch_drag 组）。
+       拖动方向没分组时按编号轮转到现有的 touch_drag1..N，避免有区点不出动作。 */
     const dragGroupOf=n=>{ if(groups.includes(n)) return n;
       const _alt=n.replace(/^touchdrag(\d+)$/,'touch_drag$1');
       if(groups.includes(_alt)) return _alt;
@@ -2091,50 +2099,23 @@ async function renderLive2D(s, sk){
       const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
       if(!ds.length) return null;
       return ds[(k-1)%ds.length]; };
-    const setGroupLoop=(g,on)=>{ try{ for(const m of (mm.motionGroups[g]||[])){
-        if(m&&m.setIsLoop) m.setIsLoop(on); } }catch(e){} };
     const onDown=e=>{ if(e.button!==0) return; moved=0; px=e.clientX; py=e.clientY;
-      const n=localHit(e.clientX,e.clientY);
 
-      /* 普通左键拖拽 = 平移画布；Ctrl/⌘ + 左键拖拽 = 拖拽互动（用户 2026-10-19 指定）。
-         按下即播 drag 并强制 loop（按住期间持续动），松手停 loop 回拖拽前的 idle。 */
-      if(e.ctrlKey||e.metaKey){
-        /* 状态切换区（§132）：按住/拖它不播 drag 动作，松手时切状态（与游戏一致：拖一下鞋子切穿/脱）。
-           slider 型（mode:'slider'）：拖动过程连续调值（调颜色深浅类），松手保持当前值 */
-        const st=stateFind(n); if(st){
-          if(stateIsSlider(st)){ sliderBegin(st, e.clientX); stateDown=st; }
-          else stateDown=st;
-          dragPart=null; dragging=false; return; }
-        const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
-        if(!ds.length){ dragPart=null; dragging=true; return; }
-        // n 可能是 touch_drag1（model3）或 touchdrag4（moc3 补区）；统一交给 dragGroupOf，
-        // 不能再写死 drag1，否则所有区域都只出 touch_drag1。
-        const dg=dragGroupOf(n || 'touch_drag1');
-        if(!dg){ dragPart=null; dragging=true; return; }
-        dragReturn=(mm.state && idleSet.has(mm.state.currentGroup))?mm.state.currentGroup:idleGroup;
-        forcedLoop.add(dg); setGroupLoop(dg,true);
-        dragPart=dg; dragging=false;
-        if(play(dg, MP.FORCE)) sel.value=dg;
-        return;
-      }
-      dragPart=null; dragging=true; };
+      /* 普通左键拖拽 = 平移画布。
+         ⚠️ 2026-10-23：已按用户要求**移除「Ctrl+拖拽触发互动区」**这套设置
+         （原先 Ctrl/⌘+左键会播 touch_dragN 并强制 loop，松手回落）。
+         现在 Ctrl+左键与普通左键行为一致（都是平移），互动一律走**点击**；
+         Ctrl/⌘+滚轮缩放保留不动（见下方 onWheel）。
+         说明：拖拽类动作组（touch_drag*）仍可通过「动作」下拉或参数面板的互动区按钮触发。 */
+      dragging=true; };
     const onMove=e=>{ if(stateDown && stateIsSlider(stateDown)){
         sliderMove(stateDown, e.clientX); moved+=Math.abs(e.clientX-px)+Math.abs(e.clientY-py);
-        px=e.clientX; py=e.clientY; return; }
-      if(dragPart){ const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
         px=e.clientX; py=e.clientY; return; }
       if(!dragging)return; const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
       ox+=dx; oy+=dy; px=e.clientX; py=e.clientY; clampPan(); apply(); };
     const onUp=e=>{ if(stateDown){ const st=stateDown; stateDown=null;
         if(stateIsSlider(st)){ sliderEnd(st); return; }
         toggleState(st,true); return; }
-      if(dragPart){ const part=dragPart; dragPart=null;
-        forcedLoop.delete(part); setGroupLoop(part,false);
-        try{ if(mm.state && mm.state.complete) mm.state.complete(); }catch(e){}
-        const back=dragReturn||idleGroup;
-        if(play(back, MP.FORCE)){ sel.value=back;
-          const pill=document.getElementById('l2Hit'); if(pill) pill.textContent=(back+' ← 拖拽'); }
-        return; }
       if(!dragging) return; dragging=false; if(moved>=6||e.button!==0){ vm.touch(); return; }
       const name=localHit(e.clientX,e.clientY);
       /* 状态切换区（§132）：点击=切状态，不播动作 */
@@ -2146,10 +2127,7 @@ async function renderLive2D(s, sk){
       if(play(g)){ sel.value=g; const pill=document.getElementById('l2Hit');
         if(pill) pill.textContent=(name?'部位 '+name+' → ':'')+g; } };
     const onCancel=()=>{ dragging=false;
-      if(stateDown){ if(stateIsSlider(stateDown)) sliderEnd(stateDown); stateDown=null; }
-      if(dragPart){ forcedLoop.delete(dragPart); setGroupLoop(dragPart,false); dragPart=null;
-        try{ if(mm.state&&mm.state.complete) mm.state.complete(); }catch(e){}
-        const back=dragReturn||idleGroup; if(play(back,MP.FORCE)) sel.value=back; } };
+      if(stateDown){ if(stateIsSlider(stateDown)) sliderEnd(stateDown); stateDown=null; } };
     /* 缩放必须按住 Ctrl(或 ⌘/Alt)：裸滚轮要留给页面滚动。
        之前裸滚轮被 preventDefault 劫持，用户浏览列表时鼠标经过模型就会一路放大到 12 倍并累积偏移，
        看起来像「模型乱动/位置不对」 */
