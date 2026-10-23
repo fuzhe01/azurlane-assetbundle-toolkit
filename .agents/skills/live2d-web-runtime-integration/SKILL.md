@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.12
+version: 1.10.13
 ---
 
 # Live2D 网页运行时集成
@@ -719,3 +719,49 @@ Cubism 高层 API 不暴露「哪个参数控制这个 drawable 的透明度」�
 `[chain] 已写 <path>` 才是真写了。同类坑：CDP 探针会命中 `http.server` 的 Last-Modified 缓存，
 改完前端/数据后仍读到旧文件 → 假阴性。修法：探针 URL 加毫秒时间戳 + `Network.setCacheDisabled(true)`。
 
+
+## 20. 互动区（Touch*）与换装参数：信号源选择与验收判据（2026-10-23，version 1.10.13）
+
+### 20.1 找互动区要用 moc3 的 Touch* drawable，不要用参数曲线
+**错误做法**：扫 motion3.json，按「参数在不同动作间有多档取值」筛互动项。
+**为什么错**：换装开关（脱鞋/戴眼镜/戴手套）在游戏里是**运行时代码 `setParameterValueById` 写的**，
+动作曲线里恒为常量。实测 `ShoseOff` 在 **46 个动作**里全部是 0 —— 从曲线看"只有 1 档"，
+被"恒定值无可调空间"规则整类剔除。用硬编码个案（如 `touchdrag17 → ShoseOff`）补，
+只能补到你发现的那一个。
+
+**正确信号源**：**moc3 里的 `Touch*` drawable**（互动区本体，模型自带按钮部件）。
+它与 model3.json 的 HitAreas 是否登记无关 —— 实测某模型 moc3 有 44 个 Touch drawable，
+HitAreas 只登记 3 个，**1299/4085 个互动区存在但前端点不到**。
+moc3 是二进制，但字符串池里 drawable id 可直接
+`re.finditer(rb'Touch[A-Za-z0-9_]{0,24}', raw)` 捞出，不需要解析库。
+
+### 20.2 三层信息要分开，别混为一谈
+| 层 | 来源 | 回答什么 |
+|---|---|---|
+| 互动区存在 | moc3 的 Touch* | 有哪些按钮 |
+| 能否点中 | model3.json HitAreas | 前端认不认 |
+| 点了做什么 | **只在游戏代码里** | 效果语义 |
+
+`--findop <TouchDrawable>` 只返回**该 drawable 自身的显隐参数**（实测 `TouchDrag17 → Param500`），
+**与它触发的业务参数无数据关联**。⇒ 自动提取只能做到"发现 + 定位"，
+效果语义必须目视确认或用户标注，别宣称能自动推导。
+
+### 20.3 「这个参数改了有没有效果」的唯一可靠判据
+三个假象（都踩过）：
+1. **画布像素哈希**：headless(`--gpu`) 下 `drawImage(app.view,…)` 取到**全 0 缓冲**
+   （哈希里可加非零像素计数自检，`nz0` = 0 个非零），此时"模型右移 40px"都判无变化。
+2. **前后两次全量 drawable 快照直接比**：呼吸/眨眼会在两次采样间改变状态 → **假阳性**
+   （曾让一个"改动 0 个 drawable"的参数显示"有变化"）。
+3. **写入后立即回读**：前端 pin 由 ticker 下一帧才重申，立即读必然读到动作铺回的值 → **假阴性**。
+
+**可靠判据**：把参数写到两端值 → 中间 `core.update()+render` →
+**逐 drawable 对比 opacity / dynamicFlagIsVisible，并要求能点名出具体部件**（changed > 0）。
+停动作能消除动画干扰；点名则排除假阳性。
+实测产出：某参数改动 16 个 drawable、另一个改动 2 个，各自可复核。
+
+### 20.4 参数「可写性」也要验，别把钉死参数当交互
+部分参数的 `min == max == default`（moc3 把它们钉死），前端放个按钮点了也不生效。
+上游筛选时必须跑一次运行时验证：写入后连推数帧再读，稳定保持才算可写。
+
+**涉及**：`scripts/diag/l2d_touch_drawable_scan.py`、`l2d_toucharea_export.py`、
+`l2d_toucharea_ui_verify.py`、`l2d_costume_writable_probe.py`、`l2d_canvas_hash_diag.py`。
