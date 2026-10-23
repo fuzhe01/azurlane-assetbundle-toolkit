@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-23（Python 运行时切至 3.15 + 环境自检落地）
+> **生成时间**: 2026-10-24（动作数据补全 + 播完回落修复 + 6 样本目视验收）
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python **3.15**（2026-10-23 起本机约定；UnityPy 1.25.4 无 cp315 预编译轮子，需源码编译，见 §2 Python 行）。⚠️ 本机同时装着 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（现固定 3.15），**跑之前先 `py -3 scripts/diag/check_env.py`** 确认实际解释器与依赖
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`（3.15 上必须走阿里云/腾讯云源，清华源连 sdist 都没有；需 MSVC BuildTools 编译 UnityPy + lz4）
@@ -353,6 +353,13 @@ motion 大面积失效源于我们自己的解析器（帧 0 护栏 + 曲线名�
   - **链路可信度有硬证据**：`voice_actor_cn.json`（525 行 / 10827 B）与 `character_voice.json`（85 行 / 12505 B）重建后 sha256 与旧台账**逐字节相同**；azdata 的 `statistics`(6438126 B) / `template`(3745427 B) 字节数亦完全相同。
   - **变了的就两行**：`ship_skin_words` 2574→2575、`ship_skin_template` 2870→2871（azdata 同名表 5060419→5062169），增量是**尼尔联动角色 A2 / 2B**（id 11700010 / 11700020 / 11700021），属真实版本更新而非解析错误。
   - ⚠️ **版本号此前是硬编码的假台账**：`42_publish_gamecfg.py` 与 `publish_azdata_local.py` 都把 `9.7.385` 写死，游戏已到 395 仍在台账里记 385。已改为**从 `files/version.txt` 读盘**，版本号只有一个权威来源。
+- **✅ Live2D 动作数据补全 + 播完回落修复（2026-10-24）**：用户目视 ougen_8 发现「难以描述的不对」，与旧画廊 `D:\Azur Lane Assets` 对照后定位为两个独立缺陷。
+  - **缺陷一：ConstantClip 曲线全丢**。`extract_motions.py` 默认不导 `m_ConstantClip` 复位曲线。实测四个样本丢失量：aersasi_2 2329 / aersasi_3 16997 / benningdun_2 28067 / ougen_8 18839 条（最高占 77.9%）。已用 `L2D_MOTION_EMIT_CONST=1` 全部重建：曲线数 7841 / 24924 / 36049 / 23326，与旧画廊基准**零缺失**（各模型仅差 1 条 `Opacity` 常量，值恒为 1.0 无视觉影响）。
+    - 运行时验收（参数直读，技能要求的切换轴）：idle9 的 9 条姿势定值，对照组 0/9 命中 → 实验组 **9/9 精确命中**（`Param345 -1.280`、`Param494/500/502/506/91/97/352=1.000`），切回 idle 亦 9/9 复位。
+  - **缺陷二：非循环动作播完不回 idle**。库的自动回落通道（`isFinished()`→`startRandomMotion`）在本工程从不成立（`getEndTime()` 恒 -1、`_finished` 不置位）。已改为按时长定时回落（`motion_chain.json` 新增 `durations`），回落必须用 **IDLE(1)** 优先级（`MotionState.start()` 对 2/3 要求先 reserve）。
+    - 验证：ougen_8 / benningdun_2 / aersasi_3 三模型，播 login 后 12s 标签与 `currentGroup` 均正确回落到 idle 组。
+  - ⚠️ **旧画廊的数据是错的、不能抄**：它 41/55 个 clip 的 `Meta.Loop=True`，而 Unity `m_LoopTime` 真值全部为 `False`；它是靠「动作永不结束」回避回落问题。**我们 55/55 与源数据一致**。详见 §143。
+  - 6 样本目视验收已通过（立绘 haitian_3 / Spine aersasi / Live2D benningdun_2·aersasi_2·aersasi_3·ougen_8），截图在 `.diag/samples_final/`。
 
 ---
 

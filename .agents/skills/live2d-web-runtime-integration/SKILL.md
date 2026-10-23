@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.13
+version: 1.10.14
 ---
 
 # Live2D 网页运行时集成
@@ -765,3 +765,68 @@ moc3 是二进制，但字符串池里 drawable id 可直接
 
 **涉及**：`scripts/diag/l2d_touch_drawable_scan.py`、`l2d_toucharea_export.py`、
 `l2d_toucharea_ui_verify.py`、`l2d_costume_writable_probe.py`、`l2d_canvas_hash_diag.py`。
+
+## 21. 非循环动作播完不回 idle：库的回落通道可能整条失效，别改 vendor 库（2026-10-24，version 1.10.14）
+
+**症状三连**（同一个根因的不同表现，容易被当成三个 bug）：
+点动作后画面「定住」；开场 login 播完角色「逐渐走出画面只剩背景」；「当前动作」标签一直停在刚播的组名。
+
+### 先分清三条通道，别混着查
+
+| 想做的事 | 依赖什么 | 失效表现 |
+|---|---|---|
+| 动作播完自动回 idle | `MotionManager.update()` 里 `isFinished()` → `state.complete()` → `shouldRequestIdleMotion()` → `startRandomMotion(idle, IDLE)` | 停末帧、永不回落 |
+| 「当前动作」标签正确 | 前端自己写 DOM（库回落**不**经过前端 `play()`） | 画面已回落但标签还是旧组名 |
+| 用代码强制切动作 | `MotionState.start()` 的优先级规则 | `startMotion` 静默失败、`state` 纹丝不动 |
+
+### 判「有没有回落」不能用 UI 标签
+
+标签只在**前端主动播**时写入；库自己回落时不刷新它。据标签判「未回落」必然误判。
+可靠判据只有两个：读 `mm.state.currentGroup`（回落成功后它会变成 idle 组），
+或用参数直读看姿势定值是否回到 idle 组的值。截图像素比对**不可用于此**——
+idle 有呼吸循环，同状态两张截图的差异本底就有 20~80，基准不稳时判据会给出任意结论。
+
+### 别改 vendor 库，用时长自己安排
+
+`isFinished()` 走 `queueManager` 条目的 `_finished` 标志；实测某些模型/库版本下
+`getEndTime()` 恒为 `-1`、`_finished` 从不置位、`motionFinish` 从不 emit。
+这时改库要动 vendor 文件（下次换版本全丢），而「按 `Meta.Duration` 定时回落」几行就够：
+
+1. 索引侧把每个动作组的 `Meta.Duration` 带进 `motion_chain.json`（库的 `definitions` 里只有 `File`，
+   取不到时长）。
+2. `play()` 里 `setTimeout(duration + 0.6s)` 调回落；`play()` 每次先 `clearTimeout` 防叠加；
+   语义上「播完停在末帧」的动作（如 `effect`）用白名单跳过。
+3. 回落时 **`state.complete()` 之后必须把 `currentPriority` / `reservePriority` 归零**，
+   否则上一动作的 FORCE(3) 会让回落请求被 `reserveMotion` 拒掉。
+
+### `startMotion` 的优先级陷阱（最耗时的一条）
+
+`MotionState.start()` 的真实规则：
+
+```js
+if (priority === 1) {                      // IDLE
+  if (this.currentPriority !== 0) return false;
+} else {                                    // NORMAL(2) / FORCE(3)
+  if (group !== this.reservedGroup || index !== this.reservedIndex) return false;
+}
+```
+
+**非 IDLE 优先级要求先 reserve**。没走 `reserve` 流程时传 2/3 必被拒，
+而且 `startMotion` 是 async，返回的是 Promise，`sync` 读状态永远读到旧值 ——
+现象就是「返回值看着正常、`state` 一点没变」。**代码里主动切动作时优先用 IDLE(1)。**
+
+### 附带的两个坑
+
+- **`#l2Curr` 的 DOM 引用会失效**：工具条用 `bar.innerHTML=...` 重建时，旧节点脱离文档；
+  此前抓的引用写 `textContent` 写进孤儿节点，页面上看不见。每次 `getElementById` 重查。
+- **旧产物可能是靠数据错误绕过问题的**：对照旧画廊发现它 41/55 个 clip 的 `Meta.Loop=True`，
+  而 Unity `m_LoopTime` 真值是 `False`。旧版「从不回落」正是因为动作永不结束。
+  **数据侧忠于源数据、功能侧自己补回落**，不要抄错误标记。
+
+### 验证要点
+
+- 播一个时长 T 的非循环动作，在 T+1~2s 时断言 `state.currentGroup` 已变成 idle 组、
+  且标签同步更新；再对 2~3 个模型重复（不同模型组数/时长差异大）。
+- 服务进程会静默消失，探测读到白屏会算出「完全一致」的假结论。
+  **每次验证前先探活 + 渲染门禁**，不过就报 INVALID，不输出结论。
+- 一次偶发的 `xhr.onabort` 不能定性为缺陷，重试 2~3 次再判。

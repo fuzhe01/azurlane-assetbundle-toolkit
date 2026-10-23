@@ -1511,6 +1511,61 @@ async function renderLive2D(s, sk){
        不 FORCE 就连点第二个部位都放不出来。回落 idle 交给运行时（见 ②），不再需要定时器。 */
     const played=new Set();
     const playedAt=Object.create(null);
+    /* ---------- 非循环动作播完 → 回落到 idle（2026-10-23 定案）----------
+       为什么必须我们自己安排：本项目导出的 motion3.json 忠实写了 Unity 的 m_LoopTime
+       （ougen_8 实测 55/55 与源数据一致），于是 login/touch_* 等动作 Loop=False、
+       到 duration 后结束。而库的自动回落挂在
+         MotionManager.update(): if (isFinished()) { state.complete();
+                                                     if (shouldRequestIdleMotion()) startRandomMotion(...) }
+       实测这条路在本工程的库版本 + FORCE 播放下从不成立：
+       queueManager 里的条目 getEndTime() 恒为 -1、_finished 从不置位，
+       qmFinished 恒 false → motionFinish 从不 emit → currentGroup 停在刚播的组上。
+       旧画廊是靠**错误的 Meta.Loop=True**（41/55 个 clip 与 Unity 真值不符）让动作
+       永不结束来回避这个问题的；那是数据错误，不抄。
+       这里的做法：用 motion_chain.json 的 durations（建表时从 Meta.Duration 提取）
+       定时回落，NORMAL 优先级（能被用户后续动作抢占）。 */
+    let _fallbackTimer=null;
+    let _lastCurr=null;
+    const _durs=(chainModel&&chainModel.durations)||{};
+    const _fallbackToIdle=()=>{
+      try{
+        const g=idleGroup;
+        if(!g) return;
+        const defs=mm.definitions[g]||[];
+        if(!defs.length) return;
+        const idx=Math.floor(Math.random()*defs.length);
+        /* 复位优先级是**关键一步**：动作是用 FORCE(3) 播的，而库里
+           reserveMotion(priority) 会拒绝 priority <= _currentPriority 的请求，
+           只调 state.complete() 仅清 currentGroup、不降 currentPriority，
+           于是 NORMAL(2) 的回落请求被 3 顶掉 → startMotion 静默失败、画面停在末帧。
+           实测（2026-10-23）：只 complete() 时 curPri 一直是 3，回落从不发生。 */
+        try{
+          if(mm.state && mm.state.complete) mm.state.complete();
+          if(mm.state){ mm.state.currentPriority=0; mm.state.reservePriority=0; }
+          mm.currentPriority=0; mm.reservePriority=0;
+        }catch(e){}
+        lastGroup=g;
+        let ok=false;
+        /* 必须用 **IDLE(1)** 优先级：库的 MotionState.start() 里
+             priority===1        → 只要求 currentPriority===0（我们已复位成 0）→ 放行
+             priority>1（2/3）   → 要求 group===reservedGroup 且 index===reservedIndex
+                                   否则 "another motion has taken the place" 直接拒绝
+           我们没走 reserveMuation 的 reserve 流程，所以 2/3 必然被拒。
+           （2026-10-23 实测：用 NORMAL 时 startRet={} 但 state 里 pri 仍为 0、组未变。） */
+        try{ ok=mm.startMotion(g,idx,MP.IDLE||1); }catch(e){ ok=false; }
+      }catch(e){}
+    };
+    const _scheduleFallback=(g)=>{
+      if(_fallbackTimer){ clearTimeout(_fallbackTimer); _fallbackTimer=null; }
+      if(!g || idleSet.has(g)) return;             /* 待机组自身循环，不需要回落 */
+      const fix=(_ff&&_ff[g])||null;
+      if(fix==='__hold__') return;                  /* effect 类：停在末帧是语义要求 */
+      const d=_durs[g];
+      if(!(d>0)) return;
+      /* +0.6s 余量：覆盖淡出尾巴，避免在最后一帧抖动时被切走 */
+      _fallbackTimer=setTimeout(()=>{ _fallbackTimer=null; _fallbackToIdle(); },
+                                Math.round((d+0.6)*1000));
+    };
     const play=(g,pr)=>{ if(!g) return false;
       try{ playVoice(g);
         /* 动态标签：播出即同步显示当前组（非待机动作播放中显示动作名，便于回落前后对照） */
@@ -1519,7 +1574,9 @@ async function renderLive2D(s, sk){
            会让动作被 reserve 拒掉（实测 FORCE 才能在 currentGroup 里看到 login）。 */
         try{ if(g!=='login' && mm.state && mm.state.currentGroup==='login' && mm.state.complete) mm.state.complete(); }catch(e){}
         mm.startMotion(g,0,pr||MP.FORCE);
-        if(!idleSet.has(g)){ played.add(g); playedAt[g]=performance.now(); } return true; }catch(e){ return false; } };
+        if(!idleSet.has(g)){ played.add(g); playedAt[g]=performance.now(); }
+        _lastCurr=g; _scheduleFallback(g);
+        return true; }catch(e){ return false; } };
     try{ window.__l2play=play; }catch(e){}
     /* ---------- 眼神跟随 ----------
        不用 mdl.focus()：它绕 focusController，实测 target 变了但 x 不更新（headless 与真机都可能），
@@ -1562,6 +1619,27 @@ async function renderLive2D(s, sk){
          for(const it of rest.items) try{ cm.setParameterValueByIndex(it[0], it[1]+(it[2]-it[1])*k); }catch(e){}
         if(k>=1) rest=null; };
     app.ticker.add(restTick);
+    /* ---------- 「当前动作」标签跟随库的真实状态（2026-10-23）----------
+       为什么需要：`play()` 只在"主动播动作"那一刻写 #l2Curr；动作播完由**库自己**
+       回落 idle（MotionManager.update → startRandomMotion(groups.idle, IDLE)），
+       这条路径不经过 play()，于是标签一直停在刚播的那个组名上。
+       用户看到"标签还写着 login、却已经回到待机"会以为回落失效——实测用像素比对
+       确认画面确实回到 idle（B≈C），纯属标签滞后。
+       这里每帧读 mm.state.currentGroup 回写，让标签始终等于实际画面状态。
+       只在值变化时写 DOM，避免每帧触发重排。 */
+    { let _localCurr='';
+      app.ticker.add(()=>{
+        try{
+          const g=(mm.state&&mm.state.currentGroup)||null;
+          /* ⚠️ 每次都要**重新查 DOM**：下方 `bar.innerHTML=...` 会重建整个工具条，
+             把 #l2Curr 换成新节点；持有旧引用写 textContent 写进的是已脱离文档的孤儿节点，
+             页面上看不到任何变化（2026-10-23 实测：ticker 读到的 g 已是 idle、_localCurr
+             也已同步，但屏幕上的标签仍是 login —— 就是这个原因）。 */
+          const el=document.getElementById('l2Curr');
+          if(g && g!==_localCurr){ _localCurr=g; if(el) el.textContent=g; }
+        }catch(e){}
+      }, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+    }
     /* 眼睛参数用 **LOW 优先级的 ticker** 写：它在 Live2DModel.update（NORMAL）之后、
        app.render 之前执行，此时 loadParameters 已经把动作/物理值铺完，写进去才留到本帧绘制。
        写在 model.update 里会被随后的 loadParameters 覆盖（实测）。 */

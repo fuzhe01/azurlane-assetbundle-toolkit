@@ -169,6 +169,25 @@ def build_model_chain(model_dir, model):
             return None
         return parse_curve_full(j.get('Curves'))
 
+    # 每个动作组的时长（Meta.Duration）：前端需要它在动作播完后定时回落。
+    # 为什么前端要自己回落：库的自动回落条件实测不成立（详见 index.html 里的注释），
+    # 且 definitions 里只有 File、拿不到 duration，所以时长必须在建表时一起带出去。
+    durations = {}
+    for g in groups:
+        entries = motions.get(g) or []
+        if not entries or not entries[0].get('File'):
+            continue
+        fp = os.path.join(model_dir, entries[0]['File'])
+        if not os.path.isfile(fp):
+            continue
+        try:
+            meta = (json.load(open(fp, encoding='utf-8')).get('Meta') or {})
+            dur = meta.get('Duration')
+            if isinstance(dur, (int, float)) and dur > 0:
+                durations[g] = round(float(dur), 3)
+        except Exception:
+            pass
+
     full = {}
     for g in groups:
         cf = load_full(g)
@@ -261,6 +280,7 @@ def build_model_chain(model_dir, model):
         }
     return {'model': model, 'idle_groups': idle_groups,
             'switch_params': switches,
+            'durations': durations,
             'n_actions': len(chain), 'chain': chain}
 
 
@@ -322,6 +342,7 @@ def main():
                    'idle_re': IDLE_RE.pattern,
                    'models': {m: {'idle_groups': r['idle_groups'],
                                   'switch_params': r.get('switch_params', {}),
+                                  'durations': r.get('durations', {}),
                                   'chain': r['chain']}
                               for m, r in results.items()}}
         with open(out, 'w', encoding='utf-8') as f:

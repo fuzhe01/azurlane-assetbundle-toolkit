@@ -7402,3 +7402,53 @@ ougen_8 实例：moc3 有 **44 个** Touch drawable，`HitAreas` **只登记 3 �
 
 **涉及**：`gallery_src/index.html`、`scripts/diag/l2d_ctrldrag_removed_verify.py`。
 相关：§132/§135（状态开关，点击路径不变）。
+
+## §143. 非循环动作播完不回 idle（「点一下就定住 / 只剩背景」）：库的回落通道在本工程从不触发（2026-10-24）
+
+**现象**：Live2D 里点动作、或开场 login 播完后，画面停在最后一帧；部分模型（benningdun_2 / aersasi_2）
+表现为角色「逐渐走出画面、只剩背景」。用户目视 ougen_8 时说不清哪里不对，与旧画廊对照才定位。
+
+**四个独立错误，逐个都足以让人误判，必须分开记**：
+
+1. **`#l2Curr` 标签是假证据**。前端只在 `play()` 里写这个标签；库自己回落时不经过 `play()`，
+   标签永远停在刚播的组名。据此判「没回落」会得到完全错误的结论。
+   注意 `play()` 写标签时抓的 `#l2Curr` 引用还会被下方 `bar.innerHTML=...` 重建、
+   变成已脱离文档的孤儿节点——**写进去看不见**。修法：每次 `document.getElementById` 重查。
+2. **库的自动回落通道从不成立**。`MotionManager.update()` 里 `if (isFinished()) { state.complete();
+   if (state.shouldRequestIdleMotion()) startRandomMotion(groups.idle, IDLE); }`。实测
+   `queueManager` 条目的 `getEndTime()` 恒为 `-1`、`_finished` 从不置位、`qmFinished` 恒 `false`
+   → `motionFinish` 从不 emit → `currentGroup` 停在刚播的组。**别去改 vendor 库**，用时长自己安排。
+3. **`startMotion` 的优先级语义**（`MotionState.start()`）：`priority===1`(IDLE) 只要求
+   `currentPriority===0`；`priority>1`(2/3) 额外要求 `group===reservedGroup && index===reservedIndex`，
+   否则报 "another motion has taken the place" 直接拒。**没走 reserve 流程时 2/3 必被拒**，
+   所以回落只能用 IDLE(1)。曾用 NORMAL(2) 试过，`startRet` 看着有对象、`state` 却纹丝不动。
+4. **旧画廊是靠数据错误绕过这个问题的**。它把 41/55 个 clip 的 `Meta.Loop` 写成 `True`
+   （Unity `m_LoopTime` 真值里 login/touch_*/home/main_* 全是 `False`），动作永不结束 →
+   永远不会停在末帧，也就永远不需要回落。**我们的导出 55/55 与 Unity 真值一致**——
+   即我们的数据是对的，缺的是前端回落。不要抄旧画廊的 Loop。
+
+**修法**（`gallery_src/index.html`）：
+- `build_motion_chain_map.py --write` 产出 `durations`（每动作组 `Meta.Duration`），
+  因为库的 `definitions` 里只有 `File`、拿不到时长。
+- `play()` 里 `_scheduleFallback(g)`：`setTimeout(duration + 0.6s)` → `_fallbackToIdle()`；
+  `__hold__`（effect 类）与待机组跳过；`play()` 每次先 `clearTimeout` 防叠加。
+- `_fallbackToIdle()`：`state.complete()` **+ 把 `currentPriority/reservePriority` 归零**，
+  再 `startMotion(idleGroup, idx, MP.IDLE||1)`。
+- LOW 优先级 ticker 每帧读 `mm.state.currentGroup` 回写标签（值变化才写 DOM）。
+
+**验证**（`scripts/diag/verify_label_ticker.py`）：播 login(11.5s)，12s 时标签自动变 `idle`；
+`ougen_8` / `benningdun_2` / `aersasi_3` 三个模型均 PASS。曲线层面另由
+`verify_switch_params.py` 参数直读证实 idle9 的 9 条姿势定值精确生效（对照组 0/9 → 实验组 9/9）。
+
+**踩过的假判据（勿重犯）**：
+- 截图「edge 系数」判有无内容：斜纹背景自身有边缘，纯空白帧也能拿到 7.3 假 PASS。
+  必须加「页面出现『加载失败』文本即判负」的硬判据。
+- 截图像素比「B≈C」判是否回落：idle 呼吸循环使同状态两次截图也有本底差异（实测本底 27~83），
+  基准不稳时这个判据会给出任意结论。
+- 服务进程会静默消失（8777/8778 的 python 被回收），探测读到白屏后算出「差 0.00 → 回落生效」。
+  **所有画廊验证脚本开头必须先 `ensure_servers.py` 并做渲染门禁**，不过就 exit 2 不出结论。
+- 一次偶发 `xhr.onabort` 不能定性为缺陷：benningdun_2 重试 3 次全部正常。
+
+**涉及**：`gallery_src/index.html`、`scripts/build_motion_chain_map.py`、
+`scripts/diag/{verify_label_ticker,verify_switch_params,probe_looptime2,analyze_gallery_diff,verify_login_return2,compare_galleries,ensure_servers}.py`。
+相关：§134（ConstantClip 丢曲线，本轮已用 `L2D_MOTION_EMIT_CONST=1` 补齐并换入）、§135。
