@@ -128,6 +128,9 @@ def main():
         _qs.append("diagpost=" + _up.quote(DIAGPOST, safe=""))
         _qs.append("diagframes=%d" % DIAGFRAMES)
         _qs.append("diagstep=%d" % DIAGSTEP)
+    # 每次探针都用唯一时间戳：http.server 会发 Last-Modified，浏览器缓存会命中旧 index.html/
+    # motion_chain.json，导致「代码改了但测试结果没变」的假阴性（2026-10-23 实测踩到）。
+    _qs.append("_t=%d" % int(time.time() * 1000))
     flags.append(URL + (("?" + "&".join(_qs)) if _qs else ""))
     proc = subprocess.Popen(flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -174,6 +177,8 @@ def main():
 
     cmd("Page.enable")
     cmd("Runtime.enable")
+    cmd("Network.enable")
+    cmd("Network.setCacheDisabled", {"cacheDisabled": True})
     # 精确注入 DPR：非整数缩放（1.5）只有这条路走得通。
     # --no-emul：完全不动设备度量，用系统真实 DPI + 真实窗口合成路径（用户环境原样）。
     if NO_EMUL:

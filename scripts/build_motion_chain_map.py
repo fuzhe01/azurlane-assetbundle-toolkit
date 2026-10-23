@@ -230,9 +230,13 @@ def build_model_chain(model_dir, model):
         if not cands:
             continue
 
-        # touch_drag* 是循环短动作，用 raw_sse（不除 range）；touch_idle* 用 norm。
-        # 两者现已含漏参数（按 end-0 计入），覆盖度不再是盲区。
-        metric = 'raw_sse' if a.startswith('touch_drag') else 'norm'
+        # 计分口径：**全库统一 raw_sse**（2026-10-23 用户拍板，见 §138）。
+        # 原先是 touch_drag* 用 raw_sse、touch_idle* 用 norm，但 norm = Σ(d/range)²/N 会让
+        # 「实际几何差异最大的候选」拿到最小值得选：实测 ougen_8/touch_idle14 里
+        # idle5 raw 排名 11 / norm 排名 1（被选中），而用户在游戏里确认正确答案 idle9
+        # raw 排名 1（raw=680，最小）/ norm 排名 11。两种排序完全背离。
+        # 全库影响面：touch_idle* 共 1945 条，口径切换后 363 条(18.7%)候选变化，用户确认切换。
+        metric = 'raw_sse'
         cands.sort(key=lambda x: (x[metric], -x['n_params'],
                                   LEGACY_PREF.index(x['group'])
                                   if x['group'] in LEGACY_PREF else 99))

@@ -1374,8 +1374,14 @@ async function renderLive2D(s, sk){
        组名 = 强制回落到该组，覆盖 motion_chain.json 里按「末帧 vs idle 首帧差异度」算出的 best。
        为什么需要覆盖：差异度是几何量，算不出「游戏里作者安排的衔接」——ougen_8 的 touch_idle14
        算法给 idle5(norm=2.53)，但游戏实际回 idle9，用户实测 idle5 明显不衔接。 */
+    /* 回落的手工修正表（2026-10-23 用户按游戏行为确认）：
+       '__hold__' = 播完**不回落**，停在最后一帧（effect 类语义是「暂停当前动作」，回落反而打断它）；
+       组名 = 强制回落到该组，覆盖 motion_chain.json 算出的 best。
+       历史：这里曾有一条 touch_idle14:'idle9' 用来绕过 norm 口径的错误选择；
+       2026-10-23 全库表已切到 raw_sse（§138），算法自己就能选出 idle9，故该条已删除。
+       保留机制本身，用于「算法算不出、但游戏行为明确」的个别动作。 */
     const FALLBACK_FIX={
-      ougen_8:{ effect:'__hold__', touch_idle14:'idle9' }
+      ougen_8:{ effect:'__hold__' }
     };
     const _ff=FALLBACK_FIX[sk.key]||null;
     const _ret=(dst)=>{ const defs=mm.definitions[dst]||[]; if(!defs.length) return false;
@@ -1764,15 +1770,15 @@ async function renderLive2D(s, sk){
         ⚠️ STATE_TOGGLES 是模块级常量、_on/_tw 会跨 renderLive2D 残留——每次进模型必须重置，
         否则重进皮肤带着上一场的状态（_on=1 直接写新模型，跳过 stateCurOn 初始化）。 */
     const STOGS=STATE_TOGGLES[sk.key]||[];
-    /* ---------- 姿势基线钉值（2026-10-23，§138）----------
-       有些参数是**换装/场景级开关**：idle 动作里只写一个接近 0 的残值（甚至全 0），
-       而游戏主界面（home/login）把它固定在某个非 0 值上，那个值才决定部件该不该显示。
-       实测 ougen_8：Param211=30 → 左腿/脚 10 个 mesh op=1；=0 → 全部 op=0（腿消失）。
-       idle 只写 [0,8]，home/login 才是 30 —— 于是「进模型就少条腿」，点 touch_drag17
-       反而把 Param211 抬到 30 就出现了（这正是用户报的"消失/点击后出现"）。
-       钉法：每帧写在 beforeModelUpdate（motion 之后、渲染之前），只钉「动作没在驱动」的参数，
-       否则会盖掉动作本身的曲线（判定：该参数在当前动作组里没有曲线）。 */
-    const BASE_PINS={ ougen_8:{ Param211:30 } };
+    /* ---------- 姿势基线钉值（2026-10-23 已停用，勿重新启用）----------
+       曾试图把 ougen_8 的 Param211 每帧钉到 30（依据：=30 时腿 10/10 可见、=0 时全隐藏）。
+       ❌ 用户实测否决：钉值把 idle 的双腿动作**直接改变了**，而原本缺的左脚仍未出现。
+       说明 Param211 不是「该不该显示腿」的开关，而是**腿部的姿势/形态参数**（30 与 0 是两种腿姿，
+       不是显/隐）；把它钉死等于强行摆一个固定姿势，把 idle 本身的腿部动画盖掉。
+       教训：findop 只能证明「这个参数会改变该 mesh 的 opacity」，**不能证明它是显示开关**——
+       姿势参数也会通过换 keyform 改变可见部件的形状/遮挡，从而让 opacity 跟着变。
+       真正的判据必须同时满足：①改它能看到目标部件出现；②改它不会破坏该动作自身的其他部件表现。 */
+    const BASE_PINS={};
     for(const t of STOGS){ t._on=undefined; t._tw=null; t._sl=null;
       /* on/off 运行时解析：省略时 on=参数 max / off=参数 min（值域坑见 STATE_TOGGLES 头注释） */
       try{ const ix=core.getParameterIndex(t.id);

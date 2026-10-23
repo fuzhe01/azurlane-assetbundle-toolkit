@@ -7195,3 +7195,45 @@ norm 值高达 1739 说明某些参数 range 极小被异常放大）。**当前
 
 **涉及**：`gallery_src/index.html`（BASE_PINS / FALLBACK_FIX）、`scripts/diag/l2d_fallback_rank.py`、
 `scripts/diag/l2d_fallback_metric_ab.py`、`scripts/diag/l2d_hand_probe.py`。相关：§132/§135（状态开关）、§134（ConstantClip）。
+
+### §139. §138 的更正：Param211 是姿势参数不是显示开关 + 全库切换 raw_sse（2026-10-23）
+
+**更正一：§138 对 ougen_8 左腿的结论是错的**
+
+§138 曾判定「`Param211=30` → 腿显示、`=0` → 腿隐藏」，据此加了 `BASE_PINS` 每帧钉 30。
+**用户实测否决**：钉值把 idle 的双腿动作**直接改变了**，而原本缺的左脚仍未出现。
+
+错在哪：`--findop` 只能证明「改这个参数会让目标 mesh 的 opacity 变化」，
+**不能证明它是显示开关**——姿势参数通过换 keyform 改变形状/遮挡，opacity 也会跟着变。
+定量判据：同帧 A/B（`--abparam Param211`）差异 **236680 px = 4.6%**，横跨整个腿部；
+对照 `--abparam ShoseOff` 只有 33006 px = 0.64%（局部）。
+⇒ 差异面大 = 姿势/形态参数；差异面小且集中 = 局部开关。
+
+新判据（加进技能）：确认「显示开关」必须**同时**满足
+①改它目标部件出现；②**不破坏该动作自身其它部件的表现**。只看 ① 会误判。
+
+**更正二：idle9 根本没有 Param211 曲线**
+
+实测 12 个 idle 变体里 11 个都写 `Param211=[0,8]`（末值≈0），**唯独 idle9 完全不含该曲线**，
+所以它保持上一个动作的值。而全库驱动 `Param211` 的 47 个组**末值全部为 0**，
+`home`（主界面）才是从 30 起步、13.6s 后归 0 —— 30 是主界面常态，不是「腿可见」开关。
+⇒ 「idle9 里左脚不显示」与 §138 的钉值无关，是这条曲线缺失 + 该参数语义未定的组合问题，**仍未解决**。
+
+**更正三：全库回落口径已切换为 raw_sse（用户拍板）**
+
+`build_motion_chain_map.py` 的 `metric` 由「touch_drag* 用 raw_sse / touch_idle* 用 norm」统一为 `raw_sse`。
+重算结果（262 模型 / 6392 动作 / fallback 0）：
+- `ougen_8/touch_idle14`：`idle5` → **`idle9`**（raw=666.17 最小，与用户答案一致）
+- touch_idle* 1945 条中 **538 条（27.7%）**回落目标改变
+- 全表 6392 条中 3169 条变化（含 drag，因排序主键语义统一）
+- `FALLBACK_FIX` 里那条 `touch_idle14:'idle9'` 手工覆盖已删除（算法自己能选出），只保留 `effect:'__hold__'`
+
+**⚙️ 工具坑（本轮踩了两次，都是「改了没生效」）**
+1. `build_motion_chain_map.py` **必须带 `--write`** 才写产物；不带只打印不落盘（跑到最后一行说「已写」才是真写了）。
+2. CDP 探针会命中浏览器 HTTP 缓存：`http.server` 发 `Last-Modified`，改完 `index.html`/`motion_chain.json`
+   后探针仍读旧文件 → 假阴性。修法已内置：探针每次加 `_t=<毫秒时间戳>` + `Network.setCacheDisabled(true)`。
+
+**涉及**：`scripts/build_motion_chain_map.py`（metric 统一）、`gallery_src/index.html`（BASE_PINS 清空、FALLBACK_FIX 精简）、
+`scripts/diag/l2d_hand_probe.py`（缓存修复 + --abparam/--findop/--follow/--params 等）、
+`scripts/diag/l2d_fallback_rank.py`、`scripts/diag/l2d_fallback_metric_ab.py`。
+先读：§138（其中「左腿根因」一节已被本条更正）。
