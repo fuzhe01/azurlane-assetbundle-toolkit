@@ -60,10 +60,16 @@ ISO = "--isolate" in sys.argv
 NO_EMUL = "--no-emul" in sys.argv
 HD = "--hd" in sys.argv
 DIAGPOST = arg("--diagpost", "")
+SHIPARG = arg("--ship", "")
 HOLD = arg("--hold", 0, int)
 GPU = "--gpu" in sys.argv
 DIAGFRAMES = arg("--diagframes", 5, int)
 SCAN = "--scan" in sys.argv
+DUMPPARAMS = "--params" in sys.argv
+SETPARAM = arg("--setparam", "")   # 形如 ShoseOff=1：直接写参数（状态开关的真实路径）
+ABPARAM = arg("--abparam", "")     # 参数名：在同一帧内对比 0 与 1 两态（排除动作相位干扰）
+FOLLOW = arg("--follow", 0, int)   # 播完跟踪：采样 N 次 currentGroup/isFinished（验回落去向）
+FINDOP = arg("--findop", "")       # 目标 mesh：扫描哪个参数能改变它的 opacity/visible
 FORCEVIS = [x for x in (arg("--forcevis", "") or "").split(",") if x]
 DIAGSTEP = arg("--diagstep", 700, int)
 TAG = arg("--tag", "") or ("head" if HEADED else "hl") + f"_dpr{DPR:g}_{MOTION}"
@@ -112,6 +118,11 @@ def main():
     _qs = []
     if HD:
         _qs.append("handdebug")
+    if SHIPARG:
+        import urllib.parse as _up0
+        _qs.append("ship=" + _up0.quote(SHIPARG, safe=""))
+        if MOTION:
+            _qs.append("motion=" + _up0.quote(MOTION, safe=""))
     if DIAGPOST:
         import urllib.parse as _up
         _qs.append("diagpost=" + _up.quote(DIAGPOST, safe=""))
@@ -179,30 +190,49 @@ def main():
         proc.terminate()
         raise SystemExit("GALLERY 未就绪")
 
-    # ---- 1) 走真实点击路径打开模型 ----
-    open_js = r"""(async()=>{ try{
-      const t=ms=>new Promise(r=>setTimeout(r,ms));
-      const q=document.getElementById('search');
-      q.value=%s; q.dispatchEvent(new Event('input',{bubbles:true})); await t(900);
-      const card=[...document.querySelectorAll('.card')].find(c=>{const p=c.querySelector('.py');return p&&p.textContent.trim().startsWith(%s);});
-      if(!card) return 'ERR:card-not-found'; card.click(); await t(700);
-      const skin=document.querySelector('.skin[data-k="%s"]');
-      if(!skin) return 'ERR:skin-not-found'; skin.click(); await t(700);
-      const tb=[...document.querySelectorAll('#mTabs .tab')].find(x=>x.dataset.k==='live2d');
-      if(!tb||tb.classList.contains('dis')) return 'ERR:tab-disabled'; tb.click();
-      await t(7000);
-      const app=l2State&&l2State.app; if(!app) return 'ERR:no-app';
-      const mdl=app.stage.children[0]; if(!mdl||!mdl.internalModel) return 'ERR:no-model';
-      window.__hp={app:app,mdl:mdl};
-      const im=mdl.internalModel;
-      return JSON.stringify({ok:1, dpr:window.devicePixelRatio, res:app.renderer.resolution,
-        w:app.renderer.width, h:app.renderer.height,
-        cssW:document.getElementById('l2wrap').clientWidth,
-        cssH:document.getElementById('l2wrap').clientHeight,
-        imW:im.width, imH:im.height, ppu:im.pixelsPerUnit,
-        mdlX:+mdl.x.toFixed(2), mdlY:+mdl.y.toFixed(2), mdlS:+mdl.scale.x.toFixed(5)});
-    }catch(e){ return 'ERR:'+String(e&&e.message||e); } })()""" % (
-        json.dumps(MODEL), json.dumps(MODEL), MODEL)
+    # ---- 1) 打开模型：--ship 走页面自己的 ?ship= 直达（全量索引下卡片是「船」而不是皮肤，
+    #        按皮肤 key 搜卡片会 card-not-found）；否则退回点击路径 ----
+    if SHIPARG:
+        open_js = r"""(async()=>{ try{
+          const t=ms=>new Promise(r=>setTimeout(r,ms));
+          for(let i=0;i<120;i++){ const a=(typeof l2State!=='undefined'&&l2State)?l2State.app:null;
+            const m=a&&a.stage&&a.stage.children[0];
+            if(m&&m.internalModel) break; await t(500); }
+          const app=l2State&&l2State.app; if(!app) return 'ERR:no-app';
+          const mdl=app.stage.children[0]; if(!mdl||!mdl.internalModel) return 'ERR:no-model';
+          window.__hp={app:app,mdl:mdl};
+          const im=mdl.internalModel;
+          return JSON.stringify({ok:1, dpr:window.devicePixelRatio, res:app.renderer.resolution,
+            w:app.renderer.width, h:app.renderer.height,
+            cssW:document.getElementById('l2wrap').clientWidth,
+            cssH:document.getElementById('l2wrap').clientHeight,
+            imW:im.width, imH:im.height, ppu:im.pixelsPerUnit,
+            mdlX:+mdl.x.toFixed(2), mdlY:+mdl.y.toFixed(2), mdlS:+mdl.scale.x.toFixed(5)});
+        }catch(e){ return 'ERR:'+String(e&&e.message||e); } })()"""
+    else:
+        open_js = r"""(async()=>{ try{
+          const t=ms=>new Promise(r=>setTimeout(r,ms));
+          const q=document.getElementById('search');
+          q.value=%s; q.dispatchEvent(new Event('input',{bubbles:true})); await t(900);
+          const card=[...document.querySelectorAll('.card')].find(c=>{const p=c.querySelector('.py');return p&&p.textContent.trim().startsWith(%s);});
+          if(!card) return 'ERR:card-not-found'; card.click(); await t(700);
+          const skin=document.querySelector('.skin[data-k="%s"]');
+          if(!skin) return 'ERR:skin-not-found'; skin.click(); await t(700);
+          const tb=[...document.querySelectorAll('#mTabs .tab')].find(x=>x.dataset.k==='live2d');
+          if(!tb||tb.classList.contains('dis')) return 'ERR:tab-disabled'; tb.click();
+          await t(7000);
+          const app=l2State&&l2State.app; if(!app) return 'ERR:no-app';
+          const mdl=app.stage.children[0]; if(!mdl||!mdl.internalModel) return 'ERR:no-model';
+          window.__hp={app:app,mdl:mdl};
+          const im=mdl.internalModel;
+          return JSON.stringify({ok:1, dpr:window.devicePixelRatio, res:app.renderer.resolution,
+            w:app.renderer.width, h:app.renderer.height,
+            cssW:document.getElementById('l2wrap').clientWidth,
+            cssH:document.getElementById('l2wrap').clientHeight,
+            imW:im.width, imH:im.height, ppu:im.pixelsPerUnit,
+            mdlX:+mdl.x.toFixed(2), mdlY:+mdl.y.toFixed(2), mdlS:+mdl.scale.x.toFixed(5)});
+        }catch(e){ return 'ERR:'+String(e&&e.message||e); } })()""" % (
+            json.dumps(MODEL), json.dumps(MODEL), MODEL)
     info = ev(open_js)
     try:
         info = json.loads(info)
@@ -241,6 +271,69 @@ def main():
         hdbox = ev("""(()=>{ const d=document.getElementById('l2handdbg');
           return d ? ('BOX_OK:'+d.textContent.slice(0,500)) : 'NO_BOX'; })()""", awaitp=False)
         print("[handdebug-box]", str(hdbox)[:700])
+
+    # ---- 1.5) 直接写参数（--setparam，形如 ShoseOff=1）----
+    # 为什么需要它：TouchDragN 里的「状态开关」在页面上不是播动作，而是 setParameterValueById；
+    # 只播同名动作组根本不会改变开关值（实测 ShoseOff 在两种路径下都停在 0）。
+    if SETPARAM:
+        try:
+            _k, _v = SETPARAM.split("=", 1)
+        except Exception:
+            proc.terminate()
+            raise SystemExit("--setparam 需形如 ShoseOff=1")
+        sp_js = """(()=>{ try{
+          const {app,mdl}=window.__hp; const core=mdl.internalModel.coreModel;
+          const k=%s, v=%f;
+          const set=()=>{ try{ core.setParameterValueById(k, v); }catch(e){} };
+          set();
+          /* 每帧在 model update 之后写回，防止被动作曲线/物理覆盖（LOW 优先级 = 后执行） */
+          PIXI.Ticker.shared.add(()=>set(), null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+          try{ app.render(); }catch(e){}
+          return 'set '+k+' = '+v;
+        }catch(e){ return 'ERR:'+e.message; } })()""" % (json.dumps(_k), float(_v))
+        print("[setparam]", ev(sp_js, awaitp=False))
+
+    # ---- 1.6) 同帧双态对比（--abparam <参数名>）：固定其它一切，只改这一个参数 ----
+    # 为什么必须同帧：两次独立会话的动作相位不同，整图差异能到 50%（全是姿势差），
+    # 只有「同一帧、只动一个参数」的差异才是这个开关真正控制的部件。
+    if ABPARAM:
+        ab_js = r"""(()=>{ try{
+          const {app,mdl}=window.__hp; const core=mdl.internalModel.coreModel;
+          const k=%s;
+          try{ mdl.internalModel.motionManager.stopAllMotions(); }catch(e){}
+          const cw=app.renderer.width, ch=app.renderer.height;
+          const cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+          const g=cv.getContext('2d',{willReadFrequently:true});
+          const grab=()=>{ g.clearRect(0,0,cw,ch); g.drawImage(app.view,0,0,cw,ch);
+            return g.getImageData(0,0,cw,ch).data; };
+          const draw=()=>{ try{ core.update(); }catch(e){} try{ app.renderer.render(app.stage); }catch(e){} };
+          core.setParameterValueById(k, 0); draw(); const A=grab();
+          core.setParameterValueById(k, 1); draw(); const B=grab();
+          let diff=0, x0=1e9,y0=1e9,x1=-1e9,y1=-1e9, dskin=0;
+          for(let y=0;y<ch;y++){ for(let x=0;x<cw;x++){
+            const p=((y*cw)+x)*4;
+            const dd=Math.abs(A[p+3]-B[p+3])+Math.abs(A[p]-B[p])+Math.abs(A[p+1]-B[p+1])+Math.abs(A[p+2]-B[p+2]);
+            if(dd<=30) continue;
+            diff++; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+            const r=B[p],gg=B[p+1],bb2=B[p+2];
+            if(r>110&&gg>60&&bb2>40&&r>gg&&gg>=bb2&&(r-bb2)>18&&(r-gg)>6) dskin++;
+          }}
+          /* 差异区的「一态平均色」：判断消失的是肤色(腿)还是衣物 */
+          let sumA=[0,0,0], sumB=[0,0,0], n=0;
+          for(let y=0;y<ch;y++){ for(let x=0;x<cw;x++){
+            const p=((y*cw)+x)*4;
+            const dd=Math.abs(A[p+3]-B[p+3])+Math.abs(A[p]-B[p])+Math.abs(A[p+1]-B[p+1])+Math.abs(A[p+2]-B[p+2]);
+            if(dd<=30) continue; n++;
+            sumA[0]+=A[p];sumA[1]+=A[p+1];sumA[2]+=A[p+2];
+            sumB[0]+=B[p];sumB[1]+=B[p+1];sumB[2]+=B[p+2];
+          }}
+          return JSON.stringify({param:k, canvas:[cw,ch], diffPx:diff, diffSkin:dskin,
+            bbox:[x0,y0,x1,y1],
+            avgShose0:[Math.round(sumA[0]/Math.max(1,n)),Math.round(sumA[1]/Math.max(1,n)),Math.round(sumA[2]/Math.max(1,n))],
+            avgShose1:[Math.round(sumB[0]/Math.max(1,n)),Math.round(sumB[1]/Math.max(1,n)),Math.round(sumB[2]/Math.max(1,n))]});
+        }catch(e){ return 'ERR:'+e.message; } })()""" % json.dumps(ABPARAM)
+        print("[abparam]", str(ev(ab_js, awaitp=False))[:800])
+        shot(TAG + "_ab")
 
     # ---- 2) 播动作（走页面自己的 play 入口 window.__l2play，不直接调 runtime 的 startMotion）
     # 用户真实路径是下拉/「▶ 全部」→ play(g)：其中有语音、标签、lastGroup 记录、回落映射。
@@ -378,6 +471,25 @@ def main():
         proc.terminate()
         raise SystemExit("采样失败: " + str(raw)[:300])
 
+    # ---- 全参数快照（--params）：定位「某部件被参数间接隐藏/显示」时用 ----
+    if DUMPPARAMS:
+        pj = r"""(()=>{ try{
+          const {mdl}=window.__hp; const core=mdl.internalModel.coreModel;
+          const ids=(core._model&&core._model.parameters&&core._model.parameters.ids)||[];
+          const out={};
+          for(let i=0;i<ids.length;i++){ try{ out[ids[i]]=+core.getParameterValueByIndex(i).toFixed(4); }catch(e){} }
+          const dflt={};
+          for(let i=0;i<ids.length;i++){ try{ dflt[ids[i]]=+core.getParameterDefaultValue(i).toFixed(4); }catch(e){} }
+          return JSON.stringify({ids:ids.length, vals:out, defaults:dflt});
+        }catch(e){ return 'ERR:'+e.message; } })()"""
+        pv = ev(pj, awaitp=False)
+        pp = os.path.join(SHOTS, TAG + "_params.json")
+        try:
+            open(pp, "w", encoding="utf-8").write(pv if isinstance(pv, str) else json.dumps(pv))
+            print("[params]", pp)
+        except Exception as e:
+            print("[params] 写失败", e)
+
     # ---- 强制显示指定 mesh（--forcevis）：判定「op=1 却 vis=0」的部件到底长什么样 ----
     # Cubism 的 vis 为 false 时渲染器整块跳过；patch 成 true 且只留该 mesh，
     # 就能看出它是手指/手掌还是本就该隐藏的备用件。
@@ -478,6 +590,72 @@ def main():
         for x in skinny:
             print(f"  {x['id']:<12} skin={x['skin']:>6} ink={x['ink']:>6} ratio={x['ratio']} bb={x['bb']}")
         print("[scan] 明细:", sp)
+
+    # ---- 找 opacity 控制参数（--findop <meshId>）：Cubism 的 drawable 透明度由参数绑定驱动，
+    #      高层 API 不暴露"哪个参数控制它"，只能逐个参数试值后看 opacity 是否变化。 ----
+    if FINDOP:
+        fo_js = r"""(async()=>{
+          const t=ms=>new Promise(r=>setTimeout(r,ms));
+          const {app,mdl}=window.__hp; const core=mdl.internalModel.coreModel;
+          try{ mdl.internalModel.motionManager.stopAllMotions(); }catch(e){}
+          const target=%s;
+          const gi=core.getDrawableIndex(target);
+          if(gi<0) return 'ERR:no-such-mesh';
+          const ids=(core._model&&core._model.parameters&&core._model.parameters.ids)||[];
+          const base=core.getDrawableOpacity(gi), baseVis=core.getDrawableDynamicFlagIsVisible(gi);
+          const hits=[];
+          const orig={};
+          for(let i=0;i<ids.length;i++){ try{ orig[ids[i]]=core.getParameterValueByIndex(i); }catch(e){} }
+          const setAll=(k,v)=>{ try{ core.setParameterValueById(k,v); }catch(e){} };
+          const restore=()=>{ for(const k in orig){ setAll(k, orig[k]); } };
+          for(let i=0;i<ids.length;i++){
+            const p=ids[i];
+            let lo=0, hi=1;
+            try{ lo=core.getParameterMinimumValue(i); hi=core.getParameterMaximumValue(i); }catch(e){}
+            let best=null;
+            for(const v of [lo,hi]){
+              setAll(p,v); try{ core.update(); }catch(e){}
+              let op=0, vis=false;
+              try{ op=core.getDrawableOpacity(gi); vis=core.getDrawableDynamicFlagIsVisible(gi); }catch(e){}
+              setAll(p, orig[p]);
+              if(Math.abs(op-base)>0.05 || vis!==baseVis){
+                best={param:p, val:v, op:+op.toFixed(3), vis:vis?1:0};
+                break;
+              }
+            }
+            if(best) hits.push(best);
+            if(i%%40===0) await t(0);
+          }
+          restore(); try{ core.update(); }catch(e){}
+          return JSON.stringify({mesh:target, baseOp:+base.toFixed(3), baseVis:baseVis?1:0,
+            hits:hits.slice(0,40), n_hits:hits.length});
+        })()""" % json.dumps(FINDOP)
+        fo = ev(fo_js)
+        print("[findop]", str(fo)[:1500])
+
+    # ---- 播完跟踪（--follow N）：动作结束后落在哪个组，是「回落对不对」的唯一判据 ----
+    # 只看 currentGroup / isFinished；不依赖画面，因此不受低帧率伪影影响。
+    if FOLLOW:
+        fl_js = r"""(async()=>{
+          const t=ms=>new Promise(r=>setTimeout(r,ms));
+          const {mdl}=window.__hp; const mm=mdl.internalModel.motionManager;
+          const out=[];
+          for(let i=0;i<%d;i++){
+            out.push({i:i, cur:(mm.state&&mm.state.currentGroup)||null,
+                      fin:!!(mm.state&&mm.state.isFinished),
+                      label:(document.getElementById('l2Curr')||{}).textContent||null});
+            await t(%d);
+          }
+          return JSON.stringify(out);
+        })()""" % (FOLLOW, STEP)
+        rawf = ev(fl_js)
+        try:
+            seq = json.loads(rawf)
+        except Exception:
+            seq = []
+        print("[follow]", json.dumps(seq, ensure_ascii=False)[:1200])
+        shots = sorted(set(x["cur"] for x in seq if x.get("cur")))
+        print("[follow] 出现过的组:", shots)
 
     shot(TAG + "_page")
     bad = 0

@@ -1369,6 +1369,15 @@ async function renderLive2D(s, sk){
        ⚠️ 额外加一个 ticker 看门狗：动作播完时库若没及时请求 idle（currentGroup 变 null），
        下一帧直接 startMotion 回落，解决"卡在最后一帧几秒钟"。 */
     let _fbPending=false;
+    /* 回落的手工修正表（2026-10-23 用户按游戏行为确认）：
+       '__hold__' = 播完**不回落**，停在最后一帧（effect 类语义是「暂停当前动作」，回落反而打断它）；
+       组名 = 强制回落到该组，覆盖 motion_chain.json 里按「末帧 vs idle 首帧差异度」算出的 best。
+       为什么需要覆盖：差异度是几何量，算不出「游戏里作者安排的衔接」——ougen_8 的 touch_idle14
+       算法给 idle5(norm=2.53)，但游戏实际回 idle9，用户实测 idle5 明显不衔接。 */
+    const FALLBACK_FIX={
+      ougen_8:{ effect:'__hold__', touch_idle14:'idle9' }
+    };
+    const _ff=FALLBACK_FIX[sk.key]||null;
     const _ret=(dst)=>{ const defs=mm.definitions[dst]||[]; if(!defs.length) return false;
       const idx=Math.floor(Math.random()*defs.length);
       const pr=(MP&&MP.NORMAL)||2;   // 压过正在播的 idle(1)，又不像 FORCE 那样硬打断
@@ -1380,10 +1389,14 @@ async function renderLive2D(s, sk){
       if(_fbPending) return false;
       const lg=lastGroup, low=((lg||'').toLowerCase());
       if(!lg || idleSet.has(lg)) return false;
+      /* 手工修正优先：'__hold__' 直接吞掉回落请求（库与看门狗两条路径都走这里） */
+      const _fix=(_ff&&_ff[lg])||null;
+      if(_fix==='__hold__') return true;
       let dst=null;
+      if(_fix && mm.definitions[_fix]) dst=_fix;
       // touch_idle*/touch_drag*：用表 best（新口径：drag 用 raw_sse，idle 用 norm，均不做覆盖度排除）。
       // 其它长动作回默认 idleGroup。
-      if(!/^touch_(idle|drag)/.test(low)) dst=idleGroup;
+      else if(!/^touch_(idle|drag)/.test(low)) dst=idleGroup;
       else { const c=chainModel&&chainModel.chain[lg];
         dst=(c&&c.best&&mm.definitions[c.best])?c.best:null;
         if(!dst) dst=idleGroup; }
@@ -1751,6 +1764,15 @@ async function renderLive2D(s, sk){
         ⚠️ STATE_TOGGLES 是模块级常量、_on/_tw 会跨 renderLive2D 残留——每次进模型必须重置，
         否则重进皮肤带着上一场的状态（_on=1 直接写新模型，跳过 stateCurOn 初始化）。 */
     const STOGS=STATE_TOGGLES[sk.key]||[];
+    /* ---------- 姿势基线钉值（2026-10-23，§138）----------
+       有些参数是**换装/场景级开关**：idle 动作里只写一个接近 0 的残值（甚至全 0），
+       而游戏主界面（home/login）把它固定在某个非 0 值上，那个值才决定部件该不该显示。
+       实测 ougen_8：Param211=30 → 左腿/脚 10 个 mesh op=1；=0 → 全部 op=0（腿消失）。
+       idle 只写 [0,8]，home/login 才是 30 —— 于是「进模型就少条腿」，点 touch_drag17
+       反而把 Param211 抬到 30 就出现了（这正是用户报的"消失/点击后出现"）。
+       钉法：每帧写在 beforeModelUpdate（motion 之后、渲染之前），只钉「动作没在驱动」的参数，
+       否则会盖掉动作本身的曲线（判定：该参数在当前动作组里没有曲线）。 */
+    const BASE_PINS={ ougen_8:{ Param211:30 } };
     for(const t of STOGS){ t._on=undefined; t._tw=null; t._sl=null;
       /* on/off 运行时解析：省略时 on=参数 max / off=参数 min（值域坑见 STATE_TOGGLES 头注释） */
       try{ const ix=core.getParameterIndex(t.id);
@@ -1774,6 +1796,33 @@ async function renderLive2D(s, sk){
         }
       }catch(e){} } };
     mdl.internalModel.on('beforeModelUpdate', stateApply);
+    /* 姿势基线钉值落地：只钉「当前动作组没有曲线驱动」的参数，避免盖掉动作曲线。
+       动作组集合在模型加载后即固定（mm.definitions），每帧只做一次 Set 查询。 */
+    { const _pins=BASE_PINS[sk.key]||null;
+      if(_pins){
+        const _pinKeys=Object.keys(_pins);
+        const _pinT=()=>{ try{
+          const cur=mm.state&&mm.state.currentGroup;
+          const defs=(cur&&mm.definitions&&mm.definitions[cur])||[];
+          /* 动作曲线清单：从已解析的 motion 对象拿参数 id 集合（拿不到就退化为「无驱动」） */
+          let drove=null;
+          try{
+            const m=defs[0]&&defs[0]._motion;
+            if(m&&m._model&&m._model.curves){
+              drove=new Set();
+              for(const c of m._model.curves){
+                const id=c._targetId||(c.target&&c.target._id)||c._id;
+                if(id) drove.add(id);
+              }
+            }
+          }catch(e){}
+          for(const k of _pinKeys){
+            if(drove && drove.has(k)) continue;     // 当前动作在驱动它 → 不覆盖
+            try{ core.setParameterValueById(k, _pins[k]); }catch(e){}
+          }
+        }catch(e){} };
+        mdl.internalModel.on('beforeModelUpdate', _pinT);
+      } }
     /* ?freezehand 诊断开关（2026-10-21 手掌消失排查终局对照）：
        把所有参数名含 Hand 的参数每帧钉回 moc3 默认值 = 模拟 EMIT_CONST 换入前
        （无 constant 曲线、参数停默认位）的手部状态。用户真实浏览器对照：
@@ -2776,10 +2825,21 @@ apply();
   try{
     const sp=new URLSearchParams(location.search).get('ship');
     const go=()=>{ try{
-      const s=((window.GALLERY&&GALLERY.ships)||[]).find(x=>x.id===sp);
+      /* sp 既可以是船 id（ougen），也可以是皮肤 key（ougen_8）。
+         全量索引里船 id 是归一化基名、皮肤 key 才带序号；只按船 id 找会让
+         ?ship=ougen_8 直接落空（用户与探针都按皮肤名点，两种都必须认）。 */
+      let s=null, sk=null;
+      s=((window.GALLERY&&GALLERY.ships)||[]).find(x=>x.id===sp);
+      if(s){ sk=(s.skins||[])[0]||null; }
+      else {
+        for(const sh of ((window.GALLERY&&GALLERY.ships)||[])){
+          const k=(sh.skins||[]).find(z=>z.key===sp);
+          if(k){ s=sh; sk=k; break; }
+        }
+      }
       if(!s) return;
       openShip(s);
-      const sk=(s.skins||[])[0]; if(sk) setSkin(sk);
+      if(sk) setSkin(sk);
       const tb=[...document.querySelectorAll('#mTabs .tab')].find(x=>x.dataset.k==='live2d');
       if(tb && !tb.classList.contains('dis')) tb.click();
       /* &motion=<组名>：模型就绪后自动播该动作（真实浏览器取证用；__l2play 是页面自己的播放入口） */

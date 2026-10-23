@@ -7140,3 +7140,58 @@ idle9 的 93 条定值里 **9 条与默认 idle 不同**（Param345=-1.28、Para
 **涉及**：`gallery_src/index.html`（?ship/?motion/?diagpost、handdebug 修 bug）、
 `scripts/diag/l2d_hand_probe.py`、`scripts/diag/hand_diag_sink.py`、`scripts/diag/l2d_motion_curve_diff.py`。
 相关：§136（第一轮否证链，其中"同源""手部清单"两条已由本轮更正）。
+
+### §138. 左腿消失与回落错配：两个根因各自定位（2026-10-23）
+
+**A. 左腿消失 = 姿势基线参数被 idle 归零（非渲染 bug）**
+
+现象：ougen_8 进模型缺左腿（脚部最明显），点 touch_drag17 后腿出现；**画面无背景空洞**
+（实测腿部区域背景占比 0.0%，全画布背景仅 5.1%）⇒ 不是"漏画"，是"该显示的部件被参数隐藏"。
+
+定位链：
+1. 逐 mesh 对账（idle vs touch_drag17）找出发起显示的 44 个 mesh，其中 `ArtMesh507/509/518/519/520/748/749/750/230/231`
+   位于腿部；反向消失的是手指组 `ArtMesh17~31`。
+2. `PartOpacity` 曲线 0 条 ⇒ 腿是被**参数间接驱动 opacity**。
+3. `--findop ArtMesh518`（逐参数试值看 opacity 是否变化）命中 **`Param211`** 与 `Param195`：
+   `Param211=30 → 腿 op=1`；`=0 → op=0`。
+4. 曲线证据：`home`/`login` 把 `Param211` 固定在 **30**；idle 系列只写 `[0,8]`（那是时间轴残值）；
+   `p_td17` 快照实测 `Param211=30`（所以点一下就出现）。
+5. 正反双向验证：`Param211=30` 时腿 10/10 可见；`Param211=0` 时 0/10。
+
+**根因**：`Param211` 是**场景级姿势开关**，游戏主界面靠 home/login 把它钉在 30；我们的播放器从 idle 起步，
+idle 把它写成 0 → 腿消失。修法 = `BASE_PINS` 每帧在 `beforeModelUpdate` 钉回 30，
+**但只钉「当前动作组没有曲线驱动」的参数**（否则会盖掉动作本身）。
+修复后 idle 下腿 10/10 可见（改前 0/10）。
+
+**B. 回落错配 = norm 归一化把「实际差异最大」洗成「最优」**
+
+用户报 `ougen_8/touch_idle14` 回落到不衔接的 idle5，游戏里应回 idle9。重算 13 个候选：
+
+| 组 | raw_sse（实际几何差异） | raw 排名 | norm（算法依据） | norm 排名 |
+|---|---|---|---|---|
+| **idle9** | **680.18（最小）** | **1** | 2.6454 | **11** |
+| **idle5** | 2994.44 | 11 | **2.5370（最小）** | **1** ← 算法选中 |
+
+**两种排序完全背离**。根因在 `build_motion_chain_map.py:220`：
+`norm += (d / range)²`，`range` = 该参数在各 idle 候选首帧间的值域。差异若落在**值域大的参数**上，
+除完 range 接近 0；落在小值域参数上则被放大 ⇒ 实际差异第 11 名的 idle5 拿到 norm 第 1。
+
+全库影响面（`scripts/diag/l2d_fallback_metric_ab.py`）：touch_idle* 共 **1945** 条，
+raw_sse 与 norm 选同一候选 **1582（81.3%）**，**不一致 363（18.7%）**。
+⇒ 不能只凭单案例全库切换口径（363 条里也有 norm 更合理的情形，如 `baifeng_2/touch_idle1`
+norm 值高达 1739 说明某些参数 range 极小被异常放大）。**当前处置：按用户确认的案例建 `FALLBACK_FIX`
+手工修正表（低风险、可逐条追加），全库口径切换待用户拍板。**
+
+**处置**：
+- `FALLBACK_FIX`（`gallery_src/index.html`）：`ougen_8:{ effect:'__hold__', touch_idle14:'idle9' }`。
+  `__hold__` = 播完不回落（effect 语义是「暂停当前动作」，回落会打断它）。
+- 验证：`effect` 播完 14 次采样全停在 `effect`（不回落 ✓）；`touch_idle14` 播完序列出现 `idle9` ✓。
+- 工具：`scripts/diag/l2d_fallback_rank.py`（单案例双口径排行）、
+  `scripts/diag/l2d_fallback_metric_ab.py`（全库影响面）、`l2d_hand_probe.py --findop/--abparam/--params/--follow`。
+
+**方法沉淀（换个模型也用得上）**：部件"该显示却不显示"时，不要先猜渲染；
+用 `--findop <meshId>` 逐参数试值看 opacity 是否翻转，能直接点名控制它的参数，
+再回到 motion3.json 比对「哪些组把它钉在非 0、哪些组归零」——比逐帧截图差分快一个数量级。
+
+**涉及**：`gallery_src/index.html`（BASE_PINS / FALLBACK_FIX）、`scripts/diag/l2d_fallback_rank.py`、
+`scripts/diag/l2d_fallback_metric_ab.py`、`scripts/diag/l2d_hand_probe.py`。相关：§132/§135（状态开关）、§134（ConstantClip）。
