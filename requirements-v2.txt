@@ -1,11 +1,17 @@
-# 画廊/逆向管线 运行依赖（Python >= 3.13；本机实测 3.14 + UnityPy 1.25.4 可跑，项目约定 3.13）
+# 画廊/逆向管线 运行依赖（Python 3.15 —— 2026-10-23 起项目约定；3.14 亦可跑，保留作对照/回退）
 #
 # 安装（在仓库根）：
 #   py -3 -m pip install -r requirements-v2.txt
-# 校验本次改动后依赖是否齐全 / 有无漏列：
-#   py -3 scripts/diag/scan_build_deps.py
+#   ⚠️ 3.15 上没有 UnityPy / lz4 的预编译轮子（PyPI 的 cp314 是最高档），pip 会转源码编译：
+#      需 MSVC BuildTools（本机 VS 18 BuildTools + Windows SDK 10 已具备），全程约 3-5 分钟。
+#   ⚠️ 国内网络下务必用阿里云或腾讯云源；清华源连 UnityPy 的 sdist 都没有：
+#      py -3 -m pip install -r requirements-v2.txt -i https://mirrors.aliyun.com/pypi/simple --timeout 120
+# 校验依赖是否齐全 / 有无漏列：
+#   py -3 scripts/diag/scan_build_deps.py      # 仅做 AST 静态扫描，不做安装验证，exit 0 不代表能用
+# 校验依赖真的可用（载荷级）：
+#   py -3 scripts/diag/check_env.py            # 同时确认当前解释器是约定版本
 #
-# 核心 6 个（2026-10-18 实测版本，主画廊 + 主管线必需）。
+# 核心 6 个（2026-10-23 在 3.15 实测通过，主画廊 + 主管线必需）。
 # 可选（纯 il2cpp/逆向辅助脚本才用到，需要时单独装）：
 #   capstone          # 仅 tools/sharecfg_re/08_disasm_method.py（L38 import）；无则它打印提示，不硬崩
 #   pycryptodome      # 项目刻意不引入：AES 走 openssl 子进程（见 03_try_block_ciphers.py L13 注释）；

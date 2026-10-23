@@ -26,7 +26,26 @@ SRC = os.path.join(ROOT, '.diag', 'sharecfg_re', 'cfg_json_scalar')
 DST = os.path.join(ROOT, 'inputs', 'azdata')
 
 TABLES = ['ship_skin_template', 'ship_data_statistics', 'ship_data_template']
-GAME_VERSION = '9.7.385'
+
+
+def _game_version():
+    """版本号只认 files/version.txt 这一个权威来源。
+
+    2026-10-23 之前的硬编码 `GAME_VERSION = '9.7.385'` 在游戏更新到 9.7.395 后
+    仍在台账里写 385 —— 数据是新的、标注是旧的，正是最容易被误信的假台账。
+    改为读盘：版本变了台账自动跟上，不需要记得改这里。
+    """
+    p = os.path.join(ROOT, 'files', 'version.txt')
+    try:
+        v = open(p, encoding='utf-8-sig').read().strip()
+        if v:
+            return v
+    except OSError:
+        pass
+    return 'unknown'
+
+
+GAME_VERSION = _game_version()
 
 
 def sha(b):
@@ -56,7 +75,9 @@ def main():
         'generated_at': datetime.date.today().isoformat(),
         'source': ('本机从 files/AssetBundles/sharecfgdata 用 '
                    'tools/sharecfg_re/37_parse_sharecfgdata.py --scalar-all 直接解出（非社区快照）'),
-        'note': '设备侧比社区 381 快照新；ship_skin_template 2870 / statistics 4123 / template 3972',
+        'note': ('设备侧比社区 381 快照新；本次条数 '
+                 + ' / '.join('%s %d' % (t.replace('ship_', '').replace('_', '')[:8], n)
+                              for t, n in zip(TABLES, [f['records'] for f in files]))),
         'files': files,
     }
     vp = os.path.join(DST, 'azdata_version.json')

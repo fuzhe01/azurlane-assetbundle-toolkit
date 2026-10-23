@@ -1,10 +1,10 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-21（状态开关四联修 §135）
+> **生成时间**: 2026-10-23（Python 运行时切至 3.15 + 环境自检落地）
 > **环境安装（换机器复刻先做）**：
->   1. 装 Python ≥3.13（本机实测 3.14，UnityPy 1.25.4 可跑；项目约定 3.13）
->   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`
->   3. 校验依赖齐全：`py -3 scripts/diag/scan_build_deps.py`（应报 6 个第三方；capstone/pycryptodome 仅为 tools/sharecfg_re 逆向辅助，可选）
+>   1. 装 Python **3.15**（2026-10-23 起本机约定；UnityPy 1.25.4 无 cp315 预编译轮子，需源码编译，见 §2 Python 行）。⚠️ 本机同时装着 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（现固定 3.15），**跑之前先 `py -3 scripts/diag/check_env.py`** 确认实际解释器与依赖
+>   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`（3.15 上必须走阿里云/腾讯云源，清华源连 sdist 都没有；需 MSVC BuildTools 编译 UnityPy + lz4）
+>   3. 校验依赖**真的可用**：`py -3 scripts/diag/check_env.py`（载荷级验证，比 `scan_build_deps.py` 强 —— 后者只做 AST 静态扫描，import 缺失也照样 exit 0）
 >   4. 外部工具走 `scripts/paths.py`（adb/vgmstream/ffmpeg/chrome；env 或已知安装位兜底）
 >   5. 画廊前端 vendor：`py -3 scripts/fetch_gallery_vendor.py --check`（4 个第三方 JS；spine-all.js 已换官方上游源；缺件用 `py -3 scripts/fetch_gallery_vendor.py` 补齐）
 
@@ -137,7 +137,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 
 | 工具 | 版本 | 用途 | 状态 |
 |---|---|---|---|
-| Python | 3.11 / 3.13 | 运行脚本 | ✅（v2 用 `py -3`）｜⚠️ 本机实测 `py` = Python 3.14（无 3.13），UnityPy 1.25.4 已装于 3.14 可跑，偏离约定 3.13 |
+| Python | **3.15** | 运行脚本 | ✅（v2 用 `py -3`）｜**2026-10-23 起约定 3.15**：UnityPy 1.25.4 全部核心依赖已实测可用（5 项载荷级验证 + 3 个核心脚本与 3.14 输出逐字相同）。⚠️ 官方无 cp315 轮子，UnityPy/lz4 由本机 MSVC 18 编译；`%APPDATA%\py.ini` 已固定默认 3.15，3.14 保留作对照/回退 |
 | UnityPy | 1.25.3 | 读取/导出 AssetBundle | ✅ 用户级 pip |
 | Pillow | 12.x | 图像处理 | ✅ |
 | ffmpeg | 7.1 | 音视频处理 | ✅ |
@@ -349,6 +349,10 @@ motion 大面积失效源于我们自己的解析器（帧 0 护栏 + 曲线名�
 - **运行时库台账**（2026-09-26）：`vendor/` 4 个第三方 JS 只在 gitignore 目录里，版本/来源/sha256 记进 **`gallery_src/vendor/MANIFEST.json`**（3 个的 URL 当日重新下载按哈希逐字节对拍命中），换机器跑 `py -3 scripts/fetch_gallery_vendor.py` 补齐（**哈希+字节数双对上才落盘**，`--check` 只校验）。⚠️ **唯一残留缺口**：`vendor/spine/spine-all.js`（实测 3.8.75，非旧文档写的 3.8.99）没有可按哈希校验的下载源——本机这份与上游官方 3.8 构建不同（499623B ≠ 501448B），只能从 `tools/spine-viewer/spine-runtime/` 取，而 `tools/` 也在 gitignore。要彻底封掉需二选一：把 501KB 提交进仓库（先确认 Spine Runtimes License 允许），或改用可哈希校验的上游构建并回归 Spine 播放。**未拍板**。
 - **限制**：~~Live2D 暂只显示贴图~~ **已接动作播放**（2026-09-20，`vendor/live2d/` 三脚本本地就位，见 §6.7）；Live2D/Spine 标签均需走本地服务器（file:// 下 fetch 被 CORS 拦）。运行时库的可复现性与那条未拍板的残留缺口见上一条。
 - **5 样本 Live2D 预览线（2026-10-20）**：元数据输入（inputs/azdata + inputs/gamecfg 共 11 项）缺失 ⇒ `build_gallery_index.py` 完整链跑不通 ⇒ **手写最小 `Output/gallery_v2/index.js`**（5 船纯 Live2d 皮肤，`live2d`+`live2dBase` 字段齐；`hasCn:false` 无中文名映射）。vendor 4/4 就位（哈希全对上：live2d 三件 + spine 官方构建；本机沙箱/直连均不可达，副本取自旧机 `D:\Azur Lane Assets\Output\gallery_v2\vendor\`，`fetch --check` 4/4 绿）。`motion_chain.json` 已生成（5 模型 / 226 动作）。8777 服务器资源全 200（含 5 模型 model3/moc3/贴图/motion）。**待用户浏览器验收 drag 拖鞋**（ougen_8 Ctrl/⌘+左键拖鞋子区）。⚠️ MANIFEST 曾因 f2ef0c0 改 patched.js 未回写 sha 而漂移，已修（bytes/sha 换成实测）。
+- **✅ 11 项权威输入已恢复（2026-10-23，游戏版本 9.7.385 → 9.7.395）**：新 clone 后 `check_inputs.py` 从 11 项缺失转为 **2 个台账全部一致、exit 0**。重建链路 `34 → 35 → 41 → 37 --scalar-all → 42 / 45 / 46 / 47 / 48`（azdata 另走 `publish_azdata_local.py`），原始数据取自本机 `files/AssetBundles/sharecfgdata`（32 表 / 113.4 MB）与 `files/AssetBundles/scripts64`。
+  - **链路可信度有硬证据**：`voice_actor_cn.json`（525 行 / 10827 B）与 `character_voice.json`（85 行 / 12505 B）重建后 sha256 与旧台账**逐字节相同**；azdata 的 `statistics`(6438126 B) / `template`(3745427 B) 字节数亦完全相同。
+  - **变了的就两行**：`ship_skin_words` 2574→2575、`ship_skin_template` 2870→2871（azdata 同名表 5060419→5062169），增量是**尼尔联动角色 A2 / 2B**（id 11700010 / 11700020 / 11700021），属真实版本更新而非解析错误。
+  - ⚠️ **版本号此前是硬编码的假台账**：`42_publish_gamecfg.py` 与 `publish_azdata_local.py` 都把 `9.7.385` 写死，游戏已到 395 仍在台账里记 385。已改为**从 `files/version.txt` 读盘**，版本号只有一个权威来源。
 
 ---
 

@@ -3,17 +3,17 @@
   "purpose": "azdata 权威元数据快照的完整性台账。这些 JSON 是 build_ship_meta.py / extract_live2d_voice.py 的唯一权威输入，也是 sharecfgdata 逆向（tools/sharecfg_re）的已知明文黄金基准；上游快照会滞后于游戏版本，且 sharecfgdata 本机无解，故丢失后不可复原。2026-09-24 从临时目录 .diag/ 迁到本目录（.diag 约定为可随时清空）。",
   "provenance": {
     "kind": "本机解出（非社区快照）",
-    "local_landed_at": "2026-10-16",
-    "game_resources_version": "9.7.385",
+    "local_landed_at": "2026-10-23",
+    "game_resources_version": "9.7.395",
     "regenerate_via": "tools/sharecfg_re/37_parse_sharecfgdata.py --scalar-all --yes + scripts/diag/publish_azdata_local.py",
     "note": "从设备侧 sharecfgdata 直接解出，随游戏更新从 build_ship_meta / extract_live2d_voice 消费端自动覆盖社区快照。"
   },
   "files": [
     {
       "path": "azdata_ship_skin_template.json",
-      "bytes": 5060419,
-      "sha256": "25eb4a720cc00901533bc86070f9bb0c06c58a48d2d969ddb1785e9a114586a6",
-      "records": 2870
+      "bytes": 5062169,
+      "sha256": "df0f96a6e7d8e12c3d48b745b5dff57afa7c1bdce76700ca23cedd184e076a6a",
+      "records": 2871
     },
     {
       "path": "azdata_ship_data_statistics.json",

@@ -55,8 +55,8 @@ PROJECT_STATUS.md 各部分进度使用以下格式：
 - 脚本位于 `scripts/` 目录；**可复用的诊断/验证/一次性管线工具放 `scripts/diag/`（必须入库）**。
 - `.diag/` 是**临时产物区**（截图、headless Chrome profile、扫描中间件），已写进 `.gitignore`，**不放任何唯一副本的代码**。
 - ⚠️ **清理磁盘前必须先核对 `docs/WORKFLOWS.md` WF-15 的「承重文件白名单」**：`inputs/azdata/*.json` 是 `scripts/build_ship_meta.py` 的唯一权威元数据输入，且社区快照会滞后、游戏配置包 `sharecfgdata/*` 为自定义加密无法本机重取——误删不可复原。2026-09-24 已从 `.diag/` 迁到 `inputs/azdata/`（数据本体不入库，台账 `inputs/azdata/MANIFEST.json`，校验 `py -3 scripts/diag/check_inputs.py`）。
-- 使用 Python 3.13 + UnityPy 1.25.0
-- 运行前先确认依赖已安装
+- 使用 Python **3.15** + UnityPy 1.25.4（2026-10-23 起约定）。⚠️ 本机同时存在 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（已固定 3.15）；**跑脚本前先 `py -3 scripts/diag/check_env.py`** —— 它做载荷级验证，能抓出「import 成功但 C 扩展其实没加载」这类假绿灯
+- 运行前先确认依赖已安装（`scan_build_deps.py` 只做 AST 静态扫描、不验证安装，**不能**当可用性判据）
 - 大批量操作（>1000 文件）先小规模测试
 - **全量运行前必须确认**：修改脚本后，先用 1-3 个样本测试，将结果展示给用户确认正确后，再执行全量运行。未经用户确认不得全量运行。
 
