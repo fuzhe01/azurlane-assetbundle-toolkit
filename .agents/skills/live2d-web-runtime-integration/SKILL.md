@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.10
+version: 1.10.11
 ---
 
 # Live2D 网页运行时集成
@@ -662,3 +662,38 @@ const dvis = (i) => core.getDrawableDynamicFlagIsVisible(i);  // ✓
 
 **涉及**：`gallery_src/index.html`（三个取证参数）、`scripts/diag/l2d_hand_probe.py`、
 `scripts/diag/hand_diag_sink.py`、`scripts/diag/l2d_motion_curve_diff.py`、`scripts/diag/hand_skin_map.py`。
+
+## 19. 部件「该显示却不显示」先找参数，不要先怀疑渲染（2026-10-23，version 1.10.11）
+
+### 19.1 判据：`--findop` 直接点名控制参数
+Cubism 高层 API 不暴露「哪个参数控制这个 drawable 的透明度」。做法是**逐参数试极值**：
+对每个 `parameters.ids` 设 `min`/`max` → `core.update()` → 读 `getDrawableOpacity`，
+`opacity` 或 `dynamicFlagIsVisible` 翻转的就是控制参数。一次扫描（582 参数）即可点名，
+比逐帧截图差分快一个数量级。
+
+实证（ougen_8 左腿）：`Param211=30 → 腿 op=1`；`=0 → op=0`。
+再回 motion3.json 比对：`home`/`login` 把它钉在 30，idle 系列只写 `[0,8]` 残值
+⇒ 「进模型少条腿、点某个区反而出现」的完整因果。
+
+### 19.2 场景级姿势开关要「钉基线」，且只钉未驱动项
+换装/场景类参数（腿、道具、装饰）的正确值常由**主界面动作**（home/login）决定，
+在待机 idle 里只留接近 0 的残值。播放器从 idle 起步就会缺件。
+修法：每帧在 `beforeModelUpdate`（motion 之后、渲染之前）钉回基线值，
+**但必须跳过「当前动作组有曲线驱动」的参数**，否则会盖掉动作本身的曲线。
+
+### 19.3 回落口径：raw_sse 与 norm 会背离，别假设归一化更合理
+`norm = Σ(d/range)²/N`（range = 该参数在各待机候选首帧间的值域）会让
+**实际几何差异最大的候选**拿到最小 norm：ougen_8/touch_idle14 的 idle5 raw 排名 11 / norm 排名 1，
+而正确答案 idle9 raw 排名 1 / norm 排名 11。
+判据：把两个口径的完整排行都打出来看是否背离（`l2d_fallback_rank.py`），
+背离时**以用户/游戏观感为准**，不要拿 norm 值大小当正确性证据。
+全库切换口径前先量影响面（`l2d_fallback_metric_ab.py`：本项目 1945 条里 363 条会变 = 18.7%），
+影响面大就先用「手工修正表 + `__hold__`（播完不回落）」逐条兜，别一次全切。
+
+### 19.4 `__hold__`：不是所有动作都该回落
+`effect` 这类语义是「暂停当前动作」的组，回落反而打断它。回落表要能表达「保持不回落」，
+而不只是「回落到哪个组」。
+
+**涉及**：`scripts/diag/l2d_hand_probe.py`（--findop/--abparam/--params/--follow）、
+`scripts/diag/l2d_fallback_rank.py`、`scripts/diag/l2d_fallback_metric_ab.py`、
+`gallery_src/index.html`（BASE_PINS / FALLBACK_FIX）。
