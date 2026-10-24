@@ -91,8 +91,15 @@ Thumbs.db
 
 # 权威外部输入（社区 azdata 快照等）：数据本体属游戏资产（版权 + 使用者自备）不入库，
 # 只入库 MANIFEST 台账；丢了不可复原，所以一律不得放回 .diag/。
-inputs/*/*.json
-!inputs/*/MANIFEST.json
+# ⚠️ 2026-10-24 修：原来是 `inputs/*/*.json` 只匹配**两层**，而 inputs/sharecfg/ 是三层
+# （inputs/sharecfg/cfg_json_scalar/*.json）→ 279MB 游戏配置会被误 add 进 git。
+# 改用 `**` 递归匹配；`!.gitignore` 之外的 MANIFEST 例外保留。
+inputs/**/*.json
+!inputs/**/MANIFEST.json
+# 非 json 的游戏资产本体（.bytes/.ab/.bin 等）同样不入库
+inputs/**/*.bytes
+inputs/**/*.ab
+inputs/**/*.bin
 
 # 画廊第三方运行时库：台账入库，库本体不入库（正本在 Output/gallery_v2/vendor/，
 # 由 scripts/fetch_gallery_vendor.py 按台账 sha256 校验后补齐）。

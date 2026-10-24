@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "purpose": "sharecfgdata 逆向产物的完整性台账。这里的 JSON/bytes 是**从设备侧 sharecfgdata 直接解出**的游戏配置表（非社区快照），按 MANIFEST 与 WF-15 的承重规则：sharecfgdata 采用自定义加密、本机无解，**丢失后不可复原**。2026-10-24 从 .diag/sharecfg_re/ 迁入本目录（.diag 约定为可随时清空的临时产物区，不得存放唯一副本）。",
+  "provenance": {
+    "kind": "本机解出（非社区快照）",
+    "local_landed_at": "2026-10-24",
+    "original_location": ".diag/sharecfg_re/",
+    "migrated_from": ".diag/sharecfg_re/（1593 文件 / 279.8 MB，逐文件 MD5 校验 0 不一致）",
+    "regenerate_via": "tools/sharecfg_re/37_parse_sharecfgdata.py --scalar-all --yes"
+  },
+  "layout": {
+    "cfg_json/": "聚合型配置（ship_skin_words.json 6.2MB）",
+    "cfg_json_scalar/": "标量表，每表一个 json（32 个，159.1MB；barrage_template_1.json 10.9MB 最大）",
+    "lua_json/": "由 Lua 配置转出的 json（778 个，28.9MB）",
+    "lua_out/": "Lua 配置原始输出（780 个，47.7MB）",
+    "scripts64.full.ab": "scripts64 解包出的完整 AssetBundle（39,733,777 B）",
+    "scripts64.tailpayload.bin": "scripts64 尾部载荷（6,512 B）"
+  },
+  "warning": "⚠️ 本目录全部为不可复原数据。清理磁盘前必须核对 docs/WORKFLOWS.md WF-15 的承重文件白名单；不得按『.diag 可清空』的惯性对待 inputs/。",
+  "counts": {
+    "total_files": 1594,
+    "total_bytes": 293415858
+  },
+  "verify": {
+    "command": "py -3 scripts/diag/check_inputs.py",
+    "note": "该脚本校验 inputs/ 下各台账；本文件的 counts 由 2026-10-24 迁移时实测填入（279.8 MiB ≈ 293.4 MB）"
+  }
+}
