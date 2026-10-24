@@ -3170,3 +3170,38 @@ mask 256→1024/2048 只能让阶梯变细；4x 超采样 + mask 4096 + 2D 降�
 
 **涉及**：`scripts/run_full_gallery.ps1`、`scripts/rebuild_live2d_full.py`、`scripts/run_v2_full.py`、
 `scripts/export_dependency_manifest.py`、`scripts/build_gallery_index.py`、`scripts/fetch_gallery_vendor.py`。
+
+#### 远端仓库瘦身（2026-10-24 实测）
+
+**判据：远端体积 != 当前分支文件总和时，先查「其它分支」，再查「历史大对象」。**
+
+`ash
+# 1. 远端真实体积（本地 pack 常远小于它——本地只统计被引用对象）
+curl -s -H "Authorization: Basic <b64>" https://api.github.com/repos/<owner>/<repo> | jq .size  # KB
+# 2. 远端还有哪些分支（这是最常被忽略的一步）
+curl -s .../git/refs
+# 3. 逐分支看文件总和与最大文件
+curl -s .../git/trees/<branch>?recursive=1 | jq '[.tree[]|select(.type=="blob")|.size]|add'
+`
+
+**真实案例**：本仓远端 71.09 MB，但 master 当前树只有 ~7 MB、本地 pack 仅 6.44 MiB。
+差距全部来自 samples-tmp 分支里的 samples/l2d_samples.tgz（63.6 MB 单个文件，
+提交信息只有「samples: 临时」）。
+
+**踩坑记录**：
+- git count-objects -vH 只统计**本地被引用**的对象，删掉分支后本地会跟着变小，
+  但**远端 pack 不会自动回收**。判断远端体积必须走 API 的 .size。
+- git fetch 默认不抓没有远程跟踪的分支，git rev-parse origin/<br> 会报
+  「unknown revision」。要么用显式 refspec
+  git fetch origin "+refs/heads/<br>:refs/remotes/origin/<br>"，要么先看 refs 列表。
+- 中文文件名在 git show <ref>:<path> 里会被 core.quotepath 转义成
+  \351\200\220...，导致 path not found。取文件时加 -c core.quotepath=false。
+
+**清理前必须先收编独有文件**：删分支前，用
+git ls-tree -r --name-only <branch> | grep -vxF -f <(git ls-tree -r --name-only master)
+列出独有路径，逐个 git show 取出并提交；否则删分支 = 永久丢失。
+本仓实测两个遗留分支各有 6~8 个 master 缺失的文件（其中 2 个是空文件，未收编）。
+
+**删分支的正确姿势**：远端用 git push origin --delete <branch>；
+若目标是让远端**物理缩小**，删分支后远端 pack 仍留着对象，需要平台侧
+「危险区 → 清理/GC」或联系支持，GitHub 会自动在空闲时 GC，不保证立即回收。
