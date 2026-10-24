@@ -41,6 +41,17 @@ from paths import LIVE2D_OUT, GALLERY_OUT  # noqa: E402
 
 IDLE_RE = re.compile(r'^(idle\d*)$')
 
+# pose_keep 的排除项（2026-10-24）：这些参数由**运行时每帧驱动**，锁死会破坏实时表现。
+#   · ParamEyeL/R/BOpen、ParamEyeBallX/Y：EyeBlink 与 focusController 每帧写
+#     → pin 成 1.0 会让模型永远不眨眼（实测 touch_idle14 会带出 ParamEyeLOpen=1.0）
+#   · ParamMouthOpenY/Form：LipSync 写
+#   · ParamBreath、ParamAngleX/Y/Z、ParamBodyAngleX：CubismBreath 每帧加性写入
+#     ⚠️ 注意 ParamAngleX 同时是**真实姿态参数**（touch_idle14 末帧 -18.367 是身体转向），
+#        呼吸只是叠加小偏移。所以 ParamAngle* 不排除，靠 pin 覆盖呼吸偏移是预期行为
+POSE_KEEP_SKIP_RE = re.compile(
+    r'^(ParamEyeL?Open|ParamEyeROpen|ParamEyeLOpen|ParamEyeBallX|ParamEyeBallY|'
+    r'ParamMouthOpenY|ParamMouthForm|ParamBreath)$')
+
 # 前端 idleGroup 的既定优先序（落到候选排序并列时的次选依据；首选项永远是"差异度最小"）
 LEGACY_PREF = ['idle', 'main', 'home']
 
@@ -262,6 +273,35 @@ def build_model_chain(model_dir, model):
         best = cands[0]
         best_m = best[metric]
         fb = (best_m == float('inf'))
+
+        # ---------- pose_keep：回落时要保住的姿态参数（2026-10-24 用户定案） ----------
+        # 问题：idle 变体可能只是「呼吸层」——例如 ougen_8 的 idle9 只有 109 条曲线，
+        # 108 条首尾闭合的细微摆动参数，一条姿态曲线都没有。touch_idle14 末帧的
+        # ParamAngleX=-18.367 / Param194=10 / Param207=-8.2 等 305 个参数在 idle9 里无曲线，
+        # 回落瞬间被 model.loadParameters() 按 moc3 默认值复位成 0 → 视角瞬间回正，
+        # 用户看到的就是「回落成功后立马闪回初始默认 idle」。
+        # 前端自己的 restTick 还会主动把这类参数（动作驱动过、idle 不驱动、非开关）
+        # 在 400ms 后花 700ms 线性拉回默认值，二次抹掉姿势。
+        #
+        # 解法：把「动作末帧有值、目标 idle 无曲线」的参数记下来，回落时 pin 住。
+        # 判据：
+        #   · 只取末帧值非零（|v|>0.5）的——末值≈0 本来就和默认值一致，pin 没有意义
+        #   · 排除开关参数——它们走 switchParams 的保持语义，前端 restTick 已豁免
+        #   · 排除目标 idle 有曲线的参数——那些由 idle 自己驱动，不该锁死
+        #   · 排除运行时驱动的参数（POSE_KEEP_SKIP_RE）——锁死会让模型不眨眼/不口型
+        pose_keep, pose_energy = {}, 0.0
+        if not fb:
+            ce_best = idle_full.get(best['group']) or {}
+            for p, ev_ in end_val.items():
+                if p in ce_best or p in switches:
+                    continue
+                if abs(ev_) <= 0.5:
+                    continue
+                if POSE_KEEP_SKIP_RE.match(p):
+                    continue
+                pose_keep[p] = round(ev_, 4)
+                pose_energy += ev_ * ev_
+
         chain[a] = {
             'best': None if fb else best['group'],
             'best_norm': None if fb else best_m,
@@ -272,6 +312,9 @@ def build_model_chain(model_dir, model):
             'best_coverage': round((best['n_params'] / n_action) if n_action else 0.0, 3),
             'leak_n_params': (n_action - best['n_params']) if not fb else None,
             'n_switch_params': len(a_switches),
+            'pose_keep': pose_keep,
+            'pose_energy': round(pose_energy, 2),
+            'n_pose_keep': len(pose_keep),
 
             'runners_up': [{'group': c['group'],
                             'norm': None if c['norm'] == float('inf') else c['norm'],

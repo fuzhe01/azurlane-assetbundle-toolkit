@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.15
+version: 1.10.16
 ---
 
 # Live2D 网页运行时集成
@@ -851,3 +851,70 @@ getDrawableOpacity 里「842 个 drawable 中 530 个透明度≈0」看着像�
 - 服务进程会静默消失，探测读到白屏会算出「完全一致」的假结论。
   **每次验证前先探活 + 渲染门禁**，不过就报 INVALID，不输出结论。
 - 一次偶发的 `xhr.onabort` 不能定性为缺陷，重试 2~3 次再判。
+
+## 22. 「回落成功却闪回默认待机」：先看目标 idle 的曲线数（2026-10-24，version 1.10.16）
+
+**症状**：动作播完、`state.currentGroup` 确实变成了正确的 idle 变体，标签也对，
+但回落那一瞬间姿势猛地塌回「直立正面」。用户会说「回落后立马闪回初始默认 idle」。
+
+### 判据：末帧 vs idle 首帧的逐参数差值，不要看覆盖率
+
+模型库里常见**分层 idle**：一个 idle 变体只负责一部分参数（呼吸），姿势由动作末帧提供。
+判「衔接对不对」只看一件事：
+
+```python
+common = set(action_end) & set(idle_start)
+sse = sum((action_end[p] - idle_start[p]) ** 2 for p in common)
+```
+
+**`sse == 0.0` 且共同参数只有几十个，就是正确答案**，不是错误。
+两个独立 `.motion3.json` 的浮点值逐一精确相等，只可能是制作方刻意对齐。
+附带判据：正确的目标 idle 往往**首尾闭合率极高**（呼吸层特征，实测 `idle9` 109 条里 108 条首尾相同）。
+
+⚠️ **`best_coverage` 低不是缺陷**。实测 `touch_idle14 -> idle9` 覆盖率仅 26.2%，
+一度据此提议「排除低覆盖候选」，被用户当场纠正。覆盖率低**恰恰说明**该 idle 只驱动
+一小部分参数，剩下的 305 个靠动作末帧续着。选 100% 覆盖但 `sse=728` 的候选，
+只是用「多比较了不该比较的参数」把正确答案挤掉。
+
+### 缺口在哪里：`end_val` 有、目标 idle 无曲线的那些参数
+
+```python
+cliff = {p: v for p, v in action_end.items()
+         if p not in idle_start and abs(v) > 0.5}
+```
+
+这批参数在回落瞬间会被 `model.loadParameters()` 按 moc3 默认值复位成 0。
+`ParamAngleX = -18.367 -> 0` 就是「视角翻转」的直接来源。
+
+### 修法：pose_keep + LOW ticker pin（两个执行者都要处理）
+
+1. **索引侧**（建表脚本）给每个动作输出 `pose_keep`：
+   `末值非零 且 目标 idle 无曲线 且 非开关参数 且 非运行时驱动参数`。
+   - 必须排除 `ParamEyeL/R/BOpen` / `ParamEyeBallX/Y` / `ParamMouthOpenY` / `ParamMouthForm` /
+     `ParamBreath` —— EyeBlink / LipSync / CubismBreath 每帧写，pin 住会让模型**永不眨眼**。
+   - `ParamAngleX/Y/Z` **不能**排除：它们同时是真实姿态参数，pin 覆盖呼吸小偏移是预期行为。
+2. **前端**：
+   - 回落时把 `pose_keep` 写进 `__posePinsByModel[skinKey]`，key 另记一份 `__poseKeepKeys`。
+   - ⚠️ **动作组名要在 `lastGroup = <回落目标>` 改写之前抓走**。回落函数末尾通常会把
+     `lastGroup` 覆盖成目标组，用错变量就拿不到本动作的 pose_keep。
+   - ⚠️ **参数残留复位（`restTick` 那类「拉回默认值」的逻辑）必须排除这批 key**，
+     否则 pin 与复位渐变每帧互写，肉眼是姿势抖动。
+   - pin ticker 挂 **LOW 优先级**（模型 `update()` 含 `loadParameters()` 之后、渲染之前），
+     且**只在待机组生效** —— 动作播放中要让曲线自由驱动，不能把自己该动的参数钉住。
+
+### 探针纪律：三个反复踩的陷阱，都会产出「参数恒 0」的假象
+
+| 陷阱 | 表现 | 正解 |
+|---|---|---|
+| 读 `mm._motions` | 永远 0 条，误判「队列空」 | `mm.queueManager._motions` |
+| 用 `qm._userTimeSeconds` 算 fadeIn | 恒 0 → `fin=0` → 误判「权重为 0」 | 该值**不参与** `Cubism4MotionManager.updateParameters(model, now)`，恒 0 是正常的 |
+| `addChild` hook 抓到的模型 | 切皮肤会重建，旧实例 `destroyed=true` 仍占着 `window.__xxx` | 过滤 `destroyed !== true` |
+| 在 `setParameterValueByIndex` 里抓 `Error().stack` | 主循环从 ~150 次/秒压到 4 次/2.6s → 假数据 | 只读采样，不改写路径 |
+
+### 上游库 `curves.push` 冗余：确认无害，别改
+
+某版本 `CubismMotion.parse()` 先 `Array.from({length: curveCount})` 预分配，
+每轮循环末尾又 `curves.push(curve)`，导致 `curves.length == 2 * curveCount`，
+且**前后两半是同一对象引用**。实测 `doUpdateParameters` 只走前 `curveCount` 条，
+`baseSegmentIndex` / `segmentCount` 与 JSON 逐条一致、points 值正确，
+**不影响求值**。看到 `length` 翻倍不要当成元凶去动 vendor 文件。

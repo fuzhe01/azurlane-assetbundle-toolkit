@@ -7498,3 +7498,121 @@ ougen_8 共 42 组，其中 27 组的 best 指向具体变体（idle9 有 7 组�
 
 **涉及**：`gallery_src/index.html`、`scripts/diag/{verify_touch14,ab_part_opacity,probe_part_vanish}.py`。
 相关：§143（回落通道）、§134（ConstantClip）。
+
+## §145. 回落成功却「闪回初始默认 idle」：目标 idle 是呼吸层、缺姿态曲线（2026-10-24）
+
+**现象**：`ougen_8` 的 `touch_idle14` 播完后**确实**回落到了正确的 `idle9`
+（组名、标签、像素全部对得上），但回落的那一瞬间画面从「侧躺」猛地弹回「直立正面」。
+用户描述："回落确实成功了，但是回落后立马闪回初始默认 idle 了"。
+
+**先纠正一个误判**（本轮最贵的弯路）：
+看到 `touch_idle14 → idle9` 的 `best_coverage = 26.2%`，就以为「覆盖率太低 → 选错了 idle」，
+提议把覆盖率不足的候选踢出竞选。**方向完全反了**，被用户当场纠正（"衔接 touch_idle14
+的末帧的就应该是 idle9，你再仔细看看全过程"）。
+
+**正确判据 —— 末帧 vs idle 首帧的逐参数差值**（`diag_cliff_detail.py`）：
+
+| 待机组 | 共同参数 | SSE | 覆盖率 |
+|---|---|---|---|
+| **idle9** | 108 | **0.00** | 26.2% |
+| idle11 | 368 | 709.05 | 89.1% |
+| idle10 | 413 | 728.78 | 100.0% |
+| idle | 413 | 833.26 | 100.0% |
+
+**108 个共同参数的差值全部精确为 0**（不是 0.001，是浮点完全相等）。
+两个独立 `.motion3.json` 文件的浮点值逐一相等，只可能是制作方刻意对齐。
+⇒ **SSE=0 是铁证，覆盖率低不是缺陷**。覆盖率低恰恰说明该 idle 只负责一部分参数。
+
+**真根因 —— 目标 idle 是「呼吸层」**：
+
+```
+touch_idle14:  413 条曲线（含姿态：ParamAngleX Y/Z、Param194...）
+idle9:         109 条曲线，其中 108 条首尾闭合
+               全是 Param343/394/348… 幅度不超 ±2 的细微摆动
+               一条姿态曲线都没有
+```
+
+`touch_idle14` 多出的 305 个参数里，24 个末值明显非零：
+
+```
+ParamAngleX  -18.367   ← 头/身朝向（视角翻转就是它）
+Param194     +10.000
+Param207      -8.200
+Param315      -7.000
+Param10       -6.415     断崖能量 Σv² = 678.73
+```
+
+回落链路于是变成：
+
+```
+动作播完 → 回落 idle9  ✅ 108 个呼吸参数精确接上（SSE=0）
+         → model.loadParameters() 把这 305 个无曲线参数按 moc3 默认值复位 → 0
+         → ParamAngleX: -18.367 → 0  视角瞬间回正 = 「闪回初始默认 idle」
+```
+
+**而且前端还有第二个执行者**（`restTick`，见 §21 末段那套参数残留复位）：
+它把「动作驱动过、当前 idle 不驱动、又不在 switchParams 白名单」的参数
+在 `REST_DELAY=400ms` 后花 `REST_MS=700ms` 线性拉回 `getParameterDefaultValue`。
+`ParamAngleX` 三个条件全中 → 即使 loadParameters 那一帧被救了，700ms 后还是会被抹平。
+
+**修法（数据层 + 前端两处，2026-10-24 用户选定全量方案）**：
+
+1. `scripts/build_motion_chain_map.py` 给每个动作输出 `pose_keep`：
+   末帧值非零（|v|>0.5）、目标 idle 无曲线、非开关参数、**非运行时驱动参数**。
+   `pose_energy` 供排查排序用。
+   - ⚠️ 必须排除 `ParamEyeL/R/BOpen`、`ParamEyeBallX/Y`、`ParamMouthOpenY/Form`、`ParamBreath`
+     ——它们是 EyeBlink / LipSync / CubistBreath 每帧写的，pin 住会让模型永不眨眼
+     （实测不排除时 `touch_idle14` 会带出 `ParamEyeLOpen=1.0` 被钉死）。
+   - `ParamAngleX/Y/Z` **不能**排除：它们既是呼吸叠加对象，也是真实姿态参数；
+     pin 覆盖呼吸偏移是预期行为。
+2. `gallery_src/index.html`：
+   - `_fallbackToIdle()` 里把该动作的 `pose_keep` 写入 `window.__posePinsByModel[sk.key]`，
+     同时把 key 记进 `window.__poseKeepKeys[sk.key]`。
+     ⚠️ **动作组名必须在 `lastGroup=g` 改写之前抓**（`_actedOn`）——
+     `lastGroup` 在函数末尾会被覆盖成回落目标，用错就拿不到本动作的 pose_keep。
+   - `restTick` 的 `want` 集合排除 `poseKeepKeys` 里的参数，否则 pin 与复位渐变每帧互写 → 姿势抖动。
+   - 新增一个 **LOW 优先级 ticker** 每帧重申 `__posePinsByModel`，且**只在待机组生效**
+     （动作播放中要让曲线自由驱动，不能把自己该动的参数钉住）。
+     位置与装扮 pin、restTick 同一个槽位：模型 `update()`（含 `loadParameters()`）之后、渲染之前。
+
+**验证**（`scripts/diag/verify_pose_keep.py`，真 GPU 有头 Edge）：
+
+```
+回落瞬间   组=idle9  ParamAngleX=-18.367  p194=10.0  p207=-8.2  p315=-7.0  pins=16
+1.1s 之后  组=idle9  ParamAngleX=-18.367  p194=10.0  p207=-8.2  p315=-7.0  pins=16
+eyeL=0.98（眨眼正常，未被钉死）
+```
+
+**影响面**：全库 267 个动作组，131 个（49.1%）带 pose_keep；
+`ougen_8` 42 组里 19 个、`aersasi_3` 60 组里 49 个。
+
+**已排除的假设**（别重跑）：
+- ❌ **`restTick` 是唯一执行者** —— hook `setParameterValueByIndex` 发现 motion 阶段
+  `ParamAngleX` 恒 0，断崖参数根本没被"拉回"，是从来没写进去过。
+- ❌ **`focusController` 覆盖** —— 实测 `fcEnabled=false`，手动关掉也无变化。
+- ❌ **`getParameterIndex('ParamAngleX')` 返回 -1** —— moc3 里有该参数，index=255。
+- ❌ **Target 乱序导致 `doUpdateParameters` 提前 break** —— 413 条 `Target` 全是 `Parameter`（type=1）。
+- ❌ **上游库 `curves.push` 重复 bug 是元凶** —— 确认它让 `curves.length` 从 413 变 826
+  且前后是同一对象引用，但 `doUpdateParameters` 只走前 413 条（`baseSegmentIndex`/`segmentCount`
+  与 JSON 逐条一致、points 值正确含 -18.367），所以它**不影响**本问题。这是上游库自带的
+  无害冗余，不要去改 vendor 库。
+
+**独立的未解问题**：动作**播放期间** `ParamAngleX` 在浏览器里始终到不了 -18.367
+（`p194` 也只到 2.098，而曲线要求 10.0），曲线求值结果明显被按比例压小。
+pose_keep 在回落时直接写入正确末值，成了兜底，但这不解释播放期为何不对。
+下一轮若继续，从 `Cubism4MotionManager.updateParameters(model, now)` 收到的
+`now` 与 `entry._fadeInStartTimeSeconds` 的时间基准查起
+（注意：`qm._userTimeSeconds` 恒 0 是**正常**的，它不参与该路径，别拿它算 fadeIn）。
+
+**探针纪律**（本轮踩了三次，务必遵守）：
+1. 队列对象是 `mm.queueManager._motions`，**不是** `mm._motions`（后者不存在 → 永远读到 qLen=0）。
+2. **不要**在 `setParameterValueByIndex` 里抓 `new Error().stack` 做逐次日志 ——
+   实测把主循环从 ~150 次/秒压到 2.6s 只有 4 次，产出「只写了 0」的假结论。
+3. hook `PIXI.Container.prototype.addChild` 抓到的是**所有**模型实例，
+   切皮肤会重建、旧实例 `destroyed=true` 仍在内存里。必须过滤 `destroyed!==true`，
+   否则读到的是废弃实例（表现为参数恒 0、队列空、userTime 读不到）。
+
+**涉及**：`gallery_src/index.html`（`_fallbackToIdle` / `restTick` / 新增 pose pin ticker）、
+`scripts/build_motion_chain_map.py`（`pose_keep` / `pose_energy` / `n_pose_keep`）、
+`scripts/diag/{diag_touch_idle14_timeline,diag_cliff_detail,scan_cliff_params,verify_pose_keep,find_js_syntax_error}.py`。
+相关：§143（回落通道）、§144（回落目标用 best）、§21 末段（restTick 参数残留复位）。
