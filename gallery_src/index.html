@@ -1400,15 +1400,16 @@ async function renderLive2D(s, sk){
        （拖完戴着，切 idle 不摘）——restTick 复位必须豁免它们，否则回落瞬间装饰消失
        （= 用户报的「touch_drag11/12 回落完全不衔接」真根因）。 */
     const switchParams=new Set(Object.keys((chainModel&&chainModel.switch_params)||{}));
+    /* lastGroup = **页面主动请求的动作组**。回落目标绝不回写它。
+       历史坑：旧版回落函数自己也调 startMotion，把 lastGroup 覆盖成回落目标，
+       于是同一变量既当「刚播完的动作」又当「当前动作」，查表查到的是 idle 变体 →
+       恒落空 → 落回默认 idle 第 0 帧（= 用户报的「回落成功后闪回初始待机」）。 */
     let lastGroup=null;
+    let _inFb=false;   /* 回落内部发起的 startMotion 不回写 lastGroup */
+    let _fbFor=null;   /* 已经为哪个动作组执行过回落（同一动作只回落一次） */
     const _origStartMotion=mm.startMotion.bind(mm);
-    mm.startMotion=(g,i,p)=>{ lastGroup=g; return _origStartMotion(g,i,p); };
+    mm.startMotion=(g,i,p)=>{ if(!_inFb) lastGroup=g; return _origStartMotion(g,i,p); };
     const _origRandomMotion=mm.startRandomMotion.bind(mm);
-    /* 三层回落（2026-10-17 语义，2026-10-19 按用户要求恢复）：
-       ① touch_drag* → 自身循环；② 其它长动作 → 默认 idleGroup；③ touch_idle* → 表 best（low coverage 时表里 best 为空 → 默认 idle）。
-       ⚠️ 额外加一个 ticker 看门狗：动作播完时库若没及时请求 idle（currentGroup 变 null），
-       下一帧直接 startMotion 回落，解决"卡在最后一帧几秒钟"。 */
-    let _fbPending=false;
     /* 回落的手工修正表（2026-10-23 用户按游戏行为确认）：
        '__hold__' = 播完**不回落**，停在最后一帧（effect 类语义是「暂停当前动作」，回落反而打断它）；
        组名 = 强制回落到该组，覆盖 motion_chain.json 里按「末帧 vs idle 首帧差异度」算出的 best。
@@ -1424,39 +1425,81 @@ async function renderLive2D(s, sk){
       ougen_8:{ effect:'__hold__' }
     };
     const _ff=FALLBACK_FIX[sk.key]||null;
-    const _ret=(dst)=>{ const defs=mm.definitions[dst]||[]; if(!defs.length) return false;
-      const idx=Math.floor(Math.random()*defs.length);
-      const pr=(MP&&MP.NORMAL)||2;   // 压过正在播的 idle(1)，又不像 FORCE 那样硬打断
-      try{ const h=document.getElementById('l2Curr'); if(h) h.textContent=dst; }catch(e){}
-      try{ if(mm.state && mm.state.complete) mm.state.complete(); }catch(e){}   // 把上一动作优先级归零，NORMAL 才 reserve 得进
-      try{ mm.startMotion(dst,idx,pr); }catch(e){ return false; }
-      return true; };
-    const _fallback=()=>{
-      if(_fbPending) return false;
-      const lg=lastGroup, low=((lg||'').toLowerCase());
-      if(!lg || idleSet.has(lg)) return false;
-      /* 手工修正优先：'__hold__' 直接吞掉回落请求（库与看门狗两条路径都走这里） */
+    /* ================= 唯一回落出口（2026-10-24 合并两段回落）=================
+       旧版有**两条**回落路径，各自选组、各自写 pose_keep，互相踩踏：
+         路径A `_fallback()`：库 startRandomMotion + 一个 1200ms 防抖 ticker 看门狗；
+                             只放行 /^touch_(idle|drag)/ 的动作查表，其它一律固定回 idle；
+                             用 NORMAL(2) 优先级，且**不写 pose_keep**。
+         路径B `_fallbackToIdle()`：setTimeout(duration+0.6s) 定时器，读 chain 表选组。
+       两者交错时：A 先跑把 lastGroup 改写成 idle 变体 → B 查表恒落空 → 落回默认 idle 第 0 帧。
+       实测（touch_idle14）同一动作出现**两次**回落：3.08s idle9(NORMAL，A 正确)
+       → 3.63s idle(IDLE，B 落错)。路径 B 先跑则正确，说明根因是竞争而非选组算法。
+
+       现在合并为单一 `_fallbackOnce()`：
+         ① 选组判据统一（FALLBACK_FIX > chain.best > idleGroup），**不再按动作名分类**；
+         ② 用 `_fbFor` 保证一个动作只回落一次，从结构上消除竞争；
+         ③ 选组永远基于 `lastGroup`（页面请求的动作），回落内部 startMotion 不回写它；
+         ④ pose_keep 与回落放在同一处写，且**命中才写**，不命中不清空（避免踩掉别的路径的 pin）。
+       ⚠️ 用 IDLE(1) 优先级：库 MotionState.start() 对 priority>1 要求
+          group===reservedGroup && index===reservedIndex（我们不走 reserve 流程，必被拒）。
+       ⚠️ 不要删掉末尾的 state.complete()+优先级归零：动作是 FORCE(3) 播的，
+          reserveMotion 会拒绝 priority<=currentPriority 的请求（§143 实测 curPri 恒 3）。 */
+    const _fallbackOnce=()=>{
+      const lg=lastGroup;
+      if(!lg || idleSet.has(lg)) return false;      /* 待机组自身循环，不需要回落 */
+      if(_fbFor===lg) return true;                  /* 本动作已回落过：吞掉重复请求（库/看门狗都会再问一次） */
       const _fix=(_ff&&_ff[lg])||null;
-      if(_fix==='__hold__') return true;
+      if(_fix==='__hold__'){ _fbFor=lg; return true; }   /* effect 类：停在末帧是语义要求 */
       let dst=null;
-      if(_fix && mm.definitions[_fix]) dst=_fix;
-      // touch_idle*/touch_drag*：用表 best（新口径：drag 用 raw_sse，idle 用 norm，均不做覆盖度排除）。
-      // 其它长动作回默认 idleGroup。
-      else if(!/^touch_(idle|drag)/.test(low)) dst=idleGroup;
-      else { const c=chainModel&&chainModel.chain[lg];
-        dst=(c&&c.best&&mm.definitions[c.best])?c.best:null;
-        if(!dst) dst=idleGroup; }
-      _fbPending=true;
-      const ok=_ret(dst);
-      setTimeout(()=>{_fbPending=false;},1200);
-      return ok;
+      if(_fix && (mm.definitions[_fix]||[]).length) dst=_fix;
+      if(!dst){ const c=chainModel&&chainModel.chain&&chainModel.chain[lg];
+        if(c && c.best && (mm.definitions[c.best]||[]).length) dst=c.best; }
+      if(!dst) dst=idleGroup;
+      if(!dst) return false;
+      const defs=mm.definitions[dst]||[];
+      if(!defs.length) return false;
+      /* pose_keep 必须在选组之后、startMotion 之前写：它挂的是**动作组**（lg），
+         不是回落目标 —— 回落目标恰恰是那条缺姿态曲线的 idle。
+         ⚠️ 语义是「**当前这个动作**要保住哪些参数」，所以不命中时必须清掉：
+         否则先播 touch_idle14（有 pk）再播 mission（无 pk），回落时会带着上一个动作的
+         姿势参数一起复位，把 mission 自己的末帧姿势顶掉。现在是唯一写入点，清空安全。 */
+      try{
+        const pk=(chainModel&&chainModel.chain&&chainModel.chain[lg]||{}).pose_keep;
+        const pins=(window.__posePinsByModel=window.__posePinsByModel||Object.create(null));
+        const ex=(window.__poseKeepKeys=window.__poseKeepKeys||Object.create(null));
+        if(pk && Object.keys(pk).length){ pins[sk.key]=pk;
+          ex[sk.key]=new Set(Object.keys(pk)); }   /* restTick 据此豁免，否则两边每帧打架 */
+        else { delete pins[sk.key]; delete ex[sk.key]; }
+      }catch(e){}
+      try{
+        if(mm.state && mm.state.complete) mm.state.complete();
+        if(mm.state){ mm.state.currentPriority=0; mm.state.reservePriority=0; }
+        mm.currentPriority=0; mm.reservePriority=0;
+      }catch(e){}
+      const idx=Math.floor(Math.random()*defs.length);
+      _fbFor=lg;
+      _inFb=true;                                   /* 回落目标不覆盖 lastGroup */
+      let p=null;
+      try{ p=mm.startMotion(dst,idx,(MP&&MP.IDLE)||1); }catch(e){ p=null; }
+      finally{ _inFb=false; }
+      /* ⚠️ mm.startMotion 是 async（内部 await loadMotion 之后才调 state.start），
+         返回值是 Promise 而不是 boolean。库在 state.start() 被拒时 resolve(false)，
+         所以必须等它 resolve 才知道成没成 —— 只 catch 同步异常会漏掉「被拒」这种情况。
+         失败就清掉 _fbFor，让下一轮还能再试，否则画面会永久停在动作末帧。 */
+      if(p && typeof p.then==='function'){
+        p.then(r=>{ if(r===false){ if(_fbFor===lg) _fbFor=null; } },
+               ()=>{ if(_fbFor===lg) _fbFor=null; });
+      }else if(p===false && _fbFor===lg){ _fbFor=null; }
+      try{ const h=document.getElementById('l2Curr'); if(h) h.textContent=dst; }catch(e){}
+      return true;
     };
-    mm.startRandomMotion=(g,i,p)=>{ if(_fallback()) return true; return _origRandomMotion(g,i,p); };
-    app.ticker.add(()=>{
-      const cg=mm.state&&mm.state.currentGroup;
-      if(cg && cg!==lastGroup) _fbPending=false;
-      if(!_fbPending && (!cg || (cg===lastGroup && mm.state.isFinished))) _fallback();
-    });
+    /* 库的回落请求（MotionManager.update → startRandomMotion(groups.idle, IDLE)）
+       全部改由我们接管：库只会回 groups.idle，而正确目标是 chain.best。
+       注意这条只是**兜底**：本工程实测库里 isFinished() 恒 false（见 §21 注释），
+       真正生效的触发器是 `_scheduleFallback` 的定时器。
+       ⚠️ 不再加 ticker 看门狗：旧看门狗用 `mm.state.isFinished`（MotionState 根本没有这个方法）
+       且不区分「动作还没 load 完」与「已播完」，会在 play() 后第一帧就误触发回落。 */
+    mm.startRandomMotion=(g,i,p)=>{ if(_fallbackOnce()) return true; return _origRandomMotion(g,i,p); };
 
     /* ---------- 动作语音 ----------
        ⚠️ 不要走库的 `definitions[g][0].Sound`：那条通道由 SoundManager 托管，
@@ -1535,82 +1578,14 @@ async function renderLive2D(s, sk){
        旧画廊是靠**错误的 Meta.Loop=True**（41/55 个 clip 与 Unity 真值不符）让动作
        永不结束来回避这个问题的；那是数据错误，不抄。
        这里的做法：用 motion_chain.json 的 durations（建表时从 Meta.Duration 提取）
-       定时回落，NORMAL 优先级（能被用户后续动作抢占）。 */
+       定时触发回落；优先级用库的 IDLE(1)（见 _fallbackOnce 里的说明）。 */
     let _fallbackTimer=null;
     let _lastCurr=null;
     const _durs=(chainModel&&chainModel.durations)||{};
-    const _fallbackToIdle=()=>{
-      try{
-        /* 本次要回落的**动作组名**。必须在下面 `lastGroup=g` 改写之前抓走——
-           lastGroup 会被覆盖成回落目标，用错就拿不到本动作的 pose_keep。 */
-        const _actedOn=lastGroup;
-        /* 回落目标**不能固定成 idleGroup**。要按 motion_chain.json 的 best 走：
-           best 是按「本动作末帧 vs 各 idle 变体首帧」的 raw_sse 算出来的衔接最优点
-           （ougen_8 的 touch_idle14 → idle9，raw_sse 666 明显低于 others 的 728~890）。
-           固定回 idle 会让「拖完鞋子 / 摆好姿势」类动作跳回完全不衔接的默认待机
-           ——用户 2026-10-24 实测报的就是这个。
-           优先级：FALLBACK_FIX 手工覆盖 > 本动作组的 best > idleGroup 兜底。 */
-        const fix=(_ff&&_ff[lastGroup])||null;
-        let g=null;
-        if(fix && fix!=='__hold__' && mm.definitions[fix]) g=fix;
-        if(!g){
-          const chainM=(chainModel&&chainModel.chain)||{};
-          const b=(chainM[lastGroup]||{}).best;
-          if(b && mm.definitions[b] && (mm.definitions[b]||[]).length) g=b;
-        }
-        if(!g) g=idleGroup;
-        if(!g) return;
-        const defs=mm.definitions[g]||[];
-        if(!defs.length) return;
-        const idx=Math.floor(Math.random()*defs.length);
-        /* 复位优先级是**关键一步**：动作是用 FORCE(3) 播的，而库里
-           reserveMotion(priority) 会拒绝 priority <= _currentPriority 的请求，
-           只调 state.complete() 仅清 currentGroup、不降 currentPriority，
-           于是 NORMAL(2) 的回落请求被 3 顶掉 → startMotion 静默失败、画面停在末帧。
-           实测（2026-10-23）：只 complete() 时 curPri 一直是 3，回落从不发生。 */
-        try{
-          if(mm.state && mm.state.complete) mm.state.complete();
-          if(mm.state){ mm.state.currentPriority=0; mm.state.reservePriority=0; }
-          mm.currentPriority=0; mm.reservePriority=0;
-        }catch(e){}
-        /* ---------- 回落时保住「目标 idle 没有的姿态参数」（2026-10-24 用户定案）----------
-           为什么需要：idle 变体可能只是**呼吸层**。ougen_8 的 idle9 只有 109 条曲线，
-           其中 108 条首尾闭合的细微摆动，一条姿态曲线都没有；而 touch_idle14 末帧有
-           ParamAngleX=-18.367 / Param194=10 / Param207=-8.2 等 305 个参数在 idle9 里无曲线。
-           回落瞬间 model.loadParameters() 按 moc3 默认值把它们复位成 0 →
-           视角从侧躺瞬间回正，用户看到的就是「回落成功后立马闪回初始默认 idle」。
-           更糟的是下面 restTick 会**主动**把这类参数（动作驱动过、idle 不驱动、非开关）
-           在 400ms 后用 700ms 线性拉回默认值，二次抹掉姿势。
-
-           解法：把 motion_chain.json 里预计算好的 pose_keep（末帧有值、目标 idle 无曲线、
-           非开关、非运行时驱动参数）写成 pin，由本文件已有的 LOW ticker 每帧重申。
-           pose_keep 挂在**动作组**上（_actedOn），不是回落目标——回落目标恰恰是那个缺曲线的 idle。 */
-        try{
-          const chainM=(chainModel&&chainModel.chain)||{};
-          const pk=(chainM[_actedOn]||{}).pose_keep;
-          const pins=(window.__posePinsByModel=window.__posePinsByModel||Object.create(null));
-          const ex=(window.__poseKeepKeys=window.__poseKeepKeys||Object.create(null));
-          if(pk && Object.keys(pk).length){
-            pins[sk.key]=pk;
-            /* 让 restTick 的 want 集合排除这些参数，否则 pin 与复位渐变每帧互相打架 */
-            ex[sk.key]=new Set(Object.keys(pk));
-          }else{
-            if(pins[sk.key]) delete pins[sk.key];  /* 本动作不需要保持，别把上个动作的姿势带进来 */
-            if(ex[sk.key]) delete ex[sk.key];
-          }
-        }catch(e){}
-        lastGroup=g;
-    
-        let ok=false;
-        /* 必须用 **IDLE(1)** 优先级：库的 MotionState.start() 里
-             priority===1        → 只要求 currentPriority===0（我们已复位成 0）→ 放行
-             priority>1（2/3）   → 要求 group===reservedGroup 且 index===reservedIndex
-                                   否则 "another motion has taken the place" 直接拒绝
-           我们没走 reserveMuation 的 reserve 流程，所以 2/3 必然被拒。
-           （2026-10-23 实测：用 NORMAL 时 startRet={} 但 state 里 pri 仍为 0、组未变。） */
-        try{ ok=mm.startMotion(g,idx,MP.IDLE||1); }catch(e){ ok=false; }
-      }catch(e){}
-    };
+    /* 回落实现已合并到上面的 _fallbackOnce()（唯一定时器/看门狗/库请求共用出口）。
+       此处原来是一个独立的 _fallbackToIdle()：它自己选组、自己写 pose_keep、自己 startMotion，
+       并且把 lastGroup 改写成回落目标 —— 于是它在路径A 之后跑时查表恒落空，落回默认 idle 第0帧。
+       删掉整段，只保留定时器调度（_scheduleFallback）。 */
     const _scheduleFallback=(g)=>{
       if(_fallbackTimer){ clearTimeout(_fallbackTimer); _fallbackTimer=null; }
       if(!g || idleSet.has(g)) return;             /* 待机组自身循环，不需要回落 */
@@ -1619,7 +1594,7 @@ async function renderLive2D(s, sk){
       const d=_durs[g];
       if(!(d>0)) return;
       /* +0.6s 余量：覆盖淡出尾巴，避免在最后一帧抖动时被切走 */
-      _fallbackTimer=setTimeout(()=>{ _fallbackTimer=null; _fallbackToIdle(); },
+      _fallbackTimer=setTimeout(()=>{ _fallbackTimer=null; _fallbackOnce(); },
                                 Math.round((d+0.6)*1000));
     };
     const play=(g,pr)=>{ if(!g) return false;
@@ -1631,7 +1606,7 @@ async function renderLive2D(s, sk){
         try{ if(g!=='login' && mm.state && mm.state.currentGroup==='login' && mm.state.complete) mm.state.complete(); }catch(e){}
         mm.startMotion(g,0,pr||MP.FORCE);
         if(!idleSet.has(g)){ played.add(g); playedAt[g]=performance.now(); }
-        _lastCurr=g; _scheduleFallback(g);
+        _lastCurr=g; _fbFor=null; _scheduleFallback(g);
         return true; }catch(e){ return false; } };
     try{ window.__l2play=play; }catch(e){}
     /* ---------- 眼神跟随 ----------
@@ -1665,7 +1640,7 @@ async function renderLive2D(s, sk){
           if(loading) return;
           const want=new Set();
           /* pose_keep 里的参数不交给 restTick 复位：它们由下面的 LOW ticker 每帧 pin 住，
-             两边同时写会逐帧互相覆盖（肉眼是姿势抖动）。见 _fallbackToIdle 里的说明。 */
+             两边同时写会逐帧互相覆盖（肉眼是姿势抖动）。见 _fallbackOnce() 里的说明。 */
           const keepS=(window.__poseKeepKeys||{})[sk.key]||null;
           played.forEach(g=>{ (paramSets[g]||new Set()).forEach(p=>{ if(!idleS.has(p) && !switchParams.has(p) && !(keepS&&keepS.has(p))) want.add(p); }); });
           played.clear();
@@ -2006,9 +1981,24 @@ async function renderLive2D(s, sk){
             if(p[k+1]<y0)y0=p[k+1]; if(p[k+1]>y1)y1=p[k+1]; }
           n++; }
         if(!n) continue;
-        const w=x1-x0, h=y1-y0;
-        /* 退化包围盒挡掉：全挤在一点的部件点不到，面积≈0 还会在「取最小者」规则里抢走合法热区 */
-        if(!(w>1e-3)||!(h>1e-3)) continue;
+        let w=x1-x0, h=y1-y0;
+        /* 过小的包围盒：**向外扩张到最小可点击尺寸**，而不是丢弃（2026-10-25 修）。
+           为什么必须处理：命中判定是「落进盒子的候选里取面积最小者」（最具体优先）。
+           只驱动 1 个 drawable 的参数（戒指/项圈），包围盒可能极小；于是**任何**
+           落在大盒子里的点都会被它以「面积最小」抢走。实测 ougen_8 的 Paramring
+           （1 个 drawable，w=0.293 h=0.175 area=0.051）比第二名 Cloth1（area=1.68）
+           小 33 倍，导致 __costumeScreenOf 反解出的 ShoseOff/Stock1/Cloth1 三个屏幕点
+           **全部命中 Paramring**（旧阈值 1e-3 只挡严格退化的点，没挡住「小到必胜」的盒）。
+
+           为什么扩张而不是丢弃：丢弃会让戒指/项圈彻底点不到，等于砍功能。
+           扩张保持中心不变，只把可点范围放大到能点中的程度；因为扩张后它仍是最小者，
+           优先级依然最高——但它只在**自己周围**获胜，不再劫持远处的大热区。
+           0.5 的取值依据：实测其余 7 个参数 min(w,h) 全部 ≥1.05（Cloth1 最小 1.086），
+           0.5 约为其一半：足够让 Paramring 可点，又让 ShoseOff(2.33) 之类的盒子
+           在自身区域内压过它。 */
+        const COS_MIN_SIDE=0.5;
+        if(w<COS_MIN_SIDE){ const c=(x0+x1)/2; x0=c-COS_MIN_SIDE/2; x1=c+COS_MIN_SIDE/2; w=COS_MIN_SIDE; }
+        if(h<COS_MIN_SIDE){ const c=(y0+y1)/2; y0=c-COS_MIN_SIDE/2; y1=c+COS_MIN_SIDE/2; h=COS_MIN_SIDE; }
         out.push({id:it.id, label:it.label, kind:it.kind, lo:+it.lo, hi:+it.hi, def:+it.def,
                   n:n, area:w*h, box:{x0:x0,y0:y0,x1:x1,y1:y1}});
       }
