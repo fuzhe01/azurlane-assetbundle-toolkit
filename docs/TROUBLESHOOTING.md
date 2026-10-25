@@ -7616,3 +7616,49 @@ pose_keep 在回落时直接写入正确末值，成了兜底，但这不解释�
 `scripts/build_motion_chain_map.py`（`pose_keep` / `pose_energy` / `n_pose_keep`）、
 `scripts/diag/{diag_touch_idle14_timeline,diag_cliff_detail,scan_cliff_params,verify_pose_keep,find_js_syntax_error}.py`。
 相关：§143（回落通道）、§144（回落目标用 best）、§21 末段（restTick 参数残留复位）。
+
+## §146. 参数型互动区点不中：极小包围盒劫持「面积最小者」规则（2026-10-25）
+
+**现象**：点鞋/丝袜/衣角的热区，触发的却是**戒指**。验收探针
+__costumeScreenOf('ShoseOff'/'Stock1'/'Cloth1') 反解出的三个屏幕点，
+__costumeHit() 全部返回 Paramring。
+
+**根因**：命中判定是「落进盒子的候选里取 rea 最小者」（最具体优先，规则本身正确）。
+而只驱动 **1 个 drawable** 的参数包围盒极小 —— 实测 ougen_8 的 Paramring
+w=0.293 h=0.175 area=0.051，比第二名 Cloth1（rea=1.68）小 **33 倍**。
+于是**任何**落在大盒子里的点都被它以「面积最小」抢走。
+旧阈值 1e-3 只挡「严格退化成一点」，没挡住这种「小到必胜」的盒子。
+
+**修法**（gallery_src/index.html 的 costumeBoxes()）：
+过小包围盒**向外扩张到 COS_MIN_SIDE=0.5**（中心不变），而非丢弃。
+- 丢弃会让戒指/项圈彻底点不到 = 砍功能
+- 扩张后它仍是最小者、优先级最高，但只在**自己周围**获胜，不再劫持远处大热区
+- 阈值依据：实测其余 7 参数 min(w,h) 全部 ≥1.05（Cloth1 最小 1.086），0.5 约为其半
+
+**两个判据教训**（都是本轮踩出来的，务必记住）：
+
+1. **__costumeScreenOf 返回的是包围盒几何中心，不是真实命中点。**
+   它报 
+=238（区域内 238 点命中目标），但把返回的 cx,cy（=中心）喂给
+   __costumeHit 会返回别的参数——中心可能落在邻居地盘。
+   **验命中必须在区域内逐点扫**，统计每个 id 被命中多少次，再取一个真命中的点。
+
+2. **换装改的是顶点，不是不透明度。** 判「写入有没有到达渲染」不能看 opacity：
+   换装多是把部件挪走/缩放，不透明度可能全程为 1。
+   用 getDrawableVertexPositions 求 w/h/x0/y0 才看得见变化。
+   旧记录「pins lo vs hi 逐 drawable 比对 0 差异，强制 im.update() 后有 2 个差异」
+   的矛盾就是这么来的——当时比的是透明度。
+
+**R4 实证**（erify_r4_param_to_render.py）：ShoseOff 0→1 时
+drawable 460 w 2.4017→2.4449、x0 -9.9973→-10.2100、y0 -1.2680→-1.3589；
+461 同步；变化集合与 param_drawables.json 的交集正是 [460,461]。
+
+**R6 实证**（erify_r6_real_click.py，CDP Input.dispatchMouseEvent 派发真实
+mousePressed+mouseReleased，**不调内部 toggle**）：四种类型全 PASS ——
+ShoseOff(slider) 0→1、Stock1/Cloth2/NeckMoney(switch) 0→1，
+组名全保持 idle 未误触动作分支，pill 正确显示「鞋 · ShoseOff → 1」。
+
+**涉及**：gallery_src/index.html（costumeBoxes 的 COS_MIN_SIDE）、
+scripts/diag/{measure_costume_box_sizes,diag_hit_distribution,
+verify_r4_param_to_render,verify_r6_real_click,healthcheck_costume}.py。
+相关：§20（互动区信号源选择）、§145（pose_keep/LOW ticker 时机）。

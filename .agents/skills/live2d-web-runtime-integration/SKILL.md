@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.16
+version: 1.10.17
 ---
 
 # Live2D 网页运行时集成
@@ -918,3 +918,78 @@ cliff = {p: v for p, v in action_end.items()
 且**前后两半是同一对象引用**。实测 `doUpdateParameters` 只走前 `curveCount` 条，
 `baseSegmentIndex` / `segmentCount` 与 JSON 逐条一致、points 值正确，
 **不影响求值**。看到 `length` 翻倍不要当成元凶去动 vendor 文件。
+
+## 23. 参数型互动区（点局部换装）：命中判定的三个坑（2026-10-25，version 1.10.17）
+
+需求形态：点画面上的鞋/丝袜/衣角/戒指，切换对应 Cubism 参数两态，**不播 motion**
+（播动作会把姿态一起改掉）。数据侧 = 「参数 → 驱动 drawable 索引」映射，
+热区 = 这些 drawable 顶点包围盒的并集。
+
+### 坑一：面积最小者的命中规则会被极小盒劫持
+
+命中判定若实现成「落进盒子的候选里取 `area` 最小者」（最具体优先，这是对的），
+则**只驱动 1 个 drawable 的参数**会成为灾难：它的包围盒极小，
+于是任何落在大盒子里的点都被它以「面积最小」抢走。
+
+实测：`Paramring`（1 个 drawable，`w=0.293 h=0.175 area=0.051`）
+比第二名 `Cloth1`（area=1.68）小 33 倍 →
+`__costumeScreenOf` 反解出的 ShoseOff / Stock1 / Cloth1 三个屏幕点**全部命中 Paramring**。
+
+```js
+// 错：只挡「严格退化成一点」
+if(!(w>1e-3)||!(h>1e-3)) continue;
+// 对：扩张到最小可点击尺寸，中心不变
+const COS_MIN_SIDE=0.5;
+if(w<COS_MIN_SIDE){ const c=(x0+x1)/2; x0=c-COS_MIN_SIDE/2; x1=c+COS_MIN_SIDE/2; w=COS_MIN_SIDE; }
+if(h<COS_MIN_SIDE){ const c=(y0+y1)/2; y0=c-COS_MIN_SIDE/2; y1=c+COS_MIN_SIDE/2; h=COS_MIN_SIDE; }
+```
+
+**为什么扩张而不是丢弃**：丢弃会让戒指/项圈彻底点不到，等于砍功能。
+扩张后它仍是最小者、优先级最高，但只在**自己周围**获胜，不再劫持远处的大热区。
+阈值取「其余参数 min(w,h) 最小值的一半」（实测其余 ≥1.05 → 取 0.5）。
+
+### 坑二：`__costumeScreenOf` 返回的是几何中心，不是真实命中点
+
+判命中正确性是分两层的，混用会得出错误结论：
+
+| 函数 | 返回 | 用途 |
+|---|---|---|
+| `boxOf(param)` | V 空间包围盒 | 搜索范围 |
+| 屏幕中心 `(x0+x1)/2` | **几何中心** | **不能**直接当命中点用 |
+| 区域内逐点 `hitAt(x,y)` | 真实命中者的 id | 这才是判据 |
+
+实测：`ScreenOf('ShoseOff')` 报 `n=238`（区域内 238 点命中它），
+但把返回的几何中心喂给 `hitAt` → 得到 `Paramring`。因为中心可能落在别的参数地盘。
+**验收必须在区域内逐点扫、统计每个 id 被命中多少次**，再取一个真正命中的点。
+
+```js
+// 正确做法：区域内逐点扫，找第一个真正命中目标的点
+for (let y = box[1]; y <= box[3]; y += 3)
+  for (let x = box[0]; x <= box[2]; x += 3){
+    const h = hitAt(x, y);
+    if (h && h.id === want) { point = [x, y]; }
+  }
+```
+
+### 坑三：换装改的是顶点，不是不透明度
+
+判「参数写入有没有到达渲染」不能用不透明度：换装多是把部件**挪走/缩放**，
+opacity 可能全程为 1。用顶点包围盒（`getDrawableVertexPositions` 求 w/h/x0/y0）
+才看得见变化。
+
+实测 ShoseOff `0→1`：drawable 460 `w 2.4017→2.4449`、`x0 -9.9973→-10.2100`、
+`y0 -1.2680→-1.3589`；drawable 461 同步。变化集合与 `param_drawables` 的交集
+正是 `[460,461]`。
+之前"pins lo vs hi 逐 drawable 比对 0 差异"的矛盾就是这么来的——比的是透明度。
+
+### 验收四层（缺一不可，全部走产品入口）
+
+1. **数据层**：参数表与 drawable 映射能加载，条数与驱动数都 > 0
+2. **热区**：能列出热区，每个都有可点面积
+3. **写入到达渲染**：toggle 后驱动部件**顶点**确实变化（非 opacity）
+4. **真实点击**：用 CDP `Input.dispatchMouseEvent` 派发 mousePressed + mouseReleased
+   （**不调内部 toggle 函数**），断言参数 `lo→hi` 且 `state.currentGroup` 未变成
+   动作组（否则说明点歪进了动作分支）
+
+只在第 4 层才能发现「函数好用但用户点不到」——`onUp` 里的接续顺序
+（命中判定 → 动作分支）写反了，前三层全绿而真实点击无效。
