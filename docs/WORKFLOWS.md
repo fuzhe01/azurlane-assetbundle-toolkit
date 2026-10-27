@@ -3432,3 +3432,49 @@ PY
 - 把「顺带发现的、与本轮无关的独立问题」单独记档，**不要顺手一起改**
   （本例：24 个探针把浏览器路径写死成本机不存在的 Google Chrome，正解是走 `scripts/paths.py`）；
 - 抽样实跑，**判据落在外部可观测状态上**（进程数），不落在脚本自己的退出码上。
+
+## WF-47 Live2D 跨动作独立状态：数据白名单 + 离开动作时捕获（2026-10-27）
+
+**场景**：一个动作产生持久结果（吻痕/口红印、脱鞋/丝袜状态），用户随后直接选另一个动作。
+新动作文件通常带大量默认 0 曲线，若完全服从新动作，持久结果被冲掉；若把 A 的所有末值都保留，
+旧手臂/身体姿势又会拖进 B，部件错位。正确语义是：**只保留明确独立状态，姿势由新动作接管。**
+
+### 数据侧（判据）
+
+1. 装扮状态只认 `costume_params.json` 且 `n_drawables>0` 的权威清单；
+2. 动作状态只认逐动作实证后的显式白名单；**禁止名称模糊匹配** `Eye* / Heart*`
+   （会混入眨眼/眼球/物理参数）；
+3. 只把 `abs(动作末值)>0.5` 记录进 `state_set_by_group`；普通 0 曲线不清状态；
+4. `state_params/state_set_by_group` 与 `pose_keep` 分开：前者是跨动作状态，后者是回落姿势。
+
+首批样本：`ougen_8/touch_idle12 → KissShow=7`；`touch_idle11 → BoobHeart=1,
+ButtHeart1=12, ButtHeart2=1`。输出在 `motion_chain.json` v3。
+
+### 运行时（唯一写入出口）
+
+1. **不要在 play(A) 时预写 A 的末值**——会让吻痕瞬间出现，绕掉动作内部 0→7 的局部过渡；
+2. 在**离开 A 的那一刻**（直接 A→B / A 回落 idle）从 coreModel 读当前实值，非零才写入
+   `__actionStatePinsByModel[skinKey]`；
+3. 模型 update / `loadParameters()` 后由唯一 LOW ticker 重申：先 action state、再 costume pins
+   （用户主动互动优先）；`restTick` 排除全部 `state_params`；
+4. 任何参数不在状态白名单里，就让新动作接管——这是“不把旧姿势带进 B”的硬边界。
+
+### 验收（`scripts/diag/l2d_action_state_verify.py`）
+
+必须走页面 `__l2play` / CDP 真实点击，不直接调 `mm.startMotion`：
+
+- 动作内部 KissShow 不能在开播时瞬间变 7；动作完成捕获后，用户直接选 `mission` 仍保持；
+- `ParamAngleX` 在新动作里必须变化（证明姿势没被 pin）；
+- 同一个 core 写 0 干扰做 A/B：ticker 开→恢复，移除→保持 0（阴性对照有区分力）；
+- 3 个身体印记跨普通动作保持；真实点击 ShoseOff 后连切两动作保持；
+- `__statePinTick=true` 且旧 `__costumePinTick=false`（状态写入出口唯一）。
+
+### 踩坑记录
+
+- headless SwiftShader 下动作时间轴与 wall-clock 回落定时器会竞速；有时曲线尚未到非零段就先回落。
+  探针最多重播 3 次并打印 RETRY；这是**仪器稳定化**，不是放宽状态判据。是否影响真 GPU 用户环境
+  需另做低帧率取证，不能从 headless 直接外推。
+- `--models ougen_8 --write` 原实现会把 5 模型表覆成只剩 1 个；定向样本写入必须读取旧表后按模型合并。
+
+**涉及文件**：`scripts/build_motion_chain_map.py`、`gallery_src/index.html`、
+`scripts/diag/l2d_action_state_verify.py`、`Output/gallery_v2/motion_chain.json`（生成物）；问题记录 §157。

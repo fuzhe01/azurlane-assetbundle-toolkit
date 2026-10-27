@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""方案 B 数据侧：非 idle 动作 → 最衔接 idle 待机变体组 的映射表预计算。
+r"""方案 B 数据侧：非 idle 动作 → 最衔接 idle 待机变体组 的映射表预计算。
 
 背景
   gallery_src/index.html 里 `mm.groups.idle=idleGroup`（L1319）+ `idleGroup=['idle','main','home']
@@ -40,6 +40,52 @@ sys.stdout.reconfigure(encoding='utf-8')
 from paths import LIVE2D_OUT, GALLERY_OUT  # noqa: E402
 
 IDLE_RE = re.compile(r'^(idle\d*)$')
+
+# ---------- 跨动作独立状态（2026-10-27 用户定案）----------
+# 只收**有权威语义**的参数，不按名称模糊匹配：Eye*/Heart* 会混入眨眼/眼球/物理参数，
+# 自动猜会把实时驱动错钉成状态。首批只落用户点名且逐动作曲线已核实的 ougen_8：
+#   touch_idle12: KissShow=7（吻痕/口红印）
+#   touch_idle11: BoobHeart=1 / ButtHeart1=12 / ButtHeart2=1（身体印记）
+# 明确改变规则：只记录动作末值 abs(v)>0.5；普通动作填充的 0 曲线**不清状态**。
+# 明确关闭动作以后要在配置里点名 clear，不能把全库的 0 默认曲线当“关闭”。
+ACTION_STATE_PARAMS = {
+    'ougen_8': {
+        'KissShow', 'BoobHeart', 'ButtHeart1', 'ButtHeart2',
+    },
+}
+
+
+def load_costume_state_params(model):
+    """互动区已确认的装扮状态参数（权威清单，不从名称猜）。"""
+    p = os.path.join(GALLERY_OUT, 'costume_params.json')
+    try:
+        rows = (json.load(open(p, encoding='utf-8')).get(model) or [])
+    except Exception:
+        return set()
+    return {str(r.get('id')) for r in rows
+            if r.get('id') and int(r.get('n_drawables') or 0) > 0}
+
+
+def build_state_map(model, full_by_group):
+    """返回 (state_params, state_set_by_group)。
+
+    state_params 是 restTick 的豁免全集；state_set_by_group 只含动作明确写出的**非零**状态。
+    装扮参数本身由互动区写 `__costumePinsByModel`，这里只登记其状态语义。
+    """
+    costume = load_costume_state_params(model)
+    action = set(ACTION_STATE_PARAMS.get(model) or ())
+    params = {p: {'kind': 'costume', 'source': 'costume_params'} for p in sorted(costume)}
+    params.update({p: {'kind': 'action_state', 'source': 'nonzero_end'} for p in sorted(action)})
+    by_group = {}
+    for group, curves in full_by_group.items():
+        values = {}
+        for p in action:
+            c = curves.get(p)
+            if c and abs(c['end']) > 0.5:
+                values[p] = round(c['end'], 4)
+        if values:
+            by_group[group] = values
+    return params, by_group
 
 # pose_keep 的排除项（2026-10-24）：这些参数由**运行时每帧驱动**，锁死会破坏实时表现。
 #   · ParamEyeL/R/BOpen、ParamEyeBallX/Y：EyeBlink 与 focusController 每帧写
@@ -206,6 +252,9 @@ def build_model_chain(model_dir, model):
             full[g] = cf
     idle_full = {g: cf for g, cf in full.items() if IDLE_RE.match(g)}
 
+    # 跨动作独立状态（与 pose_keep 分离）：装扮来自互动区权威表，动作状态来自显式白名单。
+    state_params, state_set_by_group = build_state_map(model, full)
+
     # 形态开关集（§134 续）：两态定值参数。硬约束——候选 idle 的开关值必须等于动作末值。
     switches = find_switch_params(full)
 
@@ -323,6 +372,8 @@ def build_model_chain(model_dir, model):
         }
     return {'model': model, 'idle_groups': idle_groups,
             'switch_params': switches,
+            'state_params': state_params,
+            'state_set_by_group': state_set_by_group,
             'durations': durations,
             'n_actions': len(chain), 'chain': chain}
 
@@ -381,13 +432,25 @@ def main():
 
     if args.write:
         out = os.path.join(GALLERY_OUT, 'motion_chain.json')
-        payload = {'version': 2,
+        # 定向样本写入必须**合并**，不能把未选模型删掉：`--models ougen_8 --write`
+        # 以前会把 5 模型文件覆成只剩 1 个，样本测试反而破坏正式产物。
+        old_models = {}
+        if args.models and os.path.isfile(out):
+            try:
+                old_models = (json.load(open(out, encoding='utf-8')).get('models') or {})
+            except Exception:
+                old_models = {}
+        new_models = {m: {'idle_groups': r['idle_groups'],
+                          'switch_params': r.get('switch_params', {}),
+                          'state_params': r.get('state_params', {}),
+                          'state_set_by_group': r.get('state_set_by_group', {}),
+                          'durations': r.get('durations', {}),
+                          'chain': r['chain']}
+                      for m, r in results.items()}
+        old_models.update(new_models)
+        payload = {'version': 3,
                    'idle_re': IDLE_RE.pattern,
-                   'models': {m: {'idle_groups': r['idle_groups'],
-                                  'switch_params': r.get('switch_params', {}),
-                                  'durations': r.get('durations', {}),
-                                  'chain': r['chain']}
-                              for m, r in results.items()}}
+                   'models': old_models}
         with open(out, 'w', encoding='utf-8') as f:
             json.dump(payload, f, ensure_ascii=False)
         print(f'[chain] 已写 {out} （{len(results)} 模型）')

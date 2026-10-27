@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.18
+version: 1.10.19
 ---
 
 # Live2D 网页运行时集成
@@ -1034,3 +1034,54 @@ opacity 可能全程为 1。用顶点包围盒（`getDrawableVertexPositions` �
 
 只在第 4 层才能发现「函数好用但用户点不到」——`onUp` 里的接续顺序
 （命中判定 → 动作分支）写反了，前三层全绿而真实点击无效。
+
+## 24. 跨动作持久状态 ≠ 回落姿势：分表、离开动作时捕获、唯一 LOW 出口（2026-10-27，version 1.10.19）
+
+### 先分三类，混在一起必然误伤
+
+| 类 | 例 | 生命周期 | 新动作能否接管 |
+|---|---|---|---|
+| 装扮状态 | 鞋/丝袜/衣服/戒指 | 直到用户再次互动 | 否（用户操作优先） |
+| 动作产生的独立状态 | 吻痕/口红印/身体印记 | 直到动作明确改成另一非零态/显式清除 | 否 |
+| 姿势/表情 | 手臂、身体角度、眨眼、口型 | 当前动作/回落阶段 | **是** |
+
+`pose_keep` 只解决「动作末帧 → 呼吸 idle」的姿势塌陷，不能拿来做永久状态；
+把 A 有、B 没有的所有非零参数都 pin 住，会把旧手臂/身体姿势拖进 B，造成部件错位。
+
+### 数据判据：白名单，不按名称猜
+
+- 装扮状态只认已验证的 `costume_params.json`，且 `n_drawables>0`；
+- 动作状态只认逐动作实证后的显式白名单；**禁止**模糊匹配 `Eye* / Heart*`
+  （会混入眨眼、眼球、物理参数）；
+- 只把动作末值 `abs(v)>0.5` 记录进 `state_set_by_group`；普通动作填充的 0 曲线不清状态；
+- `state_params/state_set_by_group` 与 `pose_keep` 分表，前端 `restTick` 豁免 `state_params`。
+
+### 时机：不能在 play(A) 时预写末值
+
+吻痕动作内部有自己的 0→非零过渡。若 `play(A)` 时直接把最终值 7 写进 pin，吻痕会瞬间出现，
+局部过渡被绕掉。正确出口：**离开 A 的那一刻**（直接 A→B / A 回落 idle）从 coreModel
+读取当时实际值，非零才写进 `__actionStatePinsByModel[skinKey]`。
+
+### 唯一 LOW ticker
+
+`loadParameters()` 在模型 update 末尾覆盖参数，所以状态重申必须在 app ticker 的 LOW 优先级
+（update 后、render 前）。全模型只许一个 `app.__statePinTick`：
+
+1. 先写 action-state pins；
+2. 后写 costume pins（用户主动互动优先）；
+3. `pose_keep` 仍走自己的回落姿势出口。
+
+真实事故：同一页面曾有两份逐字相同的 costume ticker，参数面板又注册第三份——每帧写 3 遍，
+不仅浪费，还让“谁最后写”变得依赖注册顺序。修法不是加 guard，而是合并成唯一出口。
+
+### 验收（缺一不可）
+
+- 动作开播早期状态仍低值（证明没有提前 pin 末值）；
+- 动作完成捕获后，用户直接选普通动作，独立状态保持；
+- 新动作 `ParamAngleX` 等姿势参数仍变化（证明没有把旧姿势锁死）；
+- 真实点击装扮热区后连切两动作仍保持；
+- 同一个 core 写 0 干扰做 A/B：stateTick 开→恢复，移除→保持 0（阴性对照有区分力）；
+- 静态断言 `__statePinTick=true` 且旧 `__costumePinTick=false`。
+
+⚠️ headless SwiftShader 下动作时间轴可能慢于 wall-clock 回落定时器，曲线未到状态段就被抢先回落。
+探针可重播并打印 RETRY 做仪器稳定化，但不能据此断言真 GPU 用户环境也有同样低帧率缺陷。

@@ -1421,6 +1421,26 @@ async function renderLive2D(s, sk){
        （拖完戴着，切 idle 不摘）——restTick 复位必须豁免它们，否则回落瞬间装饰消失
        （= 用户报的「touch_drag11/12 回落完全不衔接」真根因）。 */
     const switchParams=new Set(Object.keys((chainModel&&chainModel.switch_params)||{}));
+    /* 跨动作独立状态（2026-10-27 用户定案）：与 pose_keep（回落姿势）分离。
+       · stateParams = restTick 豁免全集（装扮 + 明确动作状态）
+       · stateSetByGroup = 某动作明确写出的**非零**状态（普通 0 曲线不是“明确关闭”）
+       生命周期：直到互动区或另一个动作明确改变；按 skin key 隔离，重进同模型继续保持。 */
+    const stateParams=new Set(Object.keys((chainModel&&chainModel.state_params)||{}));
+    const stateSetByGroup=(chainModel&&chainModel.state_set_by_group)||Object.create(null);
+    const actionStateByModel=(window.__actionStatePinsByModel=
+      window.__actionStatePinsByModel||Object.create(null));
+    if(!actionStateByModel[sk.key]) actionStateByModel[sk.key]=Object.create(null);
+    const actionStatePins=actionStateByModel[sk.key];
+    /* 在**离开动作 A 的那一刻**抓 A 当前实际值，而不是播放 A 时立即钉末值：
+       KissShow 这类参数要在动作内部从 0→7 完成局部过渡；若 play(A) 前就写 7，
+       口红印会瞬间出现，等于把动作曲线绕掉。直接切到 B / 回落 idle 都先走这一出口。 */
+    const captureActionState=(g)=>{
+      const defs=stateSetByGroup[g]; if(!defs) return;
+      const c=l2State&&l2State.app&&l2State.app.stage.children[0];
+      const core=c&&c.internalModel&&c.internalModel.coreModel; if(!core) return;
+      for(const k in defs){ try{ const v=+core.getParameterValueById(k);
+        if(Math.abs(v)>0.5) actionStatePins[k]=v; }catch(e){} }
+    };
     /* lastGroup = **页面主动请求的动作组**。回落目标绝不回写它。
        历史坑：旧版回落函数自己也调 startMotion，把 lastGroup 覆盖成回落目标，
        于是同一变量既当「刚播完的动作」又当「当前动作」，查表查到的是 idle 变体 →
@@ -1469,6 +1489,7 @@ async function renderLive2D(s, sk){
       const lg=lastGroup;
       if(!lg || idleSet.has(lg)) return false;      /* 待机组自身循环，不需要回落 */
       if(_fbFor===lg) return true;                  /* 本动作已回落过：吞掉重复请求（库/看门狗都会再问一次） */
+      captureActionState(lg);                       /* 离开动作前抓它产生的独立状态 */
       const _fix=(_ff&&_ff[lg])||null;
       if(_fix==='__hold__'){ _fbFor=lg; return true; }   /* effect 类：停在末帧是语义要求 */
       let dst=null;
@@ -1619,7 +1640,11 @@ async function renderLive2D(s, sk){
                                 Math.round((d+0.6)*1000));
     };
     const play=(g,pr)=>{ if(!g) return false;
-      try{ playVoice(g);
+      try{
+        captureActionState(lastGroup);              /* 直接 A→B：B 覆盖前先抓 A 当前状态 */
+        playVoice(g);
+        /* 动作状态不在这里预写：动作内部要自己完成 0→非零的局部过渡；
+           只在离开动作时由 captureActionState() 把当时实值接管成持久状态。 */
         /* 动态标签：播出即同步显示当前组（非待机动作播放中显示动作名，便于回落前后对照） */
         const _l2c=document.getElementById('l2Curr'); if(_l2c) _l2c.textContent=g;
         /* 开场 login 用 FORCE 才压得过初始 idle；用户一动手先把它标 complete，否则同级 priority
@@ -1663,7 +1688,9 @@ async function renderLive2D(s, sk){
           /* pose_keep 里的参数不交给 restTick 复位：它们由下面的 LOW ticker 每帧 pin 住，
              两边同时写会逐帧互相覆盖（肉眼是姿势抖动）。见 _fallbackOnce() 里的说明。 */
           const keepS=(window.__poseKeepKeys||{})[sk.key]||null;
-          played.forEach(g=>{ (paramSets[g]||new Set()).forEach(p=>{ if(!idleS.has(p) && !switchParams.has(p) && !(keepS&&keepS.has(p))) want.add(p); }); });
+          played.forEach(g=>{ (paramSets[g]||new Set()).forEach(p=>{
+            if(!idleS.has(p) && !switchParams.has(p) && !stateParams.has(p)
+                && !(keepS&&keepS.has(p))) want.add(p); }); });
           played.clear();
           const items=[];
           want.forEach(p=>{ let i=-1; try{ i=cm.getParameterIndex(p); }catch(e){}
@@ -1675,68 +1702,32 @@ async function renderLive2D(s, sk){
          for(const it of rest.items) try{ cm.setParameterValueByIndex(it[0], it[1]+(it[2]-it[1])*k); }catch(e){}
         if(k>=1) rest=null; };
     app.ticker.add(restTick);
-    /* ---------- 装扮参数跨动作保留（2026-10-24 需求 2）----------
-       问题：换装参数（衣服 Cloth 系列、丝袜 Stock 系列、鞋 ShoseOff、戒指 Paramring 等）
-       在**几乎每个**动作里都被写成定值曲线（Cloth1-3 / Stock1-2 / ShoseOff 在
-       ougen_8 的 45 个 clip 里恒为 [0,0,0,8,0]）。于是每播一个动作，
-       loadParameters 就把玩家调好的穿着拉回 0 ——
-       表现就是「脱了鞋，一看动作鞋又自己穿回去了」。
+    /* ---------- 跨动作独立状态：唯一 LOW 写入出口（2026-10-27 用户定案）----------
+       三类语义必须分开：
+       · costume pins：玩家互动区写入的鞋/丝袜/衣服/戒指状态，优先级最高；
+       · action-state pins：动作明确写出的**非零**独立状态（吻痕/口红印），普通 0 曲线不清；
+       · pose_keep：只服务回落姿势，不在这里混进状态表。
 
-       需求：涂口红的动作只该改口红印，不该顺手把鞋和丝袜也脱了。
-       装扮是**独立于动作**的状态。
-
-       时机是关键，也是我最初做错的地方：
-         internalModel.update() 同一次调用的末尾是
-             model.update();         // 把参数应用到骨架
-             model.loadParameters(); // ← 从动作重新加载参数，覆盖一切
-         `beforeModelUpdate` 事件在 loadParameters **之前**触发，在那里写参数会被立刻覆盖
-         （实测写 1、读回 0，即使 beforeModelUpdate 触发了 10 次也一样）。
-         必须挂在 **app.ticker 的 LOW 优先级**：它在模型 update 之后、渲染之前执行，
-         这也是 restTick 用的同一个位置。
-
-       范围：只重申**玩家通过互动区调过的**参数（__costumePinsByModel[sk.key]）。
-       没调过的参数照常跟随动作——口红印这类剧情状态不受影响。 */
-    app.ticker.add(()=>{
-      try{
-        const pm=(window.__costumePinsByModel||{})[sk.key];
-        if(!pm) return;
-        const m2=l2State&&l2State.app&&l2State.app.stage.children[0];
-        const c2=m2&&m2.internalModel&&m2.internalModel.coreModel;
-        if(!c2) return;
-        for(const k in pm){ try{ c2.setParameterValueById(k, pm[k]); }catch(e){} }
-      }catch(e){}
-    }, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
-    /* ---------- 装扮参数跨动作保留（2026-10-24 需求 2）----------
-       问题：换装参数（衣服 Cloth 系列、丝袜 Stock 系列、鞋 ShoseOff、戒指 Paramring 等）
-       在**几乎每个**动作里都被写成定值曲线（Cloth1-3 / Stock1-2 / ShoseOff 在
-       ougen_8 的 45 个 clip 里恒为 [0,0,0,8,0]）。于是每播一个动作，
-       loadParameters 就把玩家调好的穿着拉回 0 ——
-       表现就是「脱了鞋，一看动作鞋又自己穿回去了」。
-
-       需求：涂口红的动作只该改口红印，不该顺手把鞋和丝袜也脱了。
-       装扮是**独立于动作**的状态。
-
-       时机是关键，也是我最初做错的地方：
-         internalModel.update() 的同一次调用末尾是
-             model.update();        // 把参数应用到骨架
-             model.loadParameters(); // ← 从动作重新加载参数，覆盖一切
-         `beforeModelUpdate` 事件在 loadParameters **之前**触发，
-         在那里写参数会被立刻覆盖（实测写 1、读回 0，beforeModelUpdate 触发 10 次也一样）。
-         必须挂在 **app.ticker 的 LOW 优先级**：它在模型 update 之后、渲染之前执行，
-         这也是项目里 restTick 用的同一个位置。
-
-       范围：只重申**玩家通过互动区调过的**参数（__costumePinsByModel[sk.key]）。
-       没调过的参数照常跟随动作——口红印这类剧情状态不受影响。 */
-    app.ticker.add(()=>{
-      try{
-        const pm=(window.__costumePinsByModel||{})[sk.key];
-        if(!pm) return;
-        const m2=l2State&&l2State.app&&l2State.app.stage.children[0];
-        const c2=m2&&m2.internalModel&&m2.internalModel.coreModel;
-        if(!c2) return;
-        for(const k in pm){ try{ c2.setParameterValueById(k, pm[k]); }catch(e){} }
-      }catch(e){}
-    }, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+       时机：internalModel.update() 末尾会 `loadParameters()`，所以 beforeModelUpdate 里写会被
+       立刻覆盖；必须挂在 app.ticker LOW（模型 update 之后、render 之前）。
+       这里曾逐字重复注册了两份 costume ticker，面板构建又注册第三份，每帧写 3 遍。
+       现在全模型唯一出口是 app.__statePinTick；同一参数若两边都有，先写 action state、
+       后写 costume，保证用户刚做的互动操作高于动作状态。 */
+    if(!app.__statePinTick){
+      const stateTick=()=>{
+        try{
+          const m2=l2State&&l2State.app&&l2State.app.stage.children[0];
+          const c2=m2&&m2.internalModel&&m2.internalModel.coreModel;
+          if(!c2) return;
+          const as=(window.__actionStatePinsByModel||{})[sk.key];
+          if(as) for(const k in as){ try{ c2.setParameterValueById(k, as[k]); }catch(e){} }
+          const cs=(window.__costumePinsByModel||{})[sk.key];
+          if(cs) for(const k in cs){ try{ c2.setParameterValueById(k, cs[k]); }catch(e){} }
+        }catch(e){}
+      };
+      app.__statePinTick=stateTick;
+      app.ticker.add(stateTick, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+    }
     /* ---------- 回落姿势保持（2026-10-24 用户定案：touch_idle14 → idle9 闪回问题）----------
        问题链路（逐帧取证得到，不是推测）：
          touch_idle14 是 Loop=False、Duration=3.017 的动作，末帧状态是侧躺、头转向一边
@@ -2228,27 +2219,9 @@ async function renderLive2D(s, sk){
         if(!_pinsByModel[sk.key]) _pinsByModel[sk.key]=Object.create(null);
         if(cos.length){
           gs=mkSec('换装 '+cos.length);
-          /* pins 与 pinTick 必须**跨面板重建保持同一份**：数据晚到会重建面板，
-             若每次新建 pins/ticker，旧 ticker 会用旧快照覆盖新值（实测点击后值被打回原值）。
-             做法：挂在闭包外的模型级对象上，只注册一次 ticker。 */
+          /* 状态重申只有一个出口：模型初始化时注册的 app.__statePinTick。
+             面板只更新当前 skin 的 pins，禁止再挂第二个 ticker（旧版总共重复写 3 遍/帧）。 */
           pins=_pinsByModel[sk.key];
-          /* ⚠️ ticker 必须绑在**当前 app** 上，且换模型时解绑旧的。
-             曾经用 window.__costumePinBound 全局只绑一次，结果切模型后：
-             新 app 没有这个 ticker，而旧 ticker 仍挂在旧 app 上、读的是 l2State.app（已指向新模型），
-             于是旧快照被每帧写进新模型 —— 实测导致 ougen_8 的 ArtMesh255~258 被隐藏
-             （2026-10-23：旧画廊 6 次采样恒 vis=1，新画廊第 0 次 vis=1、之后全 vis=0）。
-             正确做法：把 ticker 引用记在 app 上，每个 app 只绑一次；参数按 sk.key 隔离。 */
-          if(!app.__costumePinTick){
-            const pinTick=()=>{
-              const p=(window.__costumePinsByModel||{})[sk.key];
-              if(!p) return;
-              try{ const cm2=l2State&&l2State.app&&l2State.app.stage.children[0];
-                const c2=cm2&&cm2.internalModel&&cm2.internalModel.coreModel; if(!c2) return;
-                /* 只在当前模型的 coreModel 上写当前模型的钉值 */
-                for(const k in p) try{ c2.setParameterValueById(k, p[k]); }catch(e){} }catch(e){} };
-            app.__costumePinTick=pinTick;
-            app.ticker.add(pinTick, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
-          }
           for(const it of cos){
             const ix=core.getParameterIndex(it.id);
             if(ix<0) continue;

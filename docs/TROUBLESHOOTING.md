@@ -8037,3 +8037,56 @@ typeof l2State        = 'object'
 45 个改动文件 `py_compile` **全 0**；抽样实跑（`l2d_hand_probe`、`l2d_costume_ui_verify`）
 **正常退出后残留 0**（改前是 20+ 进程常驻）。
 
+## §157. 切动作时「鞋/丝袜/吻痕被新动作默认值冲掉」：姿势保持与独立状态是两套语义（2026-10-27）
+
+**用户语义（已拍板）**：
+- 只保留**明确的独立状态**（装扮、吻痕/口红印等）；姿势和表情由新动作接管；
+- 状态一直保留到用户/动作**明确改变**；
+- 互动区写入，或动作把独立状态写成**非零**才算明确改变；普通动作里随包填的 0 曲线忽略。
+
+**旧实现为什么只做了一半**：
+- `__costumePinsByModel` 已能让玩家点过的鞋/丝袜/衣服/戒指跨动作保持；
+- `pose_keep` 是**回落姿势**，只在 `_fallbackOnce()` 写，且语义是“这次动作回落到呼吸 idle 时
+  哪些姿势参数不能复位”，不是跨动作状态；
+- 吻痕/口红印（`KissShow` / `BoobHeart` / `ButtHeart*`）不属于装扮互动区，
+  也不能塞进 pose_keep 永久锁姿势，因此直接选新动作时会被新动作的默认 0 曲线覆盖。
+
+**数据侧修法（`build_motion_chain_map.py` / motion_chain v3）**：
+新增 `state_params` + `state_set_by_group`，与 `switch_params` / `pose_keep` 严格分开：
+
+```json
+"state_set_by_group": {
+  "touch_idle12": {"KissShow": 7.0},
+  "touch_idle11": {"BoobHeart": 1.0, "ButtHeart1": 12.0, "ButtHeart2": 1.0}
+}
+```
+
+判据不做名称模糊匹配（`Eye*`/`Heart*` 会混入眨眼、眼球、物理参数）：
+- 装扮状态来自 `costume_params.json` 权威清单，且必须 `n_drawables>0`；
+- 动作状态首批只收已实证的 `ougen_8` 四参数白名单；
+- 只记录动作末值 `abs(v)>0.5`，普通 0 曲线不清状态；明确关闭动作以后要点名配置。
+- `--models ougen_8 --write` 改成**合并写**，不能把 5 模型文件覆成只剩 1 个（顺带修掉的定向样本写入隐患）。
+
+**运行时修法（`gallery_src/index.html`）**：
+- 新增 `__actionStatePinsByModel[skinKey]`；离开动作 A（直接 A→B 或回落）前，
+  `captureActionState(A)` 读取 coreModel **当时实际值**，非零才接管为持久状态；
+- **不能在 play(A) 时直接预写末值**：那会让 `KissShow` 瞬间变 7，绕掉动作内部的局部过渡；
+- LOW ticker 唯一状态出口：先写 action state，再写 costume pins（用户主动互动优先）；
+- `restTick` 排除全部 `state_params`；新动作的姿势参数不在状态表，照常由新动作接管。
+
+**顺带修复：同一状态旧版每帧写了 3 遍。** `index.html` 有两份逐字相同的装扮 ticker，
+参数面板又注册第三份 `app.__costumePinTick`。现合并为唯一 `app.__statePinTick`。
+
+**验收（`l2d_action_state_verify.py`，只跑 `ougen_8`，全部走页面 `__l2play`/真实 CDP 点击）**：
+- `touch_idle12` 内部过渡未被提前钉值；完成后 `KissShow` 被捕获，用户直接选 `mission` 后保持；
+- `ParamAngleX` 随 mission 继续变化（证明没有把旧姿势 pin 死）；
+- 同一 core 写 0 干扰的 A/B：stateTick 开时恢复、移除后保持 0（阴性对照有区分力）；
+- `touch_idle11` 的 `BoobHeart=1 / ButtHeart1=12 / ButtHeart2=1` 跨普通动作保持；
+- CDP 真实点击 `ShoseOff`，连切两动作后仍保持 1；旧 `__costumePinTick=false` / 新 `__statePinTick=true`。
+
+**已知仪器差异（不是本轮结论）**：headless SwiftShader 下动作时间轴可能慢于 wall-clock 回落定时器，
+个别轮次曲线未到非零段就先回落；探针最多重播 3 次并报告 RETRY。真实浏览器是否也有低帧率抢跑，
+需另做真 GPU 低帧率取证，不能从 headless 直接外推。
+
+**涉及**：`scripts/build_motion_chain_map.py`、`gallery_src/index.html`、
+`scripts/diag/l2d_action_state_verify.py`、`Output/gallery_v2/motion_chain.json`（生成物）。
