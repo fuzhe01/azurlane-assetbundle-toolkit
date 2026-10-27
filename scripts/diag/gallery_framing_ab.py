@@ -40,12 +40,12 @@ def parse():
 class Page:
     def __init__(self, port, profile, url, win=(1600, 1000)):
         # chrome_tree.install：漏了它，异常路径下会留一整棵 SwiftShader renderer 在吃内存
-        self.proc = chrome_tree.install(subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={port}',
+        self.proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={port}',
             '--remote-allow-origins=*', f'--user-data-dir={profile}', '--no-first-run',
             '--no-default-browser-check', '--disable-background-timer-throttling',
             '--enable-unsafe-swiftshader', '--use-angle=swiftshader',
             f'--window-size={win[0]},{win[1]}', url],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         ws = None
         for _ in range(100):
             try:

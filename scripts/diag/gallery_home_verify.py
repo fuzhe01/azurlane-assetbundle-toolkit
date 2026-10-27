@@ -50,7 +50,7 @@ class Browser:
 
     def __init__(self, tag):
         PORT, PROFILE = cdp_slot.slot(ROOT, tag)
-        self.proc = subprocess.Popen(
+        self.proc = chrome_tree.launch(
             [CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
              '--remote-allow-origins=*', f'--user-data-dir={PROFILE}',
              '--no-first-run', '--no-default-browser-check',

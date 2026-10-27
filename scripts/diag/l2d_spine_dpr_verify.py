@@ -73,14 +73,13 @@ if not srv_alive():
 
 kill_stale(DEBUG)
 os.makedirs(DEBUG, exist_ok=True)
-proc = subprocess.Popen([CHROME, "--headless=new", f"--remote-debugging-port={PORT}",
+proc = chrome_tree.launch([CHROME, "--headless=new", f"--remote-debugging-port={PORT}",
                          "--remote-allow-origins=*", f"--user-data-dir={DEBUG}",
                          "--no-first-run", "--no-default-browser-check",
                          "--disable-background-timer-throttling",
                          "--enable-unsafe-swiftshader", "--use-angle=swiftshader",
                          "--force-device-scale-factor=%d" % DPR, "--window-size=1600,1100", URL],
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-proc = chrome_tree.install(proc)
 
 ws = None
 for _ in range(80):

@@ -40,13 +40,13 @@ class Session:
 
     def __init__(self, tag):
         port, profile = cdp_slot.slot(ROOT, tag)
-        self.proc = chrome_tree.install(subprocess.Popen(
+        self.proc = chrome_tree.launch(
             [CHROME, '--headless=new', f'--remote-debugging-port={port}',
              '--remote-allow-origins=*', f'--user-data-dir={profile}',
              '--no-first-run', '--no-default-browser-check',
              '--enable-unsafe-swiftshader', '--use-angle=swiftshader',
              '--window-size=800,600', 'about:blank'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         ws = None
         for _ in range(120):
             try:

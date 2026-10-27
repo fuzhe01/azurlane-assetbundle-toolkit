@@ -57,8 +57,8 @@ class Page:
         if not gpu:
             flags += ['--enable-unsafe-swiftshader', '--use-angle=swiftshader']
         flags += [f'--window-size={win[0]},{win[1]}', url]
-        self.proc = chrome_tree.install(subprocess.Popen(
-            flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        self.proc = chrome_tree.launch(
+            flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         ws = None
         for _ in range(100):
             try:

@@ -24,14 +24,13 @@ FOLDER = sys.argv[1] if len(sys.argv) > 1 else 'aluomangshi_2'
 MATCH = sys.argv[2] if len(sys.argv) > 2 else 'datui'
 BASE = 'http://127.0.0.1:8777/gallery_v2/index.html'
 
-proc = subprocess.Popen([
+proc = chrome_tree.launch([
     CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
     '--remote-allow-origins=*', f'--user-data-dir={DEBUG_DIR}',
     '--no-first-run', '--no-default-browser-check', '--enable-unsafe-swiftshader',
     '--use-angle=swiftshader', '--window-size=1280,900', BASE,
 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-proc = chrome_tree.install(proc)
 
 ws = None
 for _ in range(80):

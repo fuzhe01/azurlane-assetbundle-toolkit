@@ -50,7 +50,7 @@ if '--redo' in sys.argv:
     url += '&redo=1'
 
 os.makedirs(DEBUG_DIR, exist_ok=True)
-proc = subprocess.Popen([
+proc = chrome_tree.launch([
     CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
     '--remote-allow-origins=*',
     f'--user-data-dir={DEBUG_DIR}', '--no-first-run', '--no-default-browser-check',
@@ -58,7 +58,6 @@ proc = subprocess.Popen([
     '--use-angle=swiftshader', '--window-size=1280,900',
     url,
 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-proc = chrome_tree.install(proc)
 
 def wait_ws():
     for _ in range(60):

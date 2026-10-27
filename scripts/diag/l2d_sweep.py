@@ -84,7 +84,7 @@ def kill_stale(ud):
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 kill_stale(DEBUG)
-proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={DEBUG}', '--no-first-run', '--no-default-browser-check',
   '--disable-background-timer-throttling', '--enable-unsafe-swiftshader', '--use-angle=swiftshader',
   '--js-flags=--max-old-space-size=4096', '--window-size=1280,900', URL],

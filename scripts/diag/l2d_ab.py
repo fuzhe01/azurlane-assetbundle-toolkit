@@ -108,7 +108,7 @@ def main():
     else:
         raise RuntimeError('本地服务器未就绪 ' + url)
 
-    proc = subprocess.Popen([
+    proc = chrome_tree.launch([
         CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
         '--remote-allow-origins=*', f'--user-data-dir={DEBUG_DIR}',
         '--no-first-run', '--no-default-browser-check',

@@ -47,7 +47,7 @@ try:
 except Exception as e:
     raise SystemExit(f'! 服务器不可达: {e}')
 
-proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
   '--use-angle=swiftshader', '--window-size=1280,900',

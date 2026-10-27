@@ -75,7 +75,7 @@ def main():
     if not ok:
         print(f'[FAIL] 自起的服务器取不到 bgm.json（{n} 字节）⇒ 先跑 build_bgm_index.py / deploy_gallery.py')
         return 2
-    proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+    proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
                              '--remote-allow-origins=*', f'--user-data-dir={PROFILE}',
                              '--no-first-run', '--no-default-browser-check',
                              '--autoplay-policy=no-user-gesture-required',

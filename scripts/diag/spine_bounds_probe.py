@@ -19,14 +19,13 @@ PORT = cdp_slot.port('bounds')
 FOLDER = sys.argv[1] if len(sys.argv) > 1 else 'aluomangshi_2'
 SKIN = sys.argv[2] if len(sys.argv) > 2 else '1'
 PROFILE = cdp_slot.profile(ROOT, 'bounds')   # 每次全新 profile：复用会把上一次的 chrome 当本页
-proc = subprocess.Popen([
+proc = chrome_tree.launch([
     CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
     '--remote-allow-origins=*', f'--user-data-dir={PROFILE}',
     '--no-first-run', '--no-default-browser-check', '--enable-unsafe-swiftshader',
     '--use-angle=swiftshader', '--window-size=1280,900',
     'http://127.0.0.1:8777/gallery_v2/index.html',
 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-proc = chrome_tree.install(proc)
 ws = None
 for _ in range(120):
     try:

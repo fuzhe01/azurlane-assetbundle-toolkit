@@ -13,10 +13,10 @@ P = os.path.join(ROOT, '.diag', 'chrome_galprobe3')
 os.makedirs(P, exist_ok=True)
 URL = 'http://127.0.0.1:8777/gallery_v2/index.html'
 
-chrome_tree.install(subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={P}', '--no-first-run', '--no-default-browser-check',
   '--disable-background-timer-throttling', '--enable-unsafe-swiftshader', '--use-angle=swiftshader',
-  '--window-size=1280,900', URL], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+  '--window-size=1280,900', URL], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 w = None
 for i in range(80):

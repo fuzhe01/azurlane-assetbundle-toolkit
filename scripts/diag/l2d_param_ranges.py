@@ -20,12 +20,11 @@ PORT = 9379
 PROFILE = os.path.join(ROOT, '.diag', 'chrome_ranges')
 os.makedirs(PROFILE, exist_ok=True)
 KEY = sys.argv[1] if len(sys.argv) > 1 else 'antu_2'
-proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
   '--use-angle=swiftshader', '--window-size=1280,900',
   'http://127.0.0.1:8777/gallery_v2/index.html'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-proc = chrome_tree.install(proc)
 w = None
 for _ in range(90):
     try:

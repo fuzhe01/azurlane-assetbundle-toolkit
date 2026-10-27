@@ -3478,3 +3478,113 @@ ButtHeart1=12, ButtHeart2=1`。输出在 `motion_chain.json` v3。
 
 **涉及文件**：`scripts/build_motion_chain_map.py`、`gallery_src/index.html`、
 `scripts/diag/l2d_action_state_verify.py`、`Output/gallery_v2/motion_chain.json`（生成物）；问题记录 §157。
+
+## WF-48 装扮/状态类改动：删重复块与验收层级（2026-10-28）
+
+**为什么单列一条**：本轮在「合并重复 ticker」时误删了 tween 推进段，导致**互动区点击整体失效**，
+而面板级验收（`l2d_costume_ui_verify`）**照样 PASS**。这类回归只能被「真实点击链路」抓到。
+
+### 三条硬规则
+
+1. **删「重复代码块」前按行为核对，不按代码形状**
+   - 逐块列出副作用：写哪个全局、读哪个全局、推进哪种状态（pins / tween / 姿态）。
+   - 本例三块里两块是 pins 重申、一块是 tween 推进；形状相似、职责不同，只看 diff 会删错。
+2. **同一优先级（LOW）里，注册顺序就是执行顺序**
+   - tween 推进必须**早于**状态重申：同帧先推进 tween 写 pins，再重申 pins。
+   - 顺序反了会把渐变值打回旧值（肉眼是"点了没反应"）。
+3. **验收必须覆盖到「真实点击」这一层**
+   - 面板按钮级（`l2d_costume_ui_verify`）→ 只证明控件能改值；
+   - 真实点击级（`l2d_action_state_verify` 的 D 段 / `verify_r6_real_click`）→ 才证明
+     `costumeToggle → tween → pins → stateTick` 整条链没断。
+   - 改动触及 ticker/优先级时**必跑后者**。
+
+### 判据排查顺序（「参数对了但画面没变」）
+
+1. 先查**动作是否还在跑**（`currentGroup` / 该参数是否在该 clip 曲线里）——最常见；
+2. 再查**读的是不是同一实例**（本项目多次栽在「读一个不存在的全局」）；
+3. 最后才怀疑 keyform 重算时机。
+
+⚠️ 本轮曾判定「Cubism 只在参数变化时重算 keyform，pin 写同值不刷新」，并据此补 `core.update()`；
+**A/B 对照已否证**（动作停稳后旧行为同样生效，之前读到的"恒 0"是动作覆盖所致），改动已撤回。
+
+**涉及**：`gallery_src/index.html`、`scripts/diag/l2d_action_state_verify.py`、
+`scripts/diag/l2d_costume_ui_verify.py`、`scripts/diag/verify_r6_real_click.py`、§158。
+
+## WF-49 无头浏览器生命周期的三层兜底：Job Object + 启动前清理 + 回读确认（2026-10-28 实测）
+
+**适用**：任何往机器上拉起浏览器进程的脚本（诊断探针、批量导出、页面验证）。新写一个探针、
+或发现机器上堆了无头浏览器孤儿进程时按本流程执行。背景见 `docs/TROUBLESHOOTING.md §159`。
+
+### 判据
+
+1. **一个启动出口**：`chrome_tree.launch(cmd, **popen_kw)`，参数形状与 `subprocess.Popen` 完全一致。
+   全库不许再有"headless 的 `subprocess.Popen`"直接调用点。重扫命令：
+   ```
+   py -3 scripts/diag/migrate_chrome_launch.py --dryrun    # 期望：将迁移 0 个
+   ```
+2. **机制自测五判据全绿**（含阴性对照，缺 ③ 就是假绿灯）：
+   ```
+   py -3 scripts/diag/chrome_lifecycle_selftest.py
+   ```
+   | # | 判据 | 期望 |
+   |---|---|---|
+   | ① | 正常退出（`sys.exit` → atexit） | 残留 0 |
+   | ② | 父进程被 `taskkill /F` 强杀（走 `launch()`） | 残留 0 |
+   | ③ | 同一条强杀 + `AL_NO_JOB=1`（阴性对照） | 残留 **> 0** |
+   | ④ | `clean_profile()` 能回收 ③ 的现场 | 清掉 N 个，回读残留 0 |
+   | ⑤ | 老写法 `Popen` + `install()` 被强杀 | 残留 0（A 层必须也做进 `install()`） |
+3. **收尾固定自检**（非空即泄漏，当场清理）：
+   ```powershell
+   Get-CimInstance Win32_Process -Filter "Name='msedge.exe' or Name='chrome.exe'" |
+     Where-Object { $_.CommandLine -match 'azur\\.diag' }
+   ```
+   ⚠️ 先按 `$_.Name` 过滤再匹配命令行——否则会匹配到**执行这条查询的 shell 自己**。
+4. **profile 回收**：`py -3 scripts/diag/clean_diag_profiles.py --yes`（默认只删 30 分钟前的；
+   本次自测刚生成的用 `--min-age 0`）。实测一次可回收 20+ GiB。
+
+### 三步 dryrun → 样本 → 全量（批量迁移用）
+
+1. `--dryrun` 拿可重数的缺陷数（改前 56 个调用点）。
+2. 3 个代表样本手读 diff + `py_compile`：`proc =`（直接 Popen）、`self.proc =`（install 包裹）、
+   `Popen(flags, ...)`（headless 在变量里，间接形态）。**`py_compile` 只证语法，不证语义**。
+3. 全量后重扫要求"残留 headless Popen 调用点 = 0"，并 `py_compile` 所有改动文件。
+4. 删掉迁移过程产生的 `.bak`（`.diag/` 与 `scripts/` 下都不许留）。
+
+### 踩坑记录
+
+- **括号会被吃掉**：`rewrite()` 若按"Popen 的闭合 `)` 之后"切片，`launch(` 就少一个 `)`，
+  53 个文件一次性全坏（`'(' was never closed`）。正确做法是 BODY 取 `open_idx+1 : end-1`，
+  再自己补 `)`；install 包裹形态还要把 install 自己的那个 `)` 一起吃掉。
+- **间接形态会漏**：4 个文件写成 `flags = [..., '--headless=new', ...]` 再 `Popen(flags, ...)`，
+  参数区里没有字面 `--headless`。而 `gallery_ui_shots.Page` 是 ~70 个脚本的共用出口，
+  漏了它等于没修一半。⇒ 先扫"被赋过含 `--headless` 的列表"的变量名，再按变量名匹配。
+- **`launch()` 之后的 `X = install(X)` 是冗余**：`launch()` 内部已注册 atexit，
+  留着会让同一棵树注册两个回调（重复回读进程表，拖慢退出）。只删"同一变量确实由 launch 赋值"的那行。
+- **实测命令超时上限 ≥15 分钟**（909 秒前台命令正常跑完、退出码 0），
+  与 `windows-long-running-batch-detach` 技能里"默认 2 分钟 / 最大 10 分钟"的说法矛盾。
+  ⇒ 事故更可能是**长时间无输出**触发看门狗。修复重点在"超时后兜底"，不是"减少超时"。
+- **`os.kill(pid, 0)` 在 Windows 上不是探活**：CPython 实现是 `OpenProcess + TerminateProcess`，
+  它会**真的杀进程**。用 `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) + GetExitCodeProcess == 259`。
+- **阴性对照可能落空**：第一次强杀测试拿到 "before kill = 0 / residual = 0"，看着是 PASS，
+  其实是浏览器在强杀前就自己退完了 —— **测的是一个已经结束的场景**。必须先轮询到进程数
+  稳定 >= 15 再下杀手，否则拿到的是假绿。
+- **★ 迁移只按 `--headless` 字面扫会漏掉一整类，且它们长得最像"已修好"**（同日自查发现）：
+  11 个探针是「先 `subprocess.Popen(...)`、下一行再 `chrome_tree.install(proc)`」，
+  `install()` 当时只注册 `atexit` ⇒ 强杀下 100% 泄漏，修复只做了一半。
+  ⇒ 收尾判据不能只数"目标字面"，要**用 AST 数出所有 `Popen` 调用点并逐个归类**
+  （浏览器 / http.server / 子 python），归类结果要能对上总数：
+  ```
+  10-28 复核结果：含 --headless 的文件 60 个；launch 58 个/58 文件；
+                  install 14 个（11 真浏览器 + 2 http.server + 1 自测）；浏览器 Popen 残留 0
+  ```
+  老接口的正确处置是**让它自己升级**（`install()` 内部调 `_attach_job()`），不是逐个改调用方 ——
+  逐个改会永远追不上沉默的旁路，而升级接口对所有（含未来）调用者一次生效。
+
+### 涉及文件
+
+- `scripts/diag/chrome_tree.py` —— `launch()` / `clean_profile()` / `orphans()` / `kill_tree()` / `_adopt()`
+- `scripts/diag/chrome_lifecycle_selftest.py` —— 四判据自测（含阴性对照）
+- `scripts/diag/migrate_chrome_launch.py` —— 批量迁移器（`--dryrun` / `--only`）
+- `scripts/diag/clean_diag_profiles.py` —— profile 回收
+- `scripts/cdp_slot.py` —— 端口 + profile 分配（`chrome_<tag>_<pid>`，每进程唯一）
+- `AGENTS.md`「脚本约定」、`docs/TROUBLESHOOTING.md §159`

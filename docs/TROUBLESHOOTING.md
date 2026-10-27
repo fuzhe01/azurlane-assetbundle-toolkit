@@ -8090,3 +8090,184 @@ typeof l2State        = 'object'
 
 **涉及**：`scripts/build_motion_chain_map.py`、`gallery_src/index.html`、
 `scripts/diag/l2d_action_state_verify.py`、`Output/gallery_v2/motion_chain.json`（生成物）。
+
+## §158. 装扮 pin 的「参数对了、画面没变」：**先分清动作覆盖与 keyform 刷新**（2026-10-28）
+
+**现象**：`ougen_8` 点戒指热区，参数 `Paramring` 稳定读到 1（连推 5 帧都是 1、pin 里也是 1），
+但对应 drawable 796 的不透明度恒为 0、部件始终不可见。旧记录写成「戒指只剩 8 个采样点、
+难点中」，实测**采样点全部命中**、参数也确实切换 —— 真正要查的是「画面为何不跟随」。
+
+**第一版结论（已推翻，保留以免重犯）**：曾判定「Cubism 只在参数**值变化**时才重算 keyform，
+pin 每帧写同值就不刷新」，并据此在产品 ticker 里补了一次 `core.update()`。
+
+**A/B 对照把这个结论否证了**：
+
+| 场景 | 结果 |
+|---|---|
+| 旧行为（只写、不 update），**动作停稳后** | `Paramring` 的 drawable 796 不透明度 **0 → 1** ✅ |
+| 旧行为，**login 动作仍在播放时** | 不透明度**恒 0** —— 动作曲线每帧把它拉回 0（`loadParameters` 覆盖） |
+| 新行为（写 + `update()`） | 同样是 1，**没有任何额外收益** |
+
+⇒ 补 `update()` **无益**，还多算一次骨架重算、并与动作驱动的 update 抢时序，**已撤回**。
+
+**真正的判据顺序（这才是本轮的方法论收获）**：
+1. 先查**动作是否还在跑**：`currentGroup` / 该参数是否在当前 clip 的曲线里被驱动；
+   动作覆盖是最常见的「参数对了画面不对」成因，比 keyform 问题常见得多。
+2. 再查**读的是不是同一个实例**：本项目多次栽在「探针读的全局根本不存在」上（本节下一段）。
+3. 最后才怀疑 keyform 刷新。
+
+**同轮真正的缺陷（是探针，不是产品）**：`l2d_costume_hotzone_verify.py` 的三处仪器 bug
+让「0 差异」看起来像结论——
+
+- `SNAP` 只读 `window.__l2model`，而该全局**只有本探针注入的 HOOK 成功时才有值**；
+  HOOK 未注入 ⇒ 快照恒 `NO_MODEL` ⇒ 「pins 稳态变化集合」恒空 ⇒ 误报「该参数没有可见效果」。
+- `READ` 同样只读该全局，于是「点击前参数」经常是 `None`。
+- **取屏幕点在前、停动作在后**：`__costumeScreenOf` 给的是**取点那一刻**的几何中心，停动作后
+  姿态变化会让该坐标落到邻居热区（实测 login 期间取点、停后命中 `Cloth2`）。
+
+**已修的部分**：`SNAP`/`READ` 改为「优先取页面真实舞台、HOOK 记录兜底」；取屏幕点改到
+停动作之后；点错热区自动重取最多 6 次。**未修**：`__costumeScreenOf` 的中心点语义
+（见上一条续，需要先改它的返回语义）。
+
+**判据教训（两条，通用）**：
+1. **「参数读回正确」不能证明「画面正确」**，但**「画面没变」也不能直接证明「参数没生效」**——
+   必须先把「当前有无动作在驱动它」这一层排除掉。
+2. **「测得 0 差异」之前，先证明仪器真的取到了数据**。本项目已有多个先例：
+   指针闸设错、断言键名笔误、读不存在的全局 ⇒ 全都是「恒绿的假判据」。
+
+### §158 续二：删「重复代码块」时按**行为**核对，不能只看函数体是否相同（2026-10-28）
+
+**事故**：合并「三份重复状态 ticker」时，把 **tween 推进**那段也当成重复删掉了。
+三份里其实有两份是 *pins 重申*、一份是 *tween 推进* —— 形状相似、职责不同。
+
+**后果**：`costumeToggle()` 只写 `__costumeTweens[id]={from,to}`，推进靠那个 ticker；
+删掉之后 tween 永不到位 ⇒ **互动区点击"成功"但参数和画面都不动**。
+`l2d_costume_ui_verify` 仍能 PASS（它走的是面板按钮，不是热点点击），
+所以这个回归**只能被真实点击链路抓到**。
+
+**判据**：
+- 删之前先列出每个块的**副作用**（写哪个全局、读哪个全局、推进哪种状态），不只看代码形状。
+- 合并后必须跑**真实点击**验收（`l2d_action_state_verify` 的 D 段 / `verify_r6_real_click`），
+  面板按钮级验收抓不到这一类。
+- 补回时注意**执行顺序**：tween 必须早于 stateTick（同帧先推进 tween 写 pins，再重申）。
+
+**涉及**：`gallery_src/index.html`（stateTick 补 update、`__costumeHitV` 直判入口）、
+`scripts/diag/l2d_costume_hotzone_verify.py`（部分修复：SNAP/READ 改用真实舞台并带 HOOK 兜底、
+取点改为停动作之后、点错热区自动重取最多 6 次）。
+
+### §158 续：嵌套热区（测了但**已撤回**，留作下一轮依据）（2026-10-28）
+
+**量到的事实**（`ougen_8`，V 空间包围盒）：
+
+| 关系 | 数据 |
+|---|---|
+| Stock1 ⊂ Stock2 | Stock1 **100%** 落在 Stock2 内（占比 32%） |
+| Paramring ⊂ Cloth2 | Paramring **100%** 落在 Cloth2 内（占比 1.3%） |
+| Stock2 × ShoseOff | 仅 7% 重叠 |
+| Cloth3 × NeckMoney | 双向各约 46%/42% |
+
+按「面积最小者胜」，**内层永远抢赢** ⇒ 外层在那片区域点不到。
+
+**试过的改法（阶梯式，均已撤回）**：
+
+1. 嵌套对改按「到包围盒边缘距离」取近 ⇒ Stock1 可达率 **0%→70%**，但 Paramring 在
+   `__costumeScreenOf` 给的中心点上被判给 Cloth2（外层边缘距离同为 0，落回面积比较）。
+2. 改为「内层优先 + 外层独占环归外层」 ⇒ Stock1/Paramring/ShoseOff **全部 100%**、
+   Stock2 92%、Cloth2 94%。**可达率指标全绿。**
+
+**但第二版仍被撤回，原因是有回归且回归不可接受**：
+`__costumeScreenOf(id)` 返回的是**包围盒几何中心**，而这个中心本身可能落在邻居地盘
+（实测 Stock1 的中心 V(-6.1,5.19) 实际位于 Stock2 独占区）。改优先级后，
+该中心点的命中结果从 Stock1 变成 Stock2，**既有验收脚本立即回归**。
+
+**结论**：`__costumeScreenOf` 的「中心点」语义与「热区可达性」本身冲突，
+不改它就无法同时满足两边。下一轮要么先给 `__costumeScreenOf` 换成「区域内真实命中点」，
+要么另立判据（只用网格可达率、不依赖中心点），**否则不要动优先级规则**。
+
+**当前状态**：产品仍是 HEAD 的「面积最小者胜」。这一条记为**已知缺口、未修**。
+
+## §159. 无头浏览器泄漏：`atexit` / `finally` 在强杀下**全都不执行**，只能内核级兜底（2026-10-28）
+
+**问题**：诊断脚本跑完（或被中断）后，机器上累积 headless 浏览器孤儿进程，把 CPU 顶到 96%、
+内存只剩 2.3 GB，卡了近两小时。现场：6 个孤儿实例、62 个进程、5.83 GB，创建时间从 16:51
+到 18:23 横跨 **6 次脚本运行**，profile 全是 `--headless=new --use-angle=swiftshader`
+（软件渲染，纯吃 CPU），其中两个 gpu-process 各持续占 35% CPU。
+
+**根因**（不是"某个脚本忘了写清理"）：脚本本身是规范的——`l2d_inspector_verify.py` 里有
+`chrome_tree.install(proc)`、也有显式 `kill_tree`。但这些收尾**都依赖进程能走到退出流程**。
+三组实测对照（结论确定）：
+
+| 退出方式 | `atexit` | 结果 |
+|---|---|---|
+| 正常退出 | 执行 | ✅ 清干净 |
+| `sys.exit()` | 执行 | ✅ 清干净 |
+| `Stop-Process -Force` / `taskkill /F`（= SIGKILL 等价物） | **不执行** | ❌ Chrome 整棵树 18 个进程全部存活成孤儿 |
+
+宿主对命令执行有超时上限，一旦超时强杀 python，**收尾全部作废**。⇒ **`finally` 和 `atexit`
+在强杀下都不执行，任何进程内清理机制都救不了这个场景**；"加个 `finally`" 解决不了。
+必须用进程外 / 内核级兜底。
+
+**顺带纠正一个流传的参数**：`windows-long-running-batch-detach` 技能里写「命令超时默认 2 分钟、
+最大 10 分钟」，**实测不成立**——一条 909 秒（15 分 10 秒）的前台命令正常跑完、退出码 0。
+所以本次事故更可能是**长时间无输出**触发了看门狗，而不是撞上固定短上限。
+⇒ 修复重点放在"超时后兜底"，不是"减少超时"。
+
+**修法**（三层，`scripts/diag/chrome_tree.py` 的 `launch()` 一次做齐）：
+
+1. **A Job Object（根治）**：`CreateJobObjectW` + `SetInformationJobObject`
+   (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) + `AssignProcessToJobObject`（纯 `ctypes`，无需 pywin32）。
+   父进程一死，内核自动杀光 job 内所有进程。三个必须注意的点：
+   - Popen 要带 `CREATE_BREAKAWAY_FROM_JOB`，否则父进程若已在别的 job 里会被拒；
+     被拒就退回不带 flag 重试并告警（降级，不静默）。
+   - **Chromium 会重新孵化主进程**：Popen 拿到的 launcher 早退、真正的主进程换了父，
+     所以"assign 一次"只覆盖启动器那一支 ⇒ 启动窗口内用有界 daemon 线程反复扫同 profile
+     的进程并补 assign（`ADOPT_WINDOW` 默认 12 秒）。
+   - job 句柄必须**保活**在模块级 dict 里：句柄一被 GC，`KILL_ON_JOB_CLOSE` 会立刻误杀成员。
+2. **B 启动前清理（兜底）**：启动前按 `--user-data-dir` **精确匹配**杀掉上一轮同 tag 的残留。
+   不只防泄漏，还防两个更隐蔽的后果：① 极端情况（进程被 suspend 后强杀）连 A 也失效；
+   ② Chrome 发现同 profile 已有实例会**复用旧实例并忽略你新传的 URL**，
+   让新探针静默附着到上一轮的页面上（"我明明改了却还是旧行为"）。
+3. **C 收尾**：`atexit` 整树清理 + **profile 回读确认**。判据必须落在回读，
+   不能落 `taskkill` 的退出码（`taskkill /T /F /PID <launcher>` 在 Edge 上是假绿灯，
+   详见 §156 形态一）。
+
+**判据（缺任一条都不算成立）**：`py -3 scripts/diag/chrome_lifecycle_selftest.py`
+  ① 正常退出 → 残留 0；② 父进程被强杀 → 残留 0；
+  ③ **阴性对照** 同一条强杀 + `AL_NO_JOB=1` → 残留**必须 > 0**；
+  ④ 启动前清理能回收 ③ 漏下的现场；
+  ⑤ 老写法 `Popen` + `install()` 被强杀 → 残留 0（专测下文那个覆盖缺口）。
+第 ③ 条是本条的承重墙：没有它，②的绿可能只是"浏览器自己退得快"，属于**判据没有区分力**的假绿灯。
+（本轮实测：阳性侧 15→0，阴性侧 15→24。）
+
+**⚠️ 第一轮修完还漏了一半（同日自查发现，值得单独记）**：迁移只覆盖了 `subprocess.Popen` 形，
+但全库还有 **11 个探针**写成「先 `subprocess.Popen(...)`，下一行再 `chrome_tree.install(proc)`」——
+`install()` 当时**只注册 `atexit`**，没有 A 层 ⇒ 这 11 个在强杀下 100% 泄漏，等于修复只做了一半。
+而且它们**长得最像"已经修好了"**（每行都有 `chrome_tree.install`、注释还写着"异常退出也要收整棵树"）。
+⇒ 两条通用教训：
+1. **判据要看"覆盖面"，不能只看"典型样本"**。批次改写后用 AST 数**所有** `Popen` 调用点并逐个归类
+   （浏览器 / http.server / 子 python），而不是只数 `--headless` 字面出现的那些。
+2. **老接口要跟着升级**，否则它就是个沉默的旁路：`install()` 现在内部也调 `_attach_job()`，
+   事后 `AssignProcessToJobObject` 同样有效（不要求进程是 job 的创建子进程）。
+   ⑤ 号判据就是为这条设的，配 `AL_NO_JOB=1` 阴性对照实测：强杀前 27 个进程 → 残留 **23**（确实漏），
+   证明⑤的绿来自 `_attach_job()` 而不是巧合。
+
+**全库处置**（AST 精确计数，2026-10-28 复核）：`scripts/diag/` 下含 `--headless` 的文件 **60 个**，
+浏览器启动点**全部归一到 `chrome_tree`**：
+- `chrome_tree.launch(...)` 调用点 **58 个 / 58 个文件**（A+B+C 全给）；
+- `chrome_tree.install(proc)` 调用点 **14 个**，其中 **11 个**是真浏览器启动（A+C，无 B）、
+  2 个是 http.server、1 个在自测脚本里；
+- `Popen` 形式的浏览器启动点残留 **0**；`scripts/` 顶层（`pipeline_panel.py` / `update_pipeline.py`）
+  的 `Popen` 起的是子 python，不是浏览器。
+⚠️ 用户报的"61 个"是正则粗筛（含 http.server 与子 python 启动器），不是精确数；
+`migrate_chrome_launch.py --dryrun` 现在报 `0 个，分布在 0 个文件` 就是这条的复跑判据。
+
+**已排除的假设**：
+- "给每个脚本补 `finally: kill_tree()`" —— 强杀下不执行，无效。
+- "把 `proc.terminate()` 改成 `taskkill /T /F`" —— 只解决正常/异常退出路径，强杀路径仍然漏。
+- "把超时上限调大/减少单次运行时长" —— 实测上限 ≥15 分钟，且超时不是根因。
+- "只迁 `--headless` 字面出现的启动点就够了" —— 漏了 11 个 `install()` 形态与 4 个间接
+  `Popen(flags, ...)` 形态；后者含 `gallery_ui_shots.Page`（约 70 个脚本的共用出口）。
+
+**涉及文件**：`scripts/diag/chrome_tree.py`（A+B+C，含 `install()` 内的 A）、
+`scripts/diag/chrome_lifecycle_selftest.py`（五判据）、`scripts/diag/migrate_chrome_launch.py`（批量迁移）、
+`scripts/diag/clean_diag_profiles.py`（profile 回收）、`AGENTS.md`「脚本约定」、`docs/WORKFLOWS.md` WF-49。

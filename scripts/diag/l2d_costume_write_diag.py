@@ -48,13 +48,12 @@ def main():
     subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(0.6)
-    proc = subprocess.Popen([
+    proc = chrome_tree.launch([
         BROWSER, f"--remote-debugging-port={PORT}", "--remote-allow-origins=*",
         f"--user-data-dir={PROFILE}", "--no-first-run", "--no-default-browser-check",
         "--headless=new", "--gpu", "--window-size=1400,950",
         f"{URL}?ship={SHIP}&_t={int(time.time()*1000)}"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    proc = chrome_tree.install(proc)
     ws = None
     for _ in range(120):
         try:

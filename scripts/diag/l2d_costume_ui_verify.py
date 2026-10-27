@@ -70,8 +70,7 @@ def main():
              "--disable-background-timer-throttling", "--headless=new", "--gpu",
              "--window-size=1500,1000",
              f"{URL}?ship={SHIP}&_t={int(time.time()*1000)}"]
-    proc = subprocess.Popen(flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    proc = chrome_tree.install(proc)
+    proc = chrome_tree.launch(flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     ws = None
     for _ in range(120):

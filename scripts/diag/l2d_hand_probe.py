@@ -142,8 +142,7 @@ def main():
     # motion_chain.json，导致「代码改了但测试结果没变」的假阴性（2026-10-23 实测踩到）。
     _qs.append("_t=%d" % int(time.time() * 1000))
     flags.append(URL + (("?" + "&".join(_qs)) if _qs else ""))
-    proc = subprocess.Popen(flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    proc = chrome_tree.install(proc)
+    proc = chrome_tree.launch(flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     ws = None
     for _ in range(120):

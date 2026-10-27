@@ -1,7 +1,7 @@
 ---
 name: headless-chrome-cdp-batch-export
 description: 无头 Chrome + CDP 批量驱动本地网页完成渲染/截图/资产导出。当任务需要用浏览器前端运行时（如 Spine/WebGL/Canvas/JS 库）批量产出图片或数据文件时使用——触发词：无头浏览器批量导出、CDP 驱动网页、headless chrome 批量截图、浏览器渲染落盘、autostart 参数自动化。不适用于单次网页截图和 QwenWork 内置媒体生成工具。
-version: 1.8.4
+version: 1.8.6
 ---
 
 # 无头 Chrome + CDP 批量导出
@@ -277,6 +277,36 @@ version: 1.8.4
     ③ 自查残留时 `Get-CimInstance Win32_Process | ? { $_.CommandLine -match "chrome_x_1"` 这类写法
        会**匹配到执行查询的 powershell/bash 自己**（查询串就在它的 CommandLine 里），
        误报"还有 N 个残留"、甚至差点去 kill 自己的 shell —— 先按 `$_.Name -eq "chrome.exe"` 过滤再匹配。
+    **④ ★ 进程内的任何收尾，在"宿主强杀"下全都无效 —— 只能靠内核级兜底**（2026-10-28 实测，用户的机器
+       被压到 96% CPU / 2.3GB 空闲近两小时）。三组对照：正常退出 / `sys.exit()` → `atexit` **执行**；
+       `Stop-Process -Force`、`taskkill /F` → `atexit` 与 `finally` **都不执行**，Chrome 整棵树
+       （实测 18~24 个进程）全部存活成孤儿。⇒ **别再用"加个 finally / 注册 atexit"来回答泄漏问题**，
+       那是同一条已被否证的思路换了个写法。真正有效的是**进程外**手段，三条一起上：
+       · **A 内核级**：把子进程放进 Windows **Job Object** 并设 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`
+         （`ctypes` 调 `CreateJobObjectW` / `SetInformationJobObject` / `AssignProcessToJobObject`，
+         不需要 pywin32）。父进程一死，内核自动杀光 job 内全部进程 —— 这是唯一不依赖"能走到退出流程"的层。
+       · **B 启动前清残留**：`Popen` 之前按 `--user-data-dir` **精确等于**匹配上一轮的孤儿并杀掉。
+         顺带治另一个假绿灯：Chrome 会**复用**还活着的同 profile 实例并忽略你新传的 URL。
+       · **C 收尾回读**：kill 之后按 profile 回读进程表，确认真的 0 ——
+         `taskkill /T /F` 在 Edge 上是**假绿**（返回 0/128 而 16~20 个进程还在），不能拿退出码当判据。
+       ⇒ 出口收敛成**一个**：`chrome_tree.launch(cmd, profile=...)`（本项目 `scripts/diag/`）。
+       **全库 60 个含 `--headless` 的文件、全部浏览器启动点已归一**（`launch` 58 个 + `install` 11 个，
+       浏览器 `Popen` 残留 0）；新增探针不许自己写 `Popen`。
+       ⚠️ **老接口必须跟着升级，否则它是个沉默的旁路**：迁移第一遍只按 `--headless` 字面扫，
+       漏掉了 11 个「先 `Popen` 再 `install(proc)`」的探针 —— 它们**长得最像已修好**
+       （每行都有 `chrome_tree.install`、注释还写着"异常退出也要收整棵树"），而 `install()` 当时
+       只注册 `atexit` ⇒ 强杀下 100% 泄漏。正确处置是让 `install()` 内部也做 A
+       （事后 `AssignProcessToJobObject` 同样有效，不要求进程是 job 的创建子进程），
+       **不要逐个去改调用方**：改接口对所有（含未来）调用者一次生效。
+       ⇒ 收尾判据不能只数"目标字面"，要用 AST 数出**所有** `Popen` 调用点并逐个归类
+       （浏览器 / http.server / 子 python），总数必须对得上。
+       **验收必须带阴性对照**：`AL_NO_JOB=1` 关掉 A 再跑同一场景 —— 阳性侧 15→0、阴性侧 15→**24**
+       才算证明"零残留是 A 的功劳"；只测阳性会把"恰好这次浏览器自己退了"当成机制生效。
+       对 `install()` 形态单独做同一条对照也有必要（实测强杀前 27 → 残留 23）。
+       ⚠️ 而**强杀测试本身也会假绿**：第一次跑时浏览器早已自己退出（`before kill = 0`，残留自然 0）。
+       必须先**轮询到 ≥15 个浏览器进程存在**再杀，否则测的是一个已结束的场景。
+    ④ **别再相信"`os.kill(pid, 0)` 探活"**：Windows 上 CPython 把它实现成 `OpenProcess + TerminateProcess`,
+       即它**真的会杀人**。判活要用 `OpenProcess(0x1000) + GetExitCodeProcess == 259`。
 11. **观测通道的编码问题会被当成被测对象的缺陷**：Python 在中文 Windows 上 stdout 默认 GBK，
     把 UTF-8 内容（如带中文的资源名）打成 mojibake 后打印出来，看起来像**被测数据编码坏了**。
     本项目据此写过一条"`.skel` 与 `.atlas` 区域名编码不一致"的错误结论，

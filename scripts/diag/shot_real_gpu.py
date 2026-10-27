@@ -56,8 +56,7 @@ def main():
             '--no-first-run', '--no-default-browser-check',
             '--window-size=1400,1000',
             URL]
-    proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    proc = chrome_tree.install(proc)
+    proc = chrome_tree.launch(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print('已启动有头 Edge（真实 GPU），PID', proc.pid)
 
     ws_url = None

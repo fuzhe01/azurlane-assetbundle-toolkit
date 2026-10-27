@@ -48,7 +48,7 @@ for s in idx['ships']:
 if only: cands = [c for c in cands if c in only] or only
 if limit: cands = cands[:limit]
 
-proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
   '--use-angle=swiftshader', '--window-size=1280,900', f'{GBASE}/{page}'],

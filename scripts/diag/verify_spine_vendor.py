@@ -60,7 +60,9 @@ threading.Thread(target=httpd.serve_forever, daemon=True).start()
 # 2) 起无头 Chrome + CDP（五坑：remote-allow-origins / 独立 profile / swiftshader / 就绪轮询）
 import subprocess  # noqa: E402
 
-proc = subprocess.Popen(
+import chrome_tree  # noqa: E402  整树清理 + Job Object（见该模块 docstring）
+
+proc = chrome_tree.launch(
     [CHROME, "--headless=new", f"--remote-debugging-port={PORT + 1}",
      "--remote-allow-origins=*", f"--user-data-dir={DEBUG_DIR}",
      "--no-first-run", "--no-default-browser-check",
@@ -69,7 +71,6 @@ proc = subprocess.Popen(
     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
 )
 
-proc = chrome_tree.install(proc)
 
 
 def wait_ws():

@@ -33,12 +33,11 @@ except Exception:
 def go(name, clip):
     m = f'Live2D/{name}/{name}.model3.json'
     url = f'{PAGE}?m={m}&clip={clip}&idx=0&v=20261016e'
-    proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+    proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
         '--remote-allow-origins=*', f'--user-data-dir={DEBUG_DIR}', '--no-first-run',
         '--no-default-browser-check', '--disable-background-timer-throttling',
         '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--window-size=1200,1000', url],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    proc = chrome_tree.install(proc)
     ws = None
     for _ in range(80):
         try:

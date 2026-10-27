@@ -55,7 +55,7 @@ class Probe:
         subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.5)
-        self.proc = subprocess.Popen([
+        self.proc = chrome_tree.launch([
             BROWSER, f"--remote-debugging-port={self.port}", "--remote-allow-origins=*",
             f"--user-data-dir={self.profile}", "--no-first-run", "--no-default-browser-check",
             "--headless=new", "--gpu", "--window-size=1400,950", url],

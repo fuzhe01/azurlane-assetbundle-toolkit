@@ -16,7 +16,7 @@ PORT, PROFILE = cdp_slot.slot(ROOT, 'intv')
 # INTV_URL / INTV_MODELS 可覆盖默认的旧画廊(8777)与固定 4 模型清单：
 # 本项目画廊(8778, 5 样本)回归用 INTV_URL=http://127.0.0.1:8778/gallery_v2/index.html
 GALLERY_URL = os.environ.get('INTV_URL', 'http://127.0.0.1:8777/gallery_v2/index.html')
-proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
   '--use-angle=swiftshader', '--window-size=1280,900',

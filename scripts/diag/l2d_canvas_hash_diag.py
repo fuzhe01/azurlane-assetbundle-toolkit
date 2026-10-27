@@ -60,12 +60,11 @@ def main():
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(0.5)
     url = f"http://127.0.0.1:{SRV}/gallery_v2/index.html?ship={SHIP}&_t={int(time.time()*1000)}"
-    proc = subprocess.Popen([
+    proc = chrome_tree.launch([
         BROWSER, f"--remote-debugging-port={PORT}", "--remote-allow-origins=*",
         f"--user-data-dir={PROFILE}", "--no-first-run", "--no-default-browser-check",
         "--headless=new", "--gpu", "--window-size=1300,900", url],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    proc = chrome_tree.install(proc)
     ws = None
     for _ in range(120):
         try:

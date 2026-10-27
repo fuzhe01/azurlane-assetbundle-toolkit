@@ -31,7 +31,7 @@ CASES = ['huajia_2', 'huajia_2_hx', 'buleisite', 'duyisibao_2', 'bailong', 'puli
 sys.path.insert(0, os.path.join(ROOT, 'scripts', 'diag'))
 import websocket  # noqa: E402
 
-proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling',
   '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--window-size=1280,900', URL],

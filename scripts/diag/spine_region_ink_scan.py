@@ -224,13 +224,12 @@ def preflight():
 
 
 def spawn():
-    proc = subprocess.Popen([
+    proc = chrome_tree.launch([
         CHROME, '--headless=new', f'--remote-debugging-port={PORT}', '--remote-allow-origins=*',
         f'--user-data-dir={os.path.join(ROOT, ".diag", "chrome_ink_scan")}',
         '--no-first-run', '--no-default-browser-check', '--enable-unsafe-swiftshader',
         '--use-angle=swiftshader', '--js-flags=--max-old-space-size=4096', '--window-size=1280,900', BASE,
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    proc = chrome_tree.install(proc)
     ws = None
     for _ in range(120):
         try:

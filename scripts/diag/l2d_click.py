@@ -13,12 +13,11 @@ for _p in (_HERE, os.path.join(_HERE, '..')):
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
 PORT = 9336
-proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={ROOT}/.diag/chrome_l2d_click',
   '--no-first-run', '--no-default-browser-check', '--disable-background-timer-throttling',
   '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--window-size=1280,900',
   'http://127.0.0.1:8777/gallery_v2/index.html'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-proc = chrome_tree.install(proc)
 w = None
 for _ in range(60):
     try:

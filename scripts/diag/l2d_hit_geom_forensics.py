@@ -142,13 +142,12 @@ def main():
     scan = "--scan-all" in sys.argv
     keys = args or (["<all>"] if scan else ["jianwu_2", "lafeiii_3"])
     os.makedirs(PROFILE, exist_ok=True)
-    proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+    proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
       '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
       '--no-default-browser-check', '--disable-background-timer-throttling',
       '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--window-size=1280,900',
       f'http://127.0.0.1:{SRV}/gallery_v2/index.html'],
       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    proc = chrome_tree.install(proc)
     ws = None
     for _ in range(90):
         try:

@@ -146,14 +146,13 @@ NOVOICE = r"""(async(key)=>{
 
 def main():
     args = sys.argv[1:]
-    proc = subprocess.Popen([
+    proc = chrome_tree.launch([
         CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
         '--remote-allow-origins=*', f'--user-data-dir={DEBUG_DIR}',
         '--window-size=1400,900', '--autoplay-policy=no-user-gesture-required',
         '--enable-unsafe-swiftshader', '--use-angle=swiftshader',
         '--disable-background-timer-throttling', BASE],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    proc = chrome_tree.install(proc)
     try:
         ws = None
         for _ in range(90):

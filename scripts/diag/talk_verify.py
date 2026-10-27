@@ -392,7 +392,7 @@ def main():
     ap.add_argument('--vtab', help='强制语音页样本（用来复验换索引后才可用的船）')
     ap.add_argument('--textonly', help='强制"有表行、主包未下发"样本（仅台词那一档）')
     A = ap.parse_args()
-    proc = subprocess.Popen([
+    proc = chrome_tree.launch([
         CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
         '--remote-allow-origins=*', f'--user-data-dir={DEBUG_DIR}',
         '--window-size=1400,900', '--autoplay-policy=no-user-gesture-required',

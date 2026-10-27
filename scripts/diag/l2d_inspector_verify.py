@@ -23,7 +23,7 @@ from probe_exit import bad_reason, available_keys
 GALLERY = os.environ.get('GALLERY_URL', 'http://127.0.0.1:8777/gallery_v2/index.html')
 CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT, PROFILE = cdp_slot.slot(ROOT, 'insp')
-proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
   '--use-angle=swiftshader', '--window-size=1280,900',

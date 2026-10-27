@@ -55,12 +55,12 @@ class Pg:
     """最小 CDP 客户端。Runtime 异常一律收集，不悄悄吞。"""
 
     def __init__(self, cdp, profile, url, win):
-        self.proc = chrome_tree.install(subprocess.Popen([CHROME, '--headless=new',
+        self.proc = chrome_tree.launch([CHROME, '--headless=new',
             f'--remote-debugging-port={cdp}', '--remote-allow-origins=*',
             f'--user-data-dir={profile}', '--no-first-run', '--no-default-browser-check',
             '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
             '--use-angle=swiftshader', f'--window-size={win[0]},{win[1]}', url],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         ws = None
         for _ in range(120):
             try:
