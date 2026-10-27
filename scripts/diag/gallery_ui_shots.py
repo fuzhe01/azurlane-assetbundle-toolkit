@@ -30,13 +30,23 @@ STATES = [('1_grid', None, None), ('2_live2d', 'live2d', 'ninghai_4'),
 
 
 class Page:
-    def __init__(self, port, profile, url, win):
-        self.proc = chrome_tree.install(subprocess.Popen([CHROME, '--headless=new',
-            f'--remote-debugging-port={port}', '--remote-allow-origins=*',
-            f'--user-data-dir={profile}', '--no-first-run', '--no-default-browser-check',
-            '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
-            '--use-angle=swiftshader', f'--window-size={win[0]},{win[1]}', url],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+    def __init__(self, port, profile, url, win, gpu=False):
+        """gpu=True 时不传 SwiftShader，走机器真实 GPU（D3D11）。
+
+        为什么需要（2026-10-25，TROUBLESHOOTING §137 已被实证）：SwiftShader 与真 GPU
+        对 Live2D 的 `isVisible` 判定不一致（实测 ArtMesh255~258 在软件渲染 vis=1、
+        真 GPU vis=0），而用户环境是硬件光栅化。**凡对账「可见性/像素」的裸页判据，
+        默认的 SwiftShader 路径会给出系统性偏差的假绿灯**，必须用 gpu=True 复测。
+        """
+        flags = [CHROME, '--headless=new',
+                 f'--remote-debugging-port={port}', '--remote-allow-origins=*',
+                 f'--user-data-dir={profile}', '--no-first-run', '--no-default-browser-check',
+                 '--disable-background-timer-throttling']
+        if not gpu:
+            flags += ['--enable-unsafe-swiftshader', '--use-angle=swiftshader']
+        flags += [f'--window-size={win[0]},{win[1]}', url]
+        self.proc = chrome_tree.install(subprocess.Popen(
+            flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         ws = None
         for _ in range(100):
             try:

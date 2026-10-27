@@ -12,7 +12,8 @@
    候选集合取自产品暴露的 window.__L2_HITALL，探针不复算几何（复算版实测与真实派发 4/38 条不一致）。
 用法: py -3 scripts/diag/hit_verify.py [--limit N] [--only k1,k2] [--page index_a0.html]
 #   都不给 --limit/--only 即全量；--page 指向 A/B 对照页（判 WIRING 是不是本轮引入）
-前置: 8777 画廊服务器在跑（否则 Chrome 换成导航失败页，会假报 nAreas=0，见 WF-16 踩坑段）
+前置: 画廊服务器在跑（默认 8777；用 GALLERY_BASE 覆盖，本项目在 8778 ⇒ 设 GALLERY_BASE=http://127.0.0.1:8778/gallery_v2）
+      否则 Chrome 换成导航失败页，会假报 nAreas=0，见 WF-16 踩坑段
 """
 import sys, os, json, time, subprocess, urllib.request
 sys.stdout.reconfigure(encoding='utf-8')
@@ -34,6 +35,8 @@ only = [x for x in (sys.argv[sys.argv.index('--only')+1] if '--only' in sys.argv
 # --page：指向画廊里的另一个页面文件，用于「改动前 vs 改动后」同一样本的定向复跑
 # （A/B 对照页由 git show HEAD:<正本> 落盘生成，见 WF-16 追加段 / gallery_framing_ab.py）
 page = sys.argv[sys.argv.index('--page') + 1] if '--page' in sys.argv else 'index.html'
+# 画廊地址不写死：8777 可能是另一份画廊（旧机全库），在那上面 PASS 不证明本项目生效
+GBASE = os.environ.get('GALLERY_BASE', 'http://127.0.0.1:8777/gallery_v2').rstrip('/')
 
 idx = json.load(open(os.path.join(ROOT, 'Output', 'gallery_v2', 'index.json'), encoding='utf-8'))
 cands = []
@@ -48,7 +51,7 @@ if limit: cands = cands[:limit]
 proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
-  '--use-angle=swiftshader', '--window-size=1280,900', f'http://127.0.0.1:8777/gallery_v2/{page}'],
+  '--use-angle=swiftshader', '--window-size=1280,900', f'{GBASE}/{page}'],
   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 import chrome_tree; chrome_tree.install(proc)   # 异常退出也要收整棵树，见该模块 docstring
 w = None

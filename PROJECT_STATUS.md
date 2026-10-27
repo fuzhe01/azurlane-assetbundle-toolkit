@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-27（动作保真裁决定稿 E 为终态 + 换入 + 缺陷①②结案；⚠️ 本轮改动**全部未提交**，见 §6「既有待办 0」）
+> **生成时间**: 2026-10-27（动作保真裁决定稿 E 为终态 + 换入 + 缺陷①②结案；本轮改动**已全部提交**，见 §6「既有待办 0」）
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python **3.15**（2026-10-23 起本机约定；UnityPy 1.25.4 无 cp315 预编译轮子，需源码编译，见 §2 Python 行）。⚠️ 本机同时装着 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（现固定 3.15），**跑之前先 `py -3 scripts/diag/check_env.py`** 确认实际解释器与依赖
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`（3.15 上必须走阿里云/腾讯云源，清华源连 sdist 都没有；需 MSVC BuildTools 编译 UnityPy + lz4）
@@ -203,13 +203,10 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 
 ### 既有待办
 
-**⚠️ 0. 未提交改动（2026-10-27 收尾被权限闸拦下，下个会话第一件事）**
-本轮全部改动**已落盘并验证通过，但一点没提交**（`git add` 被拒）。工作树：15 个已跟踪文件修改 + 118 个未跟踪文件（全在 `scripts/diag/`）。要提交的三批：
-① `scripts/extract_motions.py` + `scripts/diag/**`（含新入库的 `vanish_can_page.html` 页面正本）+ `docs/WORKFLOWS.md` WF-45 + `docs/TROUBLESHOOTING.md` §153/§154 + 本文件；
-② 三个 `SKILL.md`（`live2d-motion-extraction-audit` 1.3.5 / `live2d-web-runtime-integration` 1.10.18 / `headless-chrome-cdp-batch-export` 1.8.2 —— 最后这个是 CDP `about:blank` 就绪陷阱，属于通用无头坑，不该只躺在 Live2D 技能里）。
-两条 git hook 都还在：pre-commit 要求「暂存 `scripts/**` 或 `gallery_src/**` 时必须同时暂文档」，commit-msg 要求 message 里有 `技能:` 行。
-验证已跑过（均可复现）：`deploy_gallery.py --check` 6/6 同 inode漂移 0 ｜ `check_diag_hygiene.py` PASS ｜ `check_env.py` PASS（Py3.15.0 + UnityPy 1.25.4 载荷级）｜ `py_compile` 6 个脚本 exit 0 ｜ `l2d_group_cmp.py --files` prod vs E **367/367**。
-未做的清理（不急、但别当成已完成）：`.diag` 下 78 个 chrome profile / 6.83 GiB 未删（干跑已过，`clean_diag_profiles.py --yes` 未执行）；12 组残留无头 Edge 进程未终止（`Stop-Process` 被拒）。
+**✅ 0. 2026-10-27 收官轮改动已全部提交**（`b3adae9` 文档与技能 / 本条提交 管线与探针）：`extract_motions.py` 段类型三段式 + `Meta.FadeInTime` 真根因、`scripts/diag/**` 118 个入库探针（含 `vanish_can_page.html` 页面正本）、WF-45、§151/§153/§154、三个 `SKILL.md`。
+⚠️ **页面正本必须留在 `scripts/diag/`**：`Output/` 被 `.gitignore` 整体忽略，正本放那儿会随清盘静默消失，`vanish_can.py` 便拿旧扫描器跑出假绿灯；判据工具依赖的资产一律入库。
+验证（均可复现）：`deploy_gallery.py --check` 6/6 同 inode 漂移 0 ｜ `check_diag_hygiene` PASS ｜ `check_env` PASS ｜ `py_compile` 11 脚本 0 ｜ `l2d_group_cmp --files` prod vs E **367/367** ｜ `vanish_can` 实跑生产 `mail`（`durSrc=motion` / `dur=4.817` / `frames=144`，闸门 pass exit 0）。
+未做（别当成已完成）：`.diag` 78 个 chrome profile / 6.83 GiB 未删（`clean_diag_profiles.py --yes` 未执行）；残留无头 Edge 进程未终止。
 
 **优先级低**
 5. UI/图标批量导出（~2 万）、3D 宿舍资源、资源分类整理 `organize.py`。⚠️ 前两项的源包（`ui/` 除 `commonui_atlas`、`dorm3d`、`island`、`char`）已于 2026-10-06 按裁定删除 ⇒ 开工前要先重拉，且**必须先撤销 `pruned.json` 里的对应登记**（否则 `mumu_sync` 会按"已归档"跳过它们，`--only ui` 也拉不回来；工具还没有 `--revive`，见 WF-28 已知缺口）。

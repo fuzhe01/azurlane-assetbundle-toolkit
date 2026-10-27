@@ -7,7 +7,9 @@ import websocket
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # 本目录：chrome_tree / probe_exit
 import cdp_slot            # 端口 / profile 不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
+import probe_exit
 CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT, PROFILE = cdp_slot.slot(ROOT, 'intv')
 # INTV_URL / INTV_MODELS 可覆盖默认的旧画廊(8777)与固定 4 模型清单：
@@ -55,7 +57,7 @@ JS = r"""(async(key)=>{ try{
   // 且服务器单线程）必然不够，表现为四个皮肤全报 reading 'internalModel' 的假失败。
   for(let i=0;i<80 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
   if(!(l2State&&l2State.app&&l2State.app.stage.children[0]))
-      return JSON.stringify({key:k, err:'40s 内模型未加载', note:(document.querySelector('.note')||{}).textContent||''});
+      return JSON.stringify({key, err:'40s 内模型未加载', note:(document.querySelector('.note')||{}).textContent||''});
   const app=l2State.app, m=app.stage.children[0], im=m.internalModel, core=im.coreModel, ppu=im.pixelsPerUnit||1, mm=im.motionManager;
   const cux2=im.width/ppu, cuy2=im.height/ppu;   // 画布单位边长：V(中心原点/y向上)↔P(左上/y向下) 换算用
   const wrap=document.getElementById('l2wrap'), rect=wrap.getBoundingClientRect();
@@ -105,16 +107,36 @@ JS = r"""(async(key)=>{ try{
     /* null=idle 看守者轮换重取数的间隙（无头下 fetch 慢更明显），不算触发动作 */
     noAction: st().grp===g0 || st().grp===null};
 
-  // ⑤ 点 Head 中心：应播 Head
+  // ⑤ 点 Head 中心：应播该部位的**某个**合法动作组。
+  //    A3 规则（2026-09-24 用户裁定）：同一位置重叠多个 Touch 标记时**随机**冒一条，
+  //    所以断言必须是"集合"不是"单值"——旧写法 `played===hitAreas[0].Name` 把 A3 的正确行为
+  //    判成假失败（aersasi_2 实测 played=idle want=touch_head）。
+  const grps=Object.keys((im.motionManager&&im.motionManager.definitions)||{});
+  const dragG=n=>{ if(grps.includes(n)) return n;
+    const alt=n.replace(/^touchdrag(\d+)$/i,'touch_drag$1');
+    if(grps.includes(alt)) return alt;
+    const ds=grps.filter(x=>/^touch_drag\d+$/.test(x));
+    if(!ds.length) return null;
+    return ds[(parseInt((n.match(/(\d+)$/)||[])[1]||'1',10)-1)%ds.length]; };
+  const grpOf=nm=>{ const low=String(nm).toLowerCase();
+    return grps.includes(nm) ? nm : (grps.find(x=>x.toLowerCase()===low) || dragG(nm)); };
   const hi=core.getDrawableIndex((im.settings.hitAreas||[])[0]?.Id);
   if(hi>=0){ const p=core.getDrawableVertexPositions(hi); let sx=0,sy=0,n=0;
     for(let k=0;k+1<p.length;k+=2){sx+=p[k];sy+=p[k+1];n++;}
-    const g=m.toGlobal(new PIXI.Point((sx/n+cux2/2)*ppu, (cuy2/2-sy/n)*ppu));   // V→P→global，与 hitAt 互逆
+    const pvx=sx/n, pvy=sy/n;                       // V 空间（顶点原生，中心原点/y向上）
+    const g=m.toGlobal(new PIXI.Point((pvx+cux2/2)*ppu, (cuy2/2-pvy)*ppu));   // V→P→global，与 hitAt 互逆
+    /* 候选集合直接问**产品自己**（__L2_HITALL 与 localHit 同一套几何），不在探针里另算一份 */
+    let cand=[]; try{ cand=[...new Set(window.__L2_HITALL?__L2_HITALL(pvx,pvy):[])]; }catch(e){}
+    const candG=[...new Set(cand.map(grpOf).filter(Boolean))];
     const e2={bubbles:true,cancelable:true,pointerId:10,clientX:rect.left+g.x,clientY:rect.top+g.y,button:0};
     wrap.dispatchEvent(new PointerEvent('pointerdown',e2)); window.dispatchEvent(new PointerEvent('pointerup',e2));
-    await t(1600);   // startMotion 是 async，900ms 会读到还没换组的 currentGroup → 假失败
-    out.headClick={want:(im.settings.hitAreas[0].Name), played:st().grp, pill:(document.getElementById('l2Hit')||{}).textContent};
-    out.headClick.ok = out.headClick.played===out.headClick.want;
+    /* startMotion 是 async（要拉 motion3.json）。固定等 1.6s 在单线程服务器 + 20s 级大 clip 上
+       必然读到还没换组的 currentGroup → 假失败。改成轮询到进组或 12s 上限。 */
+    let played=st().grp, waited=0;
+    while(waited<12000 && !candG.includes(played)){ await t(300); waited+=300; played=st().grp; }
+    out.headClick={wantName:(im.settings.hitAreas[0].Name), cand, want:candG, played, waited,
+      pill:(document.getElementById('l2Hit')||{}).textContent};
+    out.headClick.ok = candG.length ? candG.includes(played) : false;
   }
   out.endScale=st().scale;
   return JSON.stringify(out,null,1);
@@ -123,8 +145,12 @@ JS = r"""(async(key)=>{ try{
 os.makedirs(os.path.join(ROOT, '.diag', 'size_shots'), exist_ok=True)
 allok = True
 _models_env = os.environ.get('INTV_MODELS')
+# 默认清单必须只含**本项目画廊实有**的模型（index.json 的 live2dSkins）。
+# 旧清单里的 anninvwang_2 / lafeiii_3 在本项目不存在 → 探针打印 skip:'no skin' 后 exit 0，
+# runner 记成通过（假绿）。缺失模型现在按「未评估」计，见尾部退出码。
+DEFAULT_MODELS = 'benningdun_2,aersasi_2,aersasi_3,antu_2,ougen_8'
 for k in ([m.strip() for m in _models_env.split(',') if m.strip()] if _models_env
-          else ['anninvwang_2', 'aersasi_2', 'aersasi_3', 'lafeiii_3']):
+          else DEFAULT_MODELS.split(',')):
     out = None
     for _try in range(6):
         try:
@@ -141,6 +167,10 @@ for k in ([m.strip() for m in _models_env.split(',') if m.strip()] if _models_en
     print(out)
     try:
         d = json.loads(out)
+        if probe_exit.bad_reason(d):
+            print(f"  ⊘ 未评估: {probe_exit.bad_reason(d)}（不计通过）")
+            allok = False
+            continue
         bad = [x for x in ('plainWheelNoop', 'ctrlWheelZooms', 'cancelStopsDrag') if d.get(x) is False]
         if d.get('emptyClick', {}).get('noAction') is False: bad.append('emptyClick')
         if d.get('headClick') and d['headClick'].get('ok') is False: bad.append('headClick')
@@ -151,3 +181,6 @@ print('\n总判定:', 'ALL PASS' if allok else '有未通过项')
 r = cmd('Page.captureScreenshot', {'format': 'png'})
 open(os.path.join(ROOT, '.diag', 'size_shots', 'interact_final.png'), 'wb').write(base64.b64decode(r['data']))
 ws.close(); chrome_tree.kill_tree(proc.pid)
+# 退出码契约见 scripts/diag/probe_exit.py：判定与退出码脱节 = 回归永远绿。
+# 之前这里只 print 不 exit，'有未通过项' 也是 0，runner 记成通过。
+sys.exit(0 if allok else 1)

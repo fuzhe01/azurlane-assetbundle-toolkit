@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>vanishcan</title>
+<style>html,body{margin:0;background:#2a6e2a}#log{color:#fff;font:11px monospace;white-space:pre}</style></head>
+<body><div id="log"></div>
+<script src="vendor/live2d/live2dcubismcore.min.js"></script>
+<script src="vendor/live2d/pixi.min.js"></script>
+<script src="vendor/live2d/pixi-live2d-display-cubism4.min.js"></script>
+<script>
+/* 可见件逐帧扫描仪（2026-10-24）：对指定动作按确定性步长推进，每帧枚举全部
+   drawable 的 dynamicFlags 可见位与 opacity，统计「整段动作里始终不可见的件」。
+   判据来源：vendor L3541 `if (!getModel().getDrawableDynamicFlagIsVisible(idx)) continue;`
+   ⇒ 可见位为 0 即完全没画。
+   用法：?_vanishcan.html?base=<模型根相对路径>&ship=ougen_8&grp=mail&fps=30
+   window.__scan() 返回 JSON。 */
+(function(){
+  var q = new URLSearchParams(location.search);
+  var BASE = q.get('base') || '../../Live2D';
+  var SHIP = q.get('ship') || 'ougen_8';
+  var GRPS = (q.get('grp') || 'mail').split(',');
+  var FPS  = +(q.get('fps') || 30);
+  var W    = +(q.get('w') || 720);
+  var H    = +(q.get('h') || 720);
+  var MAXFRAMES = +(q.get('maxframes') || 4000);
+  // 逐帧可见轨迹（下标表，逗号分隔）：给定点取证用，能看出「哪几帧翻类」，
+  // 而不是只知道整段里可见了几帧。不传则不记录，零额外开销。
+  var TRACE = (q.get('trace') || '').split(',').filter(function(s){ return s.trim() !== ''; })
+                .map(function(s){ return +s; });
+  var out = [];
+  function log(s){ out.push(s); document.getElementById('log').textContent = out.join('\n'); }
+  function done(){ document.title = 'DONE'; }
+  function err(e){ log('ERR ' + (e && e.stack ? e.stack : e)); document.title = 'ERR'; }
+
+  (async function(){
+    var app = new PIXI.Application({width:W, height:H, backgroundAlpha:false,
+      backgroundColor:0x2a6e2a, resolution:1, autoStart:false});
+    document.getElementById('log').appendChild(app.view);
+    var mdl = await PIXI.live2d.Live2DModel.from(
+      BASE + '/' + SHIP + '/' + SHIP + '.model3.json',
+      {autoInteract:false, autoUpdate:false});
+    var im = mdl.internalModel, cm = im.coreModel, pm = im.motionManager;
+    try{ pm.stopAllMotions(); }catch(e){}
+    try{ im.eyeBlink = undefined; }catch(e){}
+    // physics 是**有状态积分器**（vendor Cubism4InternalModel.update 里 physics.evaluate(model, dt)），
+    // 同一时刻的物理状态随采样步长而变 ⇒ 不同 fps 不可比。做「同一 fps 下的 AB 对照」时
+    // 必须能用 ?nophys=1 关掉它，才能把「动作数据差异」与「物理放大」分开。
+    if (q.get('nophys') === '1'){ try{ im.physics = undefined; }catch(e){} }
+    try{ if (im.focusController) im.focusController.update = function(){}; }catch(e){}
+    mdl.scale.set(Math.min(W/(im.width||1), H/(im.height||1))*0.9);
+    try{ mdl.anchor.set(0.5,0.5); mdl.x=W/2; mdl.y=H/2; }catch(e){}
+    app.stage.addChild(mdl);
+    app.renderer.render(app.stage);
+
+    var DDm = cm.getModel().drawables;
+    var N = DDm.count, NAMES = [];
+    for (var d=0; d<N; d++) NAMES.push(cm.getDrawableId(d));
+    // 部件透明度链：drawable 的可见位与最终透明度由 Cubism Core 依「所属 Part 及其父 Part」
+    // 的 opacity 乘积决定（drawables.parentPartIndices / parts.parentIndices）。
+    // 取证「opacity 非 0 但可见位为 0」时必须能同时看到这条链，否则分不清是数据差异
+    // 还是部件级判定，故 trace 里把它一并记下来。
+    var PARTS = cm.getModel().parts, DPI = DDm.parentPartIndices, PPI = PARTS.parentIndices;
+    function partChain(dIdx){
+      var p = DPI[dIdx], out = [], guard = 0;
+      while (p >= 0 && guard++ < 8){ out.push(PARTS.opacities[p]); p = PPI[p]; }
+      return out;
+    }
+
+    // ★ 取 clip 真实时长。model3.json 的 Motions 条目只有 File（idle 组另带 FadeInTime /
+    //   FadeOutTime），**没有 duration 字段** ⇒ 旧写法 defs[bi].duration 恒为 undefined，
+    //   静默回退成 5 秒，扫描只覆盖了每个动作的前 5.07 秒（真实 clip 长达 10~25 秒）。
+    //   正确来源是已加载 motion 的 getLoopDuration()（= Meta.Duration）。
+    //   ⚠️ 不能用 getDuration()：它对 loop clip 返回 -1（vendor L1817）。
+    async function realDur(GRP, def){
+      try{
+        var m = await pm.loadMotion(GRP, 0);
+        if (m){ var d = m.getLoopDuration(); if (d > 0) return [d, 'motion']; }
+      }catch(e){}
+      try{
+        var u = pm.settings.resolveURL(def.File);
+        var r = await fetch(u);
+        var j = await r.json();
+        var d2 = j && j.Meta && j.Meta.Duration;
+        if (d2 > 0) return [d2, 'json'];
+      }catch(e){}
+      return [5, 'fallback5'];
+    }
+
+    window.__scan = async function(){
+      var res = {};
+      for (var gi=0; gi<GRPS.length; gi++){
+        var GRP = GRPS[gi];
+        var defs = pm.definitions[GRP];
+        if (!defs || !defs.length){ res[GRP] = {err:'no group'}; continue; }
+        var bi = 0;                              // 五模型所有组 max_per_group=1，无歧义
+        var rd = await realDur(GRP, defs[bi]);
+        var dur = rd[0], durSrc = rd[1];
+        try{ pm.stopAllMotions(); }catch(e){}
+        await pm.startMotion(GRP, bi, 3);          // FORCE；async 必须 await
+        var seen = {}, everFalse = {}, missFrames = {};
+        for (var k2=0;k2<N;k2++){ seen[k2]=0; everFalse[k2]=0; missFrames[k2]=0; }
+        // 采样窗口必须严格落在 [0, dur) 内：ceil(dur*FPS)+2 会多采 2 帧超出 clip 结尾的时刻，
+        // 而超尾帧的取值语义在 loop / 非 loop 之间完全相反（loop 绕回开头，非 loop 外推末段），
+        // 会让「同一份数据 + Loop 标志不同」凭空翻出可见位差异。
+        // 采样时刻是 (f+1)/FPS（先 update 再读），故要求 frames/FPS < dur。
+        var frames = Math.ceil(dur*FPS);
+        while (frames > 1 && frames/FPS >= dur) frames--;
+        var snaps = [];
+        if (frames > MAXFRAMES){ dur = MAXFRAMES/FPS; frames = MAXFRAMES; }
+        var traces = {};
+        for (var ti=0; ti<TRACE.length; ti++) traces[TRACE[ti]] = [];
+        for (var f=0; f<frames; f++){
+          // ★ 不能用 app.renderer.render：不走 Stage 管线就不会调 Live2DModel._render，
+          //   动作与可见位都不会推进（TROUBLESHOOTING 三连假阴性之一）。
+          mdl.update(1000/FPS);
+          mdl.render(app.renderer);
+          var vis = [];
+          for (var k3=0;k3<N;k3++){
+            var fl = DDm.dynamicFlags[k3];
+            var v = (fl & 1) === 1;                  // 可见位固定是第 0 位
+            if (v) seen[k3]++;
+            if (!v){ everFalse[k3]++; missFrames[k3]++; }
+            vis.push(v?1:0);
+          }
+          for (var tb=0; tb<TRACE.length; tb++){
+            var tidx = TRACE[tb];
+            if (tidx < N) traces[tidx].push(vis[tidx] + '|' + cm.getDrawableOpacity(tidx).toFixed(4)
+              + '|' + partChain(tidx).map(function(x){return x.toFixed(4);}).join('@'));
+          }
+          if (f===0 || f===Math.floor(frames/2) || f===frames-1) snaps.push(vis.join(''));
+        }
+        // 判据要点：模型里有大量「本动作从不涉及」的件，它们本来就全程不可见，
+        // 那是正常态（对照组同样如此），不能算缺陷。真正的缺陷形态是
+        //   A) 曾经可见、中途消失且不再出现（dropOut）
+        //   B) 中途反复闪烁（flicker）
+        //   C) 首帧可见末帧不可见 / 反之（首末不一致）
+        var firstV = [], lastV = [], allV = [];
+        for (var k4=0;k4<N;k4++){
+          var sn = snaps.length;
+          firstV.push((snaps[0]||'')[k4]==='1');
+          lastV.push((snaps[sn-1]||'')[k4]==='1');
+          allV.push(seen[k4]===frames);
+        }
+        var dropOut=[], flicker=[], tailOff=[];
+        for (var k5=0;k5<N;k5++){
+          if (allV[k5]) continue;                       // 全程可见 = 正常
+          if (seen[k5]===0) continue;                   // 全程不可见 = 本动作不涉及，正常
+          // 曾有可见帧：区分形态
+          if (!lastV[k5] && lastV[k5]!==firstV[k5]) tailOff.push([NAMES[k5], seen[k5], frames]);
+          else if (missFrames[k5]>0) flicker.push([NAMES[k5], missFrames[k5], frames]);
+        }
+        res[GRP] = {clip:defs[bi].name||('#'+bi), dur:+dur.toFixed(3), durSrc:durSrc,
+                    frames:frames, total:N,
+                    // 逐件分类串（N 长，N=neverSeen / A=alwaysSeen / P=partial），
+                    // 让 A/B 对照能定位到「哪一件换了类」，而不是只看聚合计数差。
+                    cls: (function(){var s='';for(var q0=0;q0<N;q0++) s += (seen[q0]===0?'N':(allV[q0]?'A':'P'));return s;})(),
+                    neverSeen: (function(){var c=0;for(var q1=0;q1<N;q1++) if(seen[q1]===0)c++;return c;})(),
+                    alwaysSeen: (function(){var c=0;for(var q2=0;q2<N;q2++) if(allV[q2])c++;return c;})(),
+                    partial: (function(){var c=0;for(var q3=0;q3<N;q3++) if(seen[q3]>0&&!allV[q3])c++;return c;})(),
+                    tailOff: tailOff.length, tailOffList: tailOff.slice(0,50),
+                    flicker: flicker.length, flickerList: flicker.slice(0,50),
+                    trace: (function(){var o={};for(var k9 in traces) o[k9]=traces[k9];return o;})()};
+      }
+      return JSON.stringify(res);
+    };
+    log('就绪');
+    window.__names = function(){ return JSON.stringify(NAMES); };
+    done();
+  })().catch(err);
+})();
+</script>
+</body></html>

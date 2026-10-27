@@ -9,25 +9,30 @@
       经 flip 映射后应分别落入 Head / Special / Body 框；恒等映射应全部脱靶。
       若 flipHits 出现明显错配（如 head 落到 Body），说明前端 P2V/V2P 或框生成有问题。
 
-用法: py -3 scripts/diag/l2d_coord_forensics.py [皮肤key，默认 lafeiii_3]
+用法: py -3 scripts/diag/l2d_coord_forensics.py [皮肤key，默认 aersasi_2]
 输出: .diag/_probe_affine.json（UTF-8），终端打印摘要
+退出码: 0=判据成立 / 2=探针自身故障（拿不到执行上下文）/ 3=样本不在画廊或页面报错（未评估）
 """
 import sys, os, json, time, subprocess, urllib.request
 sys.stdout.reconfigure(encoding='utf-8')
 import websocket
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import chrome_tree
+import cdp_wait
+from probe_exit import bad_reason, available_keys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import cdp_slot            # 端口 / profile 不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
+# 画廊地址不写死：8777 可能是另一份画廊（旧机全库），在那上面 PASS 不证明本项目生效
+GALLERY = os.environ.get('GALLERY_URL', 'http://127.0.0.1:8777/gallery_v2/index.html')
 CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT, PROFILE = cdp_slot.slot(ROOT, 'coordfix')
 proc = chrome_tree.install(subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
   '--use-angle=swiftshader', '--window-size=1280,900',
-  'http://127.0.0.1:8777/gallery_v2/index.html'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+  GALLERY], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 w = None
 for _ in range(90):
     try:
@@ -51,7 +56,7 @@ def ev(e):
     if r.get('exceptionDetails'): return 'EVALERR ' + str(r.get('exceptionDetails'))[:300]
     return r.get('result', {}).get('value')
 
-KEY = sys.argv[1] if len(sys.argv) > 1 else 'lafeiii_3'
+KEY = sys.argv[1] if len(sys.argv) > 1 else 'aersasi_2'
 JS = r"""(async(key)=>{ try{
   const t=ms=>new Promise(r=>setTimeout(r,ms));
   for(let i=0;i<90 && !window.GALLERY;i++) await t(300);
@@ -60,13 +65,22 @@ JS = r"""(async(key)=>{ try{
   if(!sk) return JSON.stringify({key, skip:'no skin'});
   openShip(ship); setSkin(sk); buildSkinList(ship);
   const l2=[...document.querySelectorAll('#mTabs .tab')].find(x=>x.dataset.k==='live2d');
-  l2.click(); await t(6000);
-  const app=l2State.app, m=app.stage.children[0], im=m.internalModel, core=im.coreModel, ppu=im.pixelsPerUnit||1;
-  const cu=im.width/ppu;
-  const out={cu:+cu.toFixed(3), boxes:[]};
-  const P2V=(px,py,flip)=>({x:px-cu/2, y:flip?cu/2-py:py-cu/2});
+  l2.click();
+  // 固定等 6s 对 big 贴图皮肤（40MB / 单线程服务器）必然不够；轮询到模型真进舞台为止
+  for(let i=0;i<90 && !(window.l2State&&l2State.app&&l2State.app.stage&&l2State.app.stage.children[0]);i++) await t(500);
+  if(!(window.l2State&&l2State.app&&l2State.app.stage&&l2State.app.stage.children[0]))
+    return JSON.stringify({key, fail:'45s 内模型未进入舞台'});
+  const app=l2State.app, m=app.stage.children[0];
+  if(!m||!m.internalModel) return JSON.stringify({key, fail:'舞台首个子节点没有 internalModel'});
+  const im=m.internalModel, core=im.coreModel, ppu=im.pixelsPerUnit||1;
+  /* ⚠️ y 方向画布边长必须用 height/ppu，不是 width/ppu——非正方形画布用同一个 cu 会整体偏移，
+     而那正好会被判据「吞掉」（两列都错、一眼看不出来）。 */
+  const cux=im.width/ppu, cuy=im.height/ppu;
+  const out={key, cux:+cux.toFixed(3), cuy:+cuy.toFixed(3), boxes:[]};
+  const P2V=(px,py,flip)=>({x:px-cux/2, y:flip?cuy/2-py:py-cuy/2});
   for(const a of (im.settings.hitAreas||[])){
-    const idx=core.getDrawableIndex(a.Id); const p=core.getDrawableVertexPositions(idx);
+    const idx=core.getDrawableIndex(a.Id); if(idx<0) continue;
+    const p=core.getDrawableVertexPositions(idx); if(!p||!p.length) continue;
     let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
     for(let k=0;k+1<p.length;k+=2){ if(p[k]<x0)x0=p[k]; if(p[k]>x1)x1=p[k]; if(p[k+1]<y0)y0=p[k+1]; if(p[k+1]>y1)y1=p[k+1]; }
     out.boxes.push({name:a.Name, V:[+x0.toFixed(2),+y0.toFixed(2),+x1.toFixed(2),+y1.toFixed(2)]});
@@ -86,10 +100,14 @@ JS = r"""(async(key)=>{ try{
   return JSON.stringify(out,null,1);
 }catch(e){ return 'ERR '+(e.message||e); }})"""
 out = None
-for _try in range(6):
+# 🔴 就绪门槛必须是「URL 真的到了 + readyState complete + GALLERY 在」。
+# 旧版只看 readyState：CDP 连上时执行上下文还是 about:blank，而 about:blank 的
+# readyState 天生 complete ⇒ 第一次判就放行，后续求值全打在空白页上，报出
+# `openShip is not defined` / `internalModel undefined` 这类**探针自身假失败**。
+ok, secs, last = cdp_wait.wait_ready(ev, GALLERY, budget=120)
+print(f'  [ready] ok={ok} {secs}s last={last}', flush=True)
+for _try in range(8):
     try:
-        if ev("document.readyState") != 'complete':
-            time.sleep(2); continue
         out = ev(JS + f"({json.dumps(KEY)})"); break
     except RuntimeError as e:
         # 页面仍在导航时 CDP 执行上下文会被销毁 —— 探针自身的假失败（WF-16 已记过同类），
@@ -104,3 +122,13 @@ print(out)
 print(f'\n已写出 {path}')
 print('判据：head→Head / chest→Special / hip→Body（flipHits 列）；identityHits 应全空。')
 ws.close(); chrome_tree.kill_tree(proc.pid)
+
+# 🔴 探针「打印失败但 exit 0」= 判据与退出码脱节，runner 会把它记成通过（2026-10-27 实测
+# 六件套第 2/3 件就是靠这个假绿过的）。凡 skip / fail / err 一律非零退出。
+_bad = bad_reason(out)
+if _bad:
+    print(f'\n[NOT-EVALUATED] {_bad}')
+    print('  本项目画廊实有 live2d 模型: ' + available_keys())
+    print('  换样本重跑，例如: py -3 scripts/diag/l2d_coord_forensics.py aersasi_3')
+    sys.exit(3)
+print('\n[PASS] 坐标取证全部判据成立')

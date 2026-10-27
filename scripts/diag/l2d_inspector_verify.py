@@ -8,6 +8,7 @@
   ④ 过滤器：输入子串后可见行数减少且命中项包含该子串
 用法: py -3 scripts/diag/l2d_inspector_verify.py [皮肤key，默认 lafeiii_3]
 输出: .diag/_probe_feats.json、.diag/_areaviz_on.png（判定区开启时的截图）
+退出码: 0=判据成立 / 2=探针自身故障 / 3=样本不在画廊或页面报错（未评估）
 """
 import sys, os, json, time, base64, subprocess, urllib.request
 sys.stdout.reconfigure(encoding='utf-8')
@@ -15,14 +16,17 @@ import websocket
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cdp_slot            # 端口 / profile 不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
+from probe_exit import bad_reason, available_keys
+GALLERY = os.environ.get('GALLERY_URL', 'http://127.0.0.1:8777/gallery_v2/index.html')
 CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT, PROFILE = cdp_slot.slot(ROOT, 'insp')
 proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
   '--use-angle=swiftshader', '--window-size=1280,900',
-  'http://127.0.0.1:8777/gallery_v2/index.html'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  GALLERY], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 import chrome_tree; chrome_tree.install(proc)   # 异常退出也要收整棵树，见该模块 docstring
 w = None
 for _ in range(90):
@@ -133,5 +137,26 @@ shot = os.path.join(ROOT, '.diag', '_areaviz_on.png')
 open(shot, 'wb').write(base64.b64decode(r['data']))
 print(out)
 print(f'\n截图: {shot}')
-print('判据：areas.ok / panel.ok / roundtrip.ok 全为 true。')
+print('判据：areas.ok / panel.ok / roundtrip.ok / filter.ok 全为 true。')
 ws.close(); chrome_tree.kill_tree(proc.pid)
+
+# 🔴 探针「打印失败但 exit 0」= 判据与退出码脱节，runner 会记成通过（2026-10-27 实测六件套
+# 第 2/3 件就是这样假绿的）。三档：0=PASS / 2=探针自身故障 / 3=未评估或判据不成立。
+_bad = bad_reason(out)
+_flags = {}
+if not _bad:
+    try:
+        _j = json.loads(out) if isinstance(out, str) else out
+        _flags = {k: bool((_j.get(k) or {}).get('ok')) for k in ('areas', 'panel', 'roundtrip', 'filter')}
+    except Exception as e:
+        _bad = f'payload 不是可解析 JSON: {e}'
+if _bad:
+    print(f'\n[NOT-EVALUATED] {_bad}')
+    print('  本项目画廊实有 live2d 模型: ' + available_keys())
+    print('  换样本重跑，例如: py -3 scripts/diag/l2d_inspector_verify.py aersasi_3')
+    sys.exit(3)
+_fail = [k for k, v in _flags.items() if not v]
+if _fail:
+    print('\n[FAIL] 判据不成立: ' + ', '.join(_fail))
+    sys.exit(1)
+print('\n[PASS] 判定区 / 面板 / 往返 / 过滤器 四项判据全部成立')

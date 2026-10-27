@@ -15,7 +15,7 @@
 
 用法: py -3 scripts/diag/talk_verify.py [--shots] [--vtab 皮肤key] [静态格样本 [Spine格样本 [Live2D格样本]]]
       不传样本则按判据自动挑（三格各一条"有触摸语音且有正文"+ 一条"有声无词"的阴性对照）
-前置: 画廊服务器在 8777（双击 Output\\gallery_v2\\启动资产浏览器.bat）
+前置: 画廊服务器在跑（默认 8777；用 GALLERY_URL 覆盖，本项目在 8778）
 """
 import sys, os, json, time, base64, argparse, subprocess, urllib.request
 
@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import cdp_slot            # 端口 / profile 不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
 CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT, DEBUG_DIR = cdp_slot.slot(ROOT, 'talk')
-BASE = 'http://127.0.0.1:8777/gallery_v2/index.html'
+BASE = os.environ.get('GALLERY_URL', 'http://127.0.0.1:8777/gallery_v2/index.html')
 
 HOOK = r"""
 window.__AUD = [];
@@ -52,8 +52,14 @@ READY = r"""(async()=>{
   for(let i=0;i<120 && !window.GALLERY;i++) await new Promise(r=>setTimeout(r,250));
   await Promise.all([loadVoiceMap(), loadWords()]);
   const sv=(typeof SV!=='undefined'&&SV)||{}, sw=(typeof SW!=='undefined'&&SW)||null;
+  /* wordsReady 必须是「有内容」而不是「对象存在」：skin_words.json 404 时 loadWords()
+     返回 null，但 index.html 把 SW 初始化成占位 {m:{},w:{},L:{}}，于是
+     !!(sw&&sw.m&&sw.w) 在**一张表都没加载**时照样为 true —— 空判据（2026-10-27 实测
+     就绪打印 wordsReady:true 而 HTTP 对 skin_words.json 返回 404）。 */
+  const wc=(sw&&sw.w&&typeof sw.w==='object')?Object.keys(sw.w).length:0;
   return JSON.stringify({ships:(window.GALLERY||{}).ships?GALLERY.ships.length:0,
-                         sv:Object.keys(sv).length, wordsReady: !!(sw&&sw.m&&sw.w),
+                         sv:Object.keys(sv).length, wordCounts:wc,
+                         wordsReady: wc>0,
                          fns:[typeof wordsOf, typeof lineText, typeof speak].join('/')});
 })()"""
 
@@ -447,9 +453,20 @@ def main():
         time.sleep(3)
         ready = jev(READY, '页面就绪')
         print('就绪:', json.dumps(ready, ensure_ascii=False))
-        if not ready.get('ships') or not ready.get('sv') or not ready.get('wordsReady'):
-            print('❌ 索引 / 语音表 / 正文档没全部到位，后面的判据都不成立')
+        if not ready.get('ships'):
+            print('❌ 索引没到位（GALLERY.ships 为空），后面的判据都不成立')
             return 1
+        # 两张表（皮肤语音 / 皮肤台词）在本机**根本没有资产可生成**：Output/ 下无 Audio/、
+        # inputs 里无 cue/cv-*.b ⇒ skin_voice.json 与 skin_words.json 都不会存在（HTTP 404 实测）。
+        # 这不是探针失败也不是回归，是数据缺口 ⇒ 走「显式环境跳过」而非 return 1，
+        # 否则六件套永远红着一条，真回归来了也看不出来（2026-10-27）。
+        if not ready.get('sv') or not ready.get('wordsReady'):
+            print('⚠️ 环境跳过：本机无语音/台词资产')
+            print('   sv=%s wordCounts=%s（skin_voice.json / skin_words.json 均 404）'
+                  % (ready.get('sv'), ready.get('wordCounts')))
+            print('   要真跑：先补 cue/cv-*.b + sharecfg 侧数据，再跑')
+            print('            py -3 scripts/extract_cv_voice.py 与 py -3 scripts/build_skin_words.py')
+            return 2
 
         pick = jev(PICK, '挑样本')
         print('样本:', json.dumps(pick, ensure_ascii=False))

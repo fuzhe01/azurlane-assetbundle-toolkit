@@ -66,6 +66,29 @@ ABSOLUTE_CP = bool(os.environ.get("L2D_MOTION_ABSOLUTE_CP"))
 # 是否把 m_ConstantClip 里的「整段定值」曲线也导出（参考版 idle 曲线数 278 = 98 动画 + 180 定值）。
 # 作用：切动作时这些参数会被显式拉回该 clip 的定值，而不是停在上一个动作留下的值上。
 EMIT_CONST = bool(os.environ.get("L2D_MOTION_EMIT_CONST"))
+# 段类型还原（2026-10-24 判据定稿）：把真阶梯写成 Cubism type=2、真直线写成 type=0，
+# 其余**一律 Bezier**（含官方原本写成 Linear 的 smoothstep 段——贝塞尔表达与之逐点等价）。
+#   判据（相对容差，见下方 SEG_TOL）：用段内三次多项式系数 A/B/C 判「段内有无变化」，
+#   **不能用 `== 0.0`** —— 切线由大数相消算得，浮点消去误差使「理论为 0」的段只有 4.78%
+#   精确等于 0.0。
+#   实测 5 模型 817984 段：官方 Stepped 真跳变段召回 **4420/4420 = 100%**、多报 0；
+#   与官方段类型名义一致率 70.03%，其中「官方 Linear → 我们 Bezier」354429 段是**几何等价**
+#   的同一曲线（官方 Linear 段 99.94% 精确等于 smoothstep 多项式，其贝塞尔即 c1=v0,c2=v1）。
+# 为什么必须还原 Stepped：LINEAR 把 Param31 这类**多档位开关**的硬翻压成 3.58 秒缓降，
+#   全程落在 (0,1) 死带 → 18 件 ArtMesh 整段不画（用户报的「左脚/右手掌消失」）。
+SEGTYPE = os.environ.get("L2D_MOTION_SEGTYPE", "0") not in ("0", "false", "False")
+# 贝塞尔还原（2026-10-24 公式定稿，对起点键系数 100.00% 精确）：
+#   **系数挂在段起点键上**（τ = t − 起点时间）：
+#       m0 = C、m1 = 3A·dt² + 2B·dt + C ⇒ c1y = v0 + m0·dt/3、c2y = v1 − m1·dt/3
+#   实测 ougen_8 243474 段 / 官方 168168 段贝塞尔：起点键口径 c1、c2 **双 100.00%**；
+#   参考姿态帧带 4 个 0.0 正是因为「它没有下一段」。
+#   ❌ 已证伪的两种口径（勿再采用）：
+#      · 终点键系数：c1 74.15% / c2 74.64%，几何偏差最高 2e10
+#      · c2y = v1 − C(终点键)·dt/3：91.32%
+BEZIER = os.environ.get("L2D_MOTION_BEZIER", "0") not in ("0", "false", "False")
+# 段类型判据的相对容差：scale 取该段各系数的量纲归一化最大值，系数贡献低于 SEG_TOL
+# 即视为「该阶无变化」。1e-6 对应 float32 的有效精度下限（float32 eps ≈ 1.19e-7）。
+SEG_TOL = float(os.environ.get("L2D_MOTION_SEG_TOL", "1e-6"))
 
 PARAM_PREFIX = "Parameters/"
 PART_PREFIX = "Parts/"
@@ -164,12 +187,25 @@ def collect_go_name_hashes(env):
 # ============================================================
 
 def parse_streamed_clip(streamed_clip):
-    """解 m_StreamedClip.data → 帧列表。
+    """解 m_StreamedClip.data → 帧列表 [(time, [(idx, A, B, C, D), ...]), ...]。
 
     帧格式: time(f32) + numKeys(i32) + numKeys × [index(i32) + 4×f32]
-    4 个 float 依次为 [unused, inSlope, outSlope, value]（对齐 AssetStudio 的
-    Keyframe(time, value[3], value[1], value[2])）。
     终止符: time = +inf。缓冲区越界即停，**不设 numKeys 上限**。
+
+    ⚠️ 4 个 float 是**段内三次多项式系数**，不是「噪声/切线/值」：
+        v(τ) = A·τ³ + B·τ² + C·τ + D      （τ = t − 段起点时间，单位秒）
+        D = 段起点键的值（= 该关键帧的值）
+        C = 段起点的切线（值/秒）⇒ 出侧控制点 c1y = D + C·dt/3，**由定义恒等，非拟合**
+        A · B = 曲率项，段终点切线 m1 = 3A·dt² + 2B·dt + C
+
+    自证：poly(dt) 与官方终点值比对 813565/817984 = 99.46%（残余 4419 段全是官方
+    Stepped 段——它们把终点值写成跳变后值，而多项式保持起点值，这是 Stepped 的定义）。
+
+    ❌ 已被证伪的旧结论（2026-10 一度写进本 docstring，勿再采用）：
+       - 「f1/f2 是巨值噪声，不可当切线用」——完全错误。A/B 量级巨大（例
+         A=-112386.3984、B=19723.8301）是 dv/dt³ 在小 dt 下的**量纲放大**，不是脏数据。
+       - 「f3 是唯一真切线字段，入侧取终点键 f3」——终点键的 C 是**下一段**的起点切线，
+         不是本段入切线；旧公式 c2y = v1 − f3(end)·dt/3 最差偏差 39248（现为 0.003）。
     """
     data = getattr(streamed_clip, "data", None) or []
     if not data:
@@ -190,9 +226,9 @@ def parse_streamed_clip(streamed_clip):
         keys = []
         for _ in range(n):
             idx = struct.unpack_from("<i", buf, pos)[0]
-            c1, c2, c3, c4 = struct.unpack_from("<4f", buf, pos + 4)
+            A, B, C, D = struct.unpack_from("<4f", buf, pos + 4)
             pos += 20
-            keys.append((idx, c4, c1, c2))  # (curve_index, value, inSlope, outSlope)
+            keys.append((idx, A, B, C, D))  # (curve_index, A, B, C, D) 段内三次多项式系数
         frames.append((t, keys))
     return frames
 
@@ -215,18 +251,18 @@ def build_motion(clip, targets, verbose=False, const_info=None):
         return None
 
     base = {}     # curve idx -> 参考姿态值（帧 time=-FLT_MAX）
-    series = {}   # curve idx -> [(t, value, inSlope, outSlope), ...]
+    series = {}   # curve idx -> [(t, A, B, C, D), ...]
     for t, keys in frames:
         if t < -REF_POSE_EPS:
-            for idx, v, _i, _o in keys:
+            for idx, _A, _B, _C, v in keys:
                 base.setdefault(idx, v)
             continue
         tt = 0.0 if abs(t) < 1e-6 else t
-        for idx, v, ins, outs in keys:
-            series.setdefault(idx, []).append((tt, v, ins, outs))
+        for idx, A, B, C, v in keys:
+            series.setdefault(idx, []).append((tt, A, B, C, v))
 
     curves = []
-    total_seg = total_pts = total_bezier = 0
+    total_seg = total_pts = total_bezier = total_step = 0
     for idx in sorted(series.keys()):
         tgt = targets[idx] if idx < len(targets) else None
         if tgt is None:
@@ -237,63 +273,117 @@ def build_motion(clip, targets, verbose=False, const_info=None):
             continue
 
         # 参考姿态值作为 t=0 起点（若真实关键帧未覆盖 t=0）
+        # ⚠️ 这支合成键没有多项式系数，一律填 NaN 并在下面**显式按线性段处理**：
+        #    NaN 参与任何比较都为 False，若靠判据自然落空会流到贝塞尔分支，把 NaN 当切线
+        #    写进控制点 → json 里出现非法 `NaN` 字面量，浏览器 JSON.parse 直接抛错。
+        synth_first = False
         if pts[0][0] > 1e-6 and idx in base:
             v0 = base[idx]
-            pts.insert(0, (0.0, v0, pts[0][2], 0.0))
+            nan = float("nan")
+            pts.insert(0, (0.0, nan, nan, nan, v0))
+            synth_first = True
 
         segs = []
         n_pts = 1          # 曲线首对 (time,value) 也占一个 point 槽
-        for i, (t, v, ins, outs) in enumerate(pts):
+        for i, (t, E, _x, _y, D) in enumerate(pts):
             if i == 0:
-                segs.extend([t, v])
+                segs.extend([t, D])
                 continue
-            t0, v0, _, outs0 = pts[i - 1]
-            dt, dv = t - t0, v - v0
+            t0 = pts[i - 1][0]
+            dt = t - t0
             if dt <= 1e-6:
                 continue
-            # dv≈0 时贝塞尔控制点会飞到天上（实测 by1=14.93），反而抖 → 退化成线性
-            scale = max(1.0, abs(v0), abs(v))
-            by1 = (outs0 * dt / 3.0) / dv if abs(dv) > 1e-3 * scale else None
-            by2 = 1.0 - (ins * dt / 3.0) / dv if by1 is not None else None
-            clipped = (not ABSOLUTE_CP) and BEZIER_CLIP > 0 and by1 is not None and max(abs(by1), abs(by2)) > BEZIER_CLIP
-            if USE_LINEAR or by1 is None or clipped:
-                # 线性: [type=0, time, value]
-                segs.extend([0, t, v])
+            if synth_first and i == 1:
+                # 参考姿态 → 首个真实关键帧：没有多项式系数可用，只能按线性插。
+                segs.extend([0, t, D])
                 total_seg += 1
                 n_pts += 1
                 continue
-            # Unity 切线(值/秒) → Cubism **绝对 (时间,值)** 贝塞尔控制点。
+            # ⚠️⚠️ 多项式系数挂在**段起点键**上，不是终点键。实测（ougen_8 243474 段、
+            #    官方 168168 段贝塞尔可对齐）：
+            #      起点键系数在 τ=dt 处求值 == 终点值 v1 → 99.98%
+            #      c1 = v0 + C(起点)·dt/3            → 100.00%
+            #      c2 = v1 − m1(起点)·dt/3           → 100.00%
+            #    误用终点键系数则 c1 74.15% / c2 74.64%，几何偏差最高报到 2e10。
+            #    这也解释了参考姿态帧为什么带 4 个 0.0——它没有「后一段」。
+            A, B, C = pts[i - 1][1], pts[i - 1][2], pts[i - 1][3]
+            v0 = pts[i - 1][4]
+            v1 = D
+            dv = v1 - v0
+            # ---- 段类型判定（2026-10 定稿：只降级「真常量/真阶梯/真直线」，其余一律贝塞尔）----
+            # 判据全部来自「官方 motion3.json ⇄ StreamedClip 多项式系数」同一段的逐段对照
+            # （5 模型 817984 段）：
+            #   ① A·dt³、B·dt²、C 三者皆为 0（相对容差）→ 段内无变化
+            #        · dv!=0 → Stepped（官方 type=2 的真跳变段 **4420/4420 = 100% 命中**，0 多报）
+            #        · dv==0 → Linear （整段定值，两者值恒等）
+            #   ② 只剩曲率项为 0（A=B=0，C!=0）→ 真直线 → Linear
+            #   ③ 其余一律 → **Bezier**，两个控制点由多项式精确给出
+            #
+            # ⚠️ 为什么不再输出「官方那样」的 Linear：官方导出器遇到两端切线都为 0 的段会写
+            #    Linear 并**丢掉曲率**（官方 Linear 段 99.94% 精确等于 smoothstep 多项式
+            #    A=-2dv/dt³ / B=3dv/dt² / C=0）。这种段用贝塞尔表达即 c1=v0、c2=v1，
+            #    曲线**逐点等价**，零信息损失；而按官方口径判 Linear 反而在「官方 Linear 与
+            #    我们 Bezier」之间引入 354429 段的类型噪声，且实测几何最大偏差 12.845。
+            #    本方案实测几何偏差中位 1.5e-07 / p99 1.2e-05 / max 0.0033（float32 读数量级）。
+            #
+            # ⚠️ 容差判据是必须的，不能用 `== 0.0`：m1 = 3A·dt²+2B·dt+C 由大数相消得出，
+            #    浮点消去误差使「理论为 0」的段实测只有 4.78% 精确等于 0.0。
+            scale = max(abs(dv) / dt, abs(A) * dt * dt, abs(B) * dt, abs(C), 1e-6)
+            const_A = abs(A) * dt ** 3 <= SEG_TOL * scale
+            const_B = abs(B) * dt * dt <= SEG_TOL * scale
+            const_C = abs(C) <= SEG_TOL * scale
+            if SEGTYPE and const_A and const_B and const_C:
+                if abs(dv) > SEG_TOL * scale * dt:
+                    segs.extend([2, t, v1])   # 阶梯：值在本段保持 v0，到 t 瞬间跳到 v1
+                    total_seg += 1
+                    total_step += 1
+                    n_pts += 1
+                    continue
+                segs.extend([0, t, v1])       # 整段定值：线性与阶梯值恒等，取线性
+                total_seg += 1
+                n_pts += 1
+                continue
+            if USE_LINEAR and not BEZIER:
+                segs.extend([0, t, v1])
+                total_seg += 1
+                n_pts += 1
+                continue
+            if const_A and const_B:
+                segs.extend([0, t, v1])       # 真直线：贝塞尔退化即直线，写线性省体积
+                total_seg += 1
+                n_pts += 1
+                continue
+            # Unity 三次多项式系数 → Cubism **绝对 (时间,值)** 贝塞尔控制点。
             # ⚠️ 官方段序（实测校验运行时 pixi-live2d-display 的解析器）：
             #    [type=1, 控制点1x, 控制点1y, 控制点2x, 控制点2y, 终点time, 终点value]
             #    运行时按 points[base+1..base+3] = (c1, c2, dest) 取 3 个点对、l+=7，
             #    并用 basePointIndex+3 定位下一段起点 → 终点必须在**最后**。
             #    多插一个"interpolation=0"或把终点写前面，都会整体错位并撑爆按
             #    TotalSegmentCount 预分配的 segments 数组（报 basePointIndex undefined）。
-            # ⚠️⚠️ 段格式（2026-09-23 用 l2d.su 权威导出反查 + 运行时解析器源码双重证实）：
-            #    Cubism motion3.json 的贝塞尔控制点是**绝对 (时间, 值)**，运行时
-            #    `points[a]=new j(seg[l+1],seg[l+2])` 直读、不做任何归一化还原。
-            #    旧实现写的是归一化分数（0.333/by1/0.667/by2），于是控制点被当成
-            #    「t=0.333 秒、值=0.667」——落在段外且值接近 0，每条贝塞尔都先猛蹿到 0
-            #    再跳到目标值 → 部件乱摆、互相不协调（用户报的「像刚学建模的人做的」）。
-            #    正确写法 = Unity 三次 Hermite 的精确等价控制多边形：
-            #        c1 = (t0 + dt/3, v0 + outSlope0*dt/3)
-            #        c2 = (t1 - dt/3, v1 - inSlope1 *dt/3)
-            # 无条件按 Cubism 规范写**绝对 (时间,值)** 控制点（不再有归一化分数分支）。
-            if True:
-                c1x = t0 + dt / 3.0
-                c1y = v0 + outs0 * dt / 3.0
-                c2x = t - dt / 3.0
-                c2y = v - ins * dt / 3.0
-                if not (-1e-6 <= (c1x - t0) <= dt + 1e-6 and -1e-6 <= (c2x - t0) <= dt + 1e-6):
-                    segs.extend([0, t, v])   # 时间轴出格 → 退回线性（运行时要求 x 单调）
-                    total_seg += 1
-                    n_pts += 1
-                    continue
-                segs.extend([1, c1x, c1y, c2x, c2y, t, v])
-                total_seg += 1
-                n_pts += 3
-                total_bezier += 1
-                continue
+            # ⚠️⚠️ 段格式（2026-09-23 用权威导出反查 + 运行时解析器源码双重证实）：
+            #    Cubism motion3.json 的贝塞尔控制点是**绝对 (时间, 值)**，运行时直读、
+            #    不做任何归一化还原。旧实现写归一化分数（0.333/by1/0.667/by2）→ 控制点
+            #    被当成「t=0.333 秒、值=0.667」，落在段外 → 每条贝塞尔先猛蹿到 0 再跳回
+            #    目标值 → 部件乱摆（用户报的「像刚学建模的人做的」）。
+            # 正确写法 = 段内三次多项式的精确等价控制多边形（2026-10 定稿，替代旧 Hermite）：
+            #        出切线 m0 = C
+            #        入切线 m1 = 3A·dt² + 2B·dt + C
+            #        c1 = (t0 + dt/3, v0 + m0·dt/3)
+            #        c2 = (t1 − dt/3, v1 − m1·dt/3)
+            # 实测对官方 176240 段贝塞尔：控制点**双 100.00% 命中**、中位误差 0.000000、max 0.003。
+            # ❌ 旧公式 c2y = v1 − C(终点键)·dt/3 命中共 89.83%、最差偏差 **39248**——终点键的 C
+            #    是下一段的起点切线，与本段入切线无关。勿再采用。
+            m0 = C
+            m1 = 3.0 * A * dt * dt + 2.0 * B * dt + C
+            c1x = t0 + dt / 3.0
+            c1y = v0 + m0 * dt / 3.0
+            c2x = t - dt / 3.0
+            c2y = v1 - m1 * dt / 3.0
+            segs.extend([1, c1x, c1y, c2x, c2y, t, v1])
+            total_seg += 1
+            n_pts += 3
+            total_bezier += 1
+            continue
 
         if len(segs) < 4:
             continue
@@ -358,6 +448,13 @@ def build_motion(clip, targets, verbose=False, const_info=None):
             "Duration": duration,
             "Fps": float(sample_rate),
             "Loop": bool(getattr(muscle, "m_LoopTime", False)),
+            # ★ 必须显式写 0.0：运行时 ACubismMotion._fadeInSeconds 初值是 -1，
+            #   而 vendor L210463 在 `json.getMotionFadeInTime() === void 0` 时
+            #   退回 config.motionFadingDuration（默认 0.5s）→ 动作前 0.5s 处于
+            #   跨动作混合态。官方 motion3.json 这两个字段恒为 0.0（硬切），
+            #   缺失会让 home/touch_head 的可见件统计偏离官方（tailOff 79 vs 19）。
+            "FadeInTime": 0.0,
+            "FadeOutTime": 0.0,
             "AreBeziersRestricted": True,
             "CurveCount": len(curves),
             "TotalSegmentCount": total_seg,
@@ -481,10 +578,13 @@ def main():
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     print(f"[*] 输出目录: {OUTPUT_DIR}" + ("  (临时)" if os.environ.get("L2D_OUT_DIR") else ""))
-    if USE_LINEAR:
-        print("[*] L2D_MOTION_LINEAR=1 → 线性插值（默认，关键帧+线性，杜绝贝塞尔乱摆）")
+    if BEZIER:
+        print("[*] L2D_MOTION_BEZIER=1 → 贝塞尔按绝对(时间,值)写，控制点由多项式精确给出"
+              "（c1y=v0+C·dt/3，c2y=v1−(3A·dt²+2B·dt+C)·dt/3）")
     else:
-        print("[*] L2D_MOTION_LINEAR 未置1 → 非线性：贝塞尔按绝对(时间,值)控制点写（Cubism 规范）")
+        print("[*] 线性插值（L2D_MOTION_BEZIER 未置1）")
+    if SEGTYPE:
+        print("[*] L2D_MOTION_SEGTYPE=1 → 还原 Stepped 段（判据：A·dt³、B·dt²、C 相对容差为 0 且 dv≠0）")
     if ABSOLUTE_CP:
         print("[*] L2D_MOTION_ABSOLUTE_CP=1 → 兼容提示：贝塞尔已无条件按绝对(时间,值)写，本开关保留无损语义")
     if EMIT_CONST:

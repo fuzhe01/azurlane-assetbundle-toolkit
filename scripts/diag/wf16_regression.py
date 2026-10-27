@@ -14,6 +14,12 @@
       py -3 scripts/diag/wf16_regression.py
   # 只跑前四件 + 第六件（跳过 25 分钟的全库 hit_verify）：
   py -3 scripts/diag/wf16_regression.py --skip hit_verify
+
+端口不写死（2026-10-27）：本项目画廊在 **8778**（docroot D:\\azur\\Output），
+而 8777 上很可能是**另一份画廊**（旧机拷贝的全库，docroot 另一个 Output）。
+在 8777 上跑本项目的回归会拿别的数据验出假 PASS（hit_verify 甚至会把 269 皮肤判通过）。
+所以统一由 GALLERY_PORT 指定端口，并把同一台服务器的 GALLERY_URL / GALLERY_BASE
+注入给每个探针；两者不一致时直接拒跑，避免"预检连 A、探针连 B"。
 """
 import sys, os, subprocess, time, argparse
 
@@ -21,12 +27,21 @@ sys.stdout.reconfigure(encoding='utf-8')
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 
+# 本地官方参考库（262 个模型，本项目 5 个模型 5/5 齐全）。在线 static.l2d.su 对本项目
+# **整站零覆盖**（根站 403 / 连试 10 个模型名全 404，2026-10-27 实测），所以第 1 件真比对
+# 只能指向这里。注意两点：① 空格必须 %20；② 这份是**有损降级版**（见 §147：官方导出器
+# 把三段以上贝塞尔降级成线性，平均偏差比我们的产物大 109 万倍），它只当"可比对物源"，
+# 不当真值——真值裁决走 l2d_poly_truth_verdict.py。
+LOCAL_REF_BASE = os.environ.get(
+    'L2D_REF_BASE_LOCAL',
+    'file:///D:/Azur%20Lane%20Assets/Output/Live2D')
+
 # (标签, 命令, 是否可跳过) —— 顺序即 WF-16 里写死的顺序
 STEPS = [
     ('1 l2d_ref_diff 抽样', ['l2d_ref_diff.py', 'antu_2', '--clips',
                              'idle,touch_head,touch_body,touch_special'], False),
-    ('2 坐标系取证',       ['l2d_coord_forensics.py', 'lafeiii_3'], False),
-    ('3 检查器验收',       ['l2d_inspector_verify.py', 'lafeiii_3'], False),
+    ('2 坐标系取证',       ['l2d_coord_forensics.py', 'aersasi_3'], False),
+    ('3 检查器验收',       ['l2d_inspector_verify.py', 'aersasi_3'], False),
     ('4 交互五项',         ['interact_verify.py'], False),
     ('5 全量按部位点击',   ['hit_verify.py'], True),
     ('6 台词与全局开关',   ['talk_verify.py', '--shots'], False),
@@ -74,7 +89,10 @@ def server_precheck(port=8777):
        所以不能声称它就是 09-29 那次的成因。判红时顺手把现场打出来，留给下次定性。
     """
     import urllib.request
-    for path, min_bytes in (('gallery_v2/index.js', 200000), ('gallery_v2/index.html', 10000)):
+    # 阈值只判「真吐出字节、不是错误页」。⚠️ 别按旧机全库画廊的文件大小写死：
+    # 那边 index.js 是 200KB 级打包件，本项目 index.js 才 2953B（index.html 才是大件 263199B），
+    # 照抄 200000 会把本项目判成「服务器半死」（2026-10-27 实测撞上）。
+    for path, min_bytes in (('gallery_v2/index.html', 10000), ('gallery_v2/index.js', 500)):
         t0 = time.time()
         try:
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/{path}', timeout=15) as r:
@@ -87,9 +105,35 @@ def server_precheck(port=8777):
                              f'耗时 {(time.time()-t0)*1000:.0f}ms。重启它再跑，别把这判成产品缺陷\n'
                              f'  现场: {server_forensics(port)}\n'
                              f'  起服务器: py -3 scripts/diag/run_detached.py --log '
-                             f'.diag/gallery_server.log -- py -3 Output/gallery_v2/_gallery_server.py')
+                             f'.diag/gallery_server.log -- py -3 scripts/diag/serve_gallery_{port}.py')
         print(f'预检: {path} {got}B / {(time.time()-t0)*1000:.0f}ms')
-    print('预检通过：服务器能真吐出 index.js / index.html')
+    # 反向证据：拿一个必定不存在的路径，服务器必须回 404 而不是 200 空壳
+    try:
+        urllib.request.urlopen(f'http://127.0.0.1:{port}/gallery_v2/__nope__.html', timeout=10)
+        raise SystemExit(f'! {port} 上不存在 __nope__.html 却回 200 —— 这是兜底页冒充，'
+                         f'很可能 docroot 不在本项目目录')
+    except SystemExit:
+        raise
+    except Exception:
+        pass
+    print(f'预检通过：{port} 上的服务器能真吐出 index.js / index.html，且 404 为真 404')
+
+    # docroot 身份核对：服务器吐出的 index.json 必须与本项目盘上那份逐字节相同。
+    # 这是「跑错画廊」的最后一道闸 —— 8777 上就是另一份画廊，光看 HTTP 200 分不出来。
+    local = os.path.join(ROOT, 'Output', 'gallery_v2', 'index.json')
+    if os.path.isfile(local):
+        with open(local, 'rb') as f:
+            want = f.read()
+        with urllib.request.urlopen(
+                f'http://127.0.0.1:{port}/gallery_v2/index.json', timeout=15) as r:
+            got = r.read()
+        if got != want:
+            raise SystemExit(
+                f'! {port} 的 docroot 不是本项目：gallery_v2/index.json 盘上 {len(want)}B / '
+                f'服务器 {len(got)}B{"，内容不同" if len(got) == len(want) else ""}。\n'
+                f'  这台服务器跑的是别的画廊，在它上面 PASS 不证明本项目生效。\n'
+                f'  本项目端口 8778：py -3 scripts/diag/serve_gallery_8778.py')
+        print(f'docroot 核对: index.json 与本项目盘上逐字节相同（{len(want)}B）')
 
 
 def main():
@@ -99,10 +143,21 @@ def main():
                     help='第 1 件改成 --all 全量比对（只改前端视觉时不必，动过 motion 数据才要）')
     ap.add_argument('--precheck-only', action='store_true',
                     help='只跑服务器预检就退出（40 分钟的六件套之前先花 1 秒确认不白跑）')
+    ap.add_argument('--port', type=int, default=int(os.environ.get('GALLERY_PORT', '8777')),
+                    help='画廊服务器端口（本项目 8778；默认读 GALLERY_PORT，再退 8777）')
     a = ap.parse_args()
     skips = [s.strip() for s in a.skip.split(',') if s.strip()]
 
-    server_precheck()
+    # 预检端口与探针 URL 必须同一台服务器，否则「预检连 A、探针连 B」会假绿
+    url = os.environ.get('GALLERY_URL') or f'http://127.0.0.1:{a.port}/gallery_v2/index.html'
+    base = os.environ.get('GALLERY_BASE') or f'http://127.0.0.1:{a.port}/gallery_v2'
+    for nm, v in (('GALLERY_URL', url), ('GALLERY_BASE', base)):
+        if f':{a.port}/' not in v:
+            raise SystemExit(f'! {nm}={v} 与 --port {a.port} 不是同一台服务器；'
+                             f'要么别设 {nm}，要么把它改成 127.0.0.1:{a.port} 上的地址')
+    print(f'画廊: {base}  （端口 {a.port}；本项目=8778，8777 多为旧机全库画廊）')
+
+    server_precheck(a.port)
     if a.precheck_only:
         return
 
@@ -117,8 +172,14 @@ def main():
             continue
         script = os.path.join(HERE, args[0])
         print(f'\n#### {label}  {time.strftime("%H:%M:%S")}', flush=True)
-        env = dict(os.environ, PYTHONIOENCODING='utf-8')
+        env = dict(os.environ, PYTHONIOENCODING='utf-8',
+                   GALLERY_URL=url, GALLERY_BASE=base,
+                   INTV_URL=os.environ.get('INTV_URL') or url)
         if args[0] == 'l2d_ref_diff.py':
+            # 参考库换源：在线 static.l2d.su 对本项目**整站零覆盖**（根站 403、连试 10 个模型名
+            # 全 404，2026-10-27 实测），所以真比对只能走本地参考库。`file://` 已实测可读，
+            # 但 `L2D_REF_BASE` 里的空格必须换成 %20（urlopen 不接受裸空格）。
+            env.setdefault('L2D_REF_BASE', LOCAL_REF_BASE)
             # 参考库 404 时全部 [SKIP]，这是**上游参考库不可达**，不是 motion 数据失败；
             # 捕获输出明确区分，避免把"没比过"写成通过。
             r = subprocess.run([sys.executable, script] + args[1:], cwd=ROOT, env=env,
@@ -129,12 +190,23 @@ def main():
             rc = r.returncode
             if rc and '没有任何模型真正参与比对' in (r.stdout or ''):
                 rc = 0
-                env_skip.append(label + '(参考库 404，未参与比对)')
+                env_skip.append(label + '(参考库零覆盖，未参与比对)')
         else:
             r = subprocess.run([sys.executable, script] + args[1:], cwd=ROOT, env=env)
             rc = r.returncode
         print(f'#### {label} 退出码 = {rc}', flush=True)
-        (bad if rc else done).append(f'{label}(exit {rc})')
+        # 探针退出码契约（2026-10-27 统一，见 scripts/diag/probe_exit.py）：
+        #   0 = 判据成立；1 = 判据不成立（真回归）；2 = 环境缺口（不是回归，也不是通过）；
+        #   3 = 未评估（样本不在画廊 / 页面脚本没就绪 / 超时未加载）——**必须记成未通过**，
+        #       否则「打印失败但 exit 0」的假绿会一路绿下去。
+        if rc == 0:
+            done.append(label)
+        elif rc == 2:
+            env_skip.append(f'{label}(exit 2，环境缺口)')
+        elif rc == 3:
+            bad.append(f'{label}(exit 3，未评估)')
+        else:
+            bad.append(f'{label}(exit {rc})')
 
     print(f'\n===== 汇总（{time.time()-t0:.0f}s）=====')
     print('通过:', ', '.join(done) or '无')
@@ -143,7 +215,7 @@ def main():
     if bad:
         print('未通过:', ', '.join(bad))
         sys.exit(1)
-    print('六件套全部通过')
+    print('六件套全部通过（环境跳过项不计入通过，见上）')
 
 
 if __name__ == '__main__':
