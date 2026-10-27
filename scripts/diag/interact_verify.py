@@ -9,6 +9,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # 本目录：chrome_tree / probe_exit
 import cdp_slot            # 端口 / profile 不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
+import cdp_wait            # 就绪门槛不能用 document.readyState（about:blank 天生 complete）
 import probe_exit
 CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT, PROFILE = cdp_slot.slot(ROOT, 'intv')
@@ -55,9 +56,14 @@ JS = r"""(async(key)=>{ try{
   l2.click();
   // 与 l2d_inspector_verify.py 同一个坑：固定等 6.5s 对大贴图皮肤（benningdun_2 三张共 40MB，
   // 且服务器单线程）必然不够，表现为四个皮肤全报 reading 'internalModel' 的假失败。
-  for(let i=0;i<80 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
+  // 固定等 6s 对 big 贴图皮肤（40MB / 单线程服务器）必然不够；轮询到模型真进舞台为止。
+  // ⚠️ 预算必须与 l2d_inspector_verify 对齐（150 次 × 500ms = 75s，上限 150s 量级）：
+  //    80×500ms=40s 在**连跑 5 个模型**时不够——每个皮肤三件套约 40MB、服务器单线程，
+  //    排在最后的 ougen_8 冷启实测超 40s（单跑却只要 3s），会间歇报「模型未加载」。
+  //    `--disable-background-timer-throttling` 已加，但网络+解码是串行的，只能抬预算。
+  for(let i=0;i<200 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
   if(!(l2State&&l2State.app&&l2State.app.stage.children[0]))
-      return JSON.stringify({key, err:'40s 内模型未加载', note:(document.querySelector('.note')||{}).textContent||''});
+      return JSON.stringify({key, err:'100s 内模型未加载', note:(document.querySelector('.note')||{}).textContent||''});
   const app=l2State.app, m=app.stage.children[0], im=m.internalModel, core=im.coreModel, ppu=im.pixelsPerUnit||1, mm=im.motionManager;
   const cux2=im.width/ppu, cuy2=im.height/ppu;   // 画布单位边长：V(中心原点/y向上)↔P(左上/y向下) 换算用
   const wrap=document.getElementById('l2wrap'), rect=wrap.getBoundingClientRect();
@@ -125,8 +131,15 @@ JS = r"""(async(key)=>{ try{
     for(let k=0;k+1<p.length;k+=2){sx+=p[k];sy+=p[k+1];n++;}
     const pvx=sx/n, pvy=sy/n;                       // V 空间（顶点原生，中心原点/y向上）
     const g=m.toGlobal(new PIXI.Point((pvx+cux2/2)*ppu, (cuy2/2-pvy)*ppu));   // V→P→global，与 hitAt 互逆
-    /* 候选集合直接问**产品自己**（__L2_HITALL 与 localHit 同一套几何），不在探针里另算一份 */
-    let cand=[]; try{ cand=[...new Set(window.__L2_HITALL?__L2_HITALL(pvx,pvy):[])]; }catch(e){}
+    /* 候选集合直接问**产品自己**（__L2_HITALL 与 localHit 同一套几何），不在探针里另算一份。
+       参数口径已核对：`hitAll(mx,my)` 收的是**模型空间 V 坐标**（index.html L1889 内部直接拿
+       g.x0/x1 与 quad 顶点比）—— 恰好就是上面算出的 pvx/pvy（V 空间顶点平均），所以这个调用是对的。
+       ⚠️ 曾经写成裸 `catch(e){}`：全局缺失时静默得到空候选，再经 `ok = candG.length ? … : false`
+       报成 `want:[]` 的 FAIL，看起来像"产品点不出动作"，实为探针钩子没加载 ⇒ 无法区分。
+       现在显式记来源，全局缺失时**降级**为"登记框名清单"（弱基线）并在 fail 时注明，避免误判。 */
+    let cand=[], candSrc='__L2_HITALL';
+    if(typeof window.__L2_HITALL === 'function'){ try{ cand=[...new Set(window.__L2_HITALL(pvx,pvy))]; }catch(e){ candSrc='HITALL_THREW:'+String(e&&e.message||e).slice(0,60); } }
+    else { cand=(im.settings.hitAreas||[]).map(a=>a.Name); candSrc='fallback:settings.hitAreas（页面未暴露 __L2_HITALL）'; }
     const candG=[...new Set(cand.map(grpOf).filter(Boolean))];
     const e2={bubbles:true,cancelable:true,pointerId:10,clientX:rect.left+g.x,clientY:rect.top+g.y,button:0};
     wrap.dispatchEvent(new PointerEvent('pointerdown',e2)); window.dispatchEvent(new PointerEvent('pointerup',e2));
@@ -134,7 +147,7 @@ JS = r"""(async(key)=>{ try{
        必然读到还没换组的 currentGroup → 假失败。改成轮询到进组或 12s 上限。 */
     let played=st().grp, waited=0;
     while(waited<12000 && !candG.includes(played)){ await t(300); waited+=300; played=st().grp; }
-    out.headClick={wantName:(im.settings.hitAreas[0].Name), cand, want:candG, played, waited,
+    out.headClick={wantName:(im.settings.hitAreas[0].Name), cand, candSrc, want:candG, played, waited,
       pill:(document.getElementById('l2Hit')||{}).textContent};
     out.headClick.ok = candG.length ? candG.includes(played) : false;
   }
@@ -143,6 +156,12 @@ JS = r"""(async(key)=>{ try{
 }catch(e){ return 'ERR '+(e.message||e); }})
 """
 os.makedirs(os.path.join(ROOT, '.diag', 'size_shots'), exist_ok=True)
+# 🔴 就绪门槛：about:blank 的 readyState 天生 'complete'，只看它第一次判就放行，
+# 后续求值全打在空白页上 → 报 `openShip is not defined` 这类**探针自身假失败**。
+_ok, _secs, _last = cdp_wait.wait_ready(ev, GALLERY_URL, budget=150)
+print(f'  [ready] ok={_ok} {_secs}s last={_last}', flush=True)
+if not _ok:
+    print('[ERROR] 页面在预算内未就绪（探针故障，非产品故障）'); ws.close(); chrome_tree.kill_tree(proc.pid); sys.exit(2)
 allok = True
 _models_env = os.environ.get('INTV_MODELS')
 # 默认清单必须只含**本项目画廊实有**的模型（index.json 的 live2dSkins）。
@@ -154,12 +173,11 @@ for k in ([m.strip() for m in _models_env.split(',') if m.strip()] if _models_en
     out = None
     for _try in range(6):
         try:
-            if ev("document.readyState") != 'complete':
-                time.sleep(2); continue
             out = ev(JS + f"({json.dumps(k)})"); break
         except RuntimeError as e:
             # 页面导航中 CDP 执行上下文会被销毁（探针自身的假失败，WF-16 同类）；
             # 上下文在导航结束后重建，重连同一张 tab 即可，别据此判定产品坏了。
+            # 就绪已由 cdp_wait.wait_ready 前置保证，这里不再拿 readyState 当门槛。
             print(f"  [{k}] retry {_try+1}: {str(e)[:70]}", flush=True); time.sleep(4)
     if out is None:
         allok = False; print('=====', k); print('  ✗ 6 次仍拿不到稳定执行上下文（探针故障，非产品故障）'); continue

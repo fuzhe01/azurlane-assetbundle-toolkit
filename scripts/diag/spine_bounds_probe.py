@@ -8,6 +8,12 @@ import websocket
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import cdp_slot            # 端口不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
 PORT = cdp_slot.port('bounds')
 FOLDER = sys.argv[1] if len(sys.argv) > 1 else 'aluomangshi_2'
@@ -20,6 +26,7 @@ proc = subprocess.Popen([
     '--use-angle=swiftshader', '--window-size=1280,900',
     'http://127.0.0.1:8777/gallery_v2/index.html',
 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+proc = chrome_tree.install(proc)
 ws = None
 for _ in range(120):
     try:

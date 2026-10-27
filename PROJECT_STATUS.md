@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-27（动作保真裁决定稿 E 为终态 + 换入 + 缺陷①②结案；本轮改动**已全部提交**，见 §6「既有待办 0」）
+> **生成时间**: 2026-10-27（探针清单体检：三处「尺子坏了」已修 + 验证全绿，见 §6「既有待办 0b」）
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python **3.15**（2026-10-23 起本机约定；UnityPy 1.25.4 无 cp315 预编译轮子，需源码编译，见 §2 Python 行）。⚠️ 本机同时装着 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（现固定 3.15），**跑之前先 `py -3 scripts/diag/check_env.py`** 确认实际解释器与依赖
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`（3.15 上必须走阿里云/腾讯云源，清华源连 sdist 都没有；需 MSVC BuildTools 编译 UnityPy + lz4）
@@ -207,6 +207,12 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 ⚠️ **页面正本必须留在 `scripts/diag/`**：`Output/` 被 `.gitignore` 整体忽略，正本放那儿会随清盘静默消失，`vanish_can.py` 便拿旧扫描器跑出假绿灯；判据工具依赖的资产一律入库。
 验证（均可复现）：`deploy_gallery.py --check` 6/6 同 inode 漂移 0 ｜ `check_diag_hygiene` PASS ｜ `check_env` PASS ｜ `py_compile` 11 脚本 0 ｜ `l2d_group_cmp --files` prod vs E **367/367** ｜ `vanish_can` 实跑生产 `mail`（`durSrc=motion` / `dur=4.817` / `frames=144`，闸门 pass exit 0）。
 未做（别当成已完成）：`.diag` 78 个 chrome profile / 6.83 GiB 未删（`clean_diag_profiles.py --yes` 未执行）；残留无头 Edge 进程未终止。
+
+**✅ 0b. 2026-10-27 探针清单体检：三处「尺子坏了」已修 + 全库执行**（先查验收工具本身；此前"已通过"的部分结论不可采信）。细节见 `TROUBLESHOOTING.md` **§156** / 流程 **WF-46**：
+① 清理器**报成功却没杀**（`taskkill /T /F /PID` 对 Edge 无效，实测 rc=128 而 16~20 进程全活）⇒ `chrome_tree.py` 判据改为**按自己的 profile 回读**；
+② 探针写 `window.l2State` 而页面用 `let` 声明（`l2d_coord_forensics.py` **恒 exit 3**）⇒ 改 `typeof`；
+③ 加载预算按单跑拍（`interact_verify` 40s，连跑 5 模型超时）⇒ 抬到 100s。附带 `gallery_ui_shots` 默认截不存在的 `index_b.html` ⇒ 改只截 `index.html`。
+**全库执行**（320 个探针）：缺 `install()` **40→0** ｜ 预算 <100s **5→0** ｜ 45 文件 `py_compile` 全 0 ｜ 抽样实跑正常退出后浏览器残留 **0**。⚠️ **顺带查出、本轮未改**（勿与本轮三形态混改）：**24 个探针把 `CHROME` 写死成本机不存在的 `Google/Chrome`**（本机只有 Edge）⇒ 起不来；正解是 `scripts/paths.py` 的 `CHROME`（含 Edge 兜底）。
 
 **优先级低**
 5. UI/图标批量导出（~2 万）、3D 宿舍资源、资源分类整理 `organize.py`。⚠️ 前两项的源包（`ui/` 除 `commonui_atlas`、`dorm3d`、`island`、`char`）已于 2026-10-06 按裁定删除 ⇒ 开工前要先重拉，且**必须先撤销 `pruned.json` 里的对应登记**（否则 `mumu_sync` 会按"已归档"跳过它们，`--only ui` 也拉不回来；工具还没有 `--revive`，见 WF-28 已知缺口）。

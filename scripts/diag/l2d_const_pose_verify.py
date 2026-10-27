@@ -38,6 +38,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 sys.path.insert(0, os.path.join(ROOT, 'scripts', 'diag'))
 import cdp_slot
+import cdp_wait
 CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT, PROFILE = cdp_slot.slot(ROOT, 'constverify')
 try:
@@ -80,7 +81,19 @@ def ev(e):
 cmd('Page.enable')
 print('set login=false:', ev("localStorage.setItem('gallery.opt.v1', JSON.stringify({login:false}))"))
 cmd('Page.navigate', {'url': GALLERY_URL})
-time.sleep(2)
+# 就绪门槛：`document.readyState` 不能当判据——CDP 会话初连时执行上下文还停在
+# about:blank，而它的 readyState 天生就是 'complete'，门槛第一次判就放行，
+# 后续所有 Runtime.evaluate 全打在空白页上（症状：NO_MODEL / openShip is not defined）。
+# 详见 scripts/diag/cdp_wait.py。
+_ok, _secs, _last = cdp_wait.wait_ready(ev, GALLERY_URL, budget=150)
+print(f'[ready] ok={_ok} {_secs}s last={_last if not _ok else "OK"}')
+if not _ok:
+    print('[ERROR] 页面在预算内未就绪（探针故障，非产品故障）')
+    try: cmd('Browser.close')
+    except Exception: pass
+    try: proc.wait(timeout=10)
+    except Exception: chrome_tree.kill_tree(proc.pid)
+    sys.exit(2)
 
 SETUP = """(async()=>{
   const t=ms=>new Promise(r=>setTimeout(r,ms));
@@ -91,7 +104,8 @@ SETUP = """(async()=>{
   openShip(ship); setSkin(sk); buildSkinList(ship);
   const l2=[...document.querySelectorAll('#mTabs .tab')].find(x=>x.dataset.k==='live2d');
   l2.click();
-  for(let i=0;i<110 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
+  /* 预算 200×500ms=100s：按最坏情形（连跑多模型/冷启）定，不按单跑实测拍（§156 形态三）。 */
+  for(let i=0;i<200 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
   if(!(l2State&&l2State.app&&l2State.app.stage.children[0])) return 'NO_MODEL';
   return 'OK';
 })()"""

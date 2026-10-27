@@ -131,7 +131,10 @@ CLICK = r"""(async(key, tab, opts)=>{ try{
   if(tab==='live2d'){
     const sel=document.getElementById('l2Motion');
     if(!sel) return JSON.stringify(Object.assign(res,{err:'Live2D 动作下拉未出现'}));
-    for(let i=0;i<80 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
+      /* 预算 200×500ms=100s：按**最坏情形**（连跑多模型 / 冷启 / 排在批处理最后）定，
+     不按单跑实测拍。连跑 5 个模型时最后一个皮肤三件套约 40MB、服务器单线程，
+     40s 会间歇假失败（2026-10-27 §156 形态三；l2d_inspector_verify 早已是 150s）。 */
+  for(let i=0;i<200 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
     const withv=[...sel.options].filter(o=>/（语音）/.test(o.textContent)).map(o=>o.value);
     const pickG=withv.find(g=>w[g]) || withv[0];
     if(!pickG) return JSON.stringify(Object.assign(res,{err:'没有带（语音）标记的组'}));

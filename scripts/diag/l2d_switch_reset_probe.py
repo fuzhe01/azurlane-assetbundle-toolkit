@@ -32,6 +32,12 @@ import websocket
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import paths as _paths
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 CHROME = (_paths.CHROME or r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe')
 PORT = 9339
 DEBUG_DIR = os.path.join(ROOT, '.diag', 'chrome_l2d_switch')
@@ -78,6 +84,9 @@ proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PO
     '--no-default-browser-check', '--disable-background-timer-throttling',
     '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--window-size=1400,1000', BASE],
     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+proc = chrome_tree.install(proc)
 
 
 def wait_ws():

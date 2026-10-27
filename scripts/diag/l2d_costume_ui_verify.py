@@ -18,6 +18,9 @@ sys.stdout.reconfigure(encoding="utf-8")
 import websocket
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "diag"))
+import cdp_wait      # 就绪门槛不能用 document.readyState（about:blank 天生 complete）
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
 CANDIDATES = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
@@ -68,6 +71,7 @@ def main():
              "--window-size=1500,1000",
              f"{URL}?ship={SHIP}&_t={int(time.time()*1000)}"]
     proc = subprocess.Popen(flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = chrome_tree.install(proc)
 
     ws = None
     for _ in range(120):
@@ -109,6 +113,15 @@ def main():
     cmd("Network.enable")
     cmd("Network.setCacheDisabled", {"cacheDisabled": True})
 
+    # 就绪门槛（scripts/diag/cdp_wait.py）：CDP 会话初连时执行上下文还在 about:blank，
+    # 其 readyState 天生 'complete'，所以「等 readyState」的门槛等于没等。必须同时验
+    # location.href 已到目标页 + readyState complete + window.GALLERY 在。
+    _ok, _secs, _last = cdp_wait.wait_ready(ev, URL, budget=150)
+    print(f"  [ready] ok={_ok} {_secs}s" + ("" if _ok else f" last={_last}"))
+    if not _ok:
+        proc.terminate()
+        raise SystemExit("页面在预算内未就绪（探针故障，非产品故障）")
+
     fails = []
 
     def check(name, ok, detail=""):
@@ -117,8 +130,10 @@ def main():
             fails.append(name)
 
     # ---- 等模型就绪 ----
+    # 预算 200s：冷启一次要下 index.json + vendor live2d + 模型三件套（moc3/贴图/physics），
+    # 实测本机页面 complete 就要 ~41s，60s 上限会偶发假失败。
     ready = False
-    for _ in range(120):
+    for _ in range(400):
         if ev("(typeof l2State!=='undefined' && l2State && l2State.app && "
               "l2State.app.stage.children[0] && l2State.app.stage.children[0].internalModel) ? 1 : 0",
               awaitp=False) == 1:
@@ -127,7 +142,8 @@ def main():
         time.sleep(0.5)
     if not ready:
         proc.terminate()
-        raise SystemExit("模型未就绪（检查 --ship 是否为有效皮肤 key）")
+        raise SystemExit(f"模型未就绪（{SHIP} 在 200s 内未挂到 l2State.app.stage；"
+                         f"确认 --ship 是有效皮肤 key，且该图库 index.json 里有它）")
 
     # ---- 1) 数据表（先等它到齐：fetch 是异步的，模型就绪 ≠ 数据到齐）----
     for _ in range(60):

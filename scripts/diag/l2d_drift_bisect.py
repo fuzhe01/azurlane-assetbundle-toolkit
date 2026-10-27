@@ -20,6 +20,12 @@ import sys, os, json, time, subprocess, urllib.request
 
 sys.stdout.reconfigure(encoding="utf-8")
 import websocket
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CAND = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -62,6 +68,7 @@ def main():
         f"--user-data-dir={PROFILE}", "--no-first-run", "--no-default-browser-check",
         "--headless=new", "--gpu", "--window-size=1400,950", url],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = chrome_tree.install(proc)
     ws = None
     for _ in range(120):
         try:

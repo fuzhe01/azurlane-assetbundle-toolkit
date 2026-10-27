@@ -75,7 +75,9 @@ SETUP = """(async()=>{
   openShip(ship); setSkin(sk); buildSkinList(ship);
   const l2=[...document.querySelectorAll('#mTabs .tab')].find(x=>x.dataset.k==='live2d');
   l2.click();
-  for(let i=0;i<110 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
+  /* 预算 200×500ms=100s：按**最坏情形**（连跑多模型 / 冷启）定，不按单跑实测拍
+     （2026-10-27 §156 形态三；同批探针里 inspector 150s / 这里曾 55s 属失配）。 */
+  for(let i=0;i<200 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
   if(!(l2State&&l2State.app&&l2State.app.stage.children[0])) return 'NO_MODEL';
   return 'OK';
 })()"""

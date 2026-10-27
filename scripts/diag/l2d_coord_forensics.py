@@ -66,10 +66,14 @@ JS = r"""(async(key)=>{ try{
   openShip(ship); setSkin(sk); buildSkinList(ship);
   const l2=[...document.querySelectorAll('#mTabs .tab')].find(x=>x.dataset.k==='live2d');
   l2.click();
-  // 固定等 6s 对 big 贴图皮肤（40MB / 单线程服务器）必然不够；轮询到模型真进舞台为止
-  for(let i=0;i<90 && !(window.l2State&&l2State.app&&l2State.app.stage&&l2State.app.stage.children[0]);i++) await t(500);
-  if(!(window.l2State&&l2State.app&&l2State.app.stage&&l2State.app.stage.children[0]))
-    return JSON.stringify({key, fail:'45s 内模型未进入舞台'});
+  /* ⚠️ 判据必须是 `typeof l2State!=='undefined'`，**不是 `window.l2State`**：页面用 `let l2State`
+     声明（不挂到 window 上），`window.l2State` 恒为 undefined ⇒ 门槛第一次判就"通过"、后续
+     读所有字段全是 undefined，探针 100% 失败（2026-10-27 实测：`typeof window.l2State`=undefined
+     而 `typeof l2State`=object）。`typeof X` 不抛异常，同时兼容 `let` 与挂在 window 上的写法。 */
+  /* 预算 200×500ms=100s：按最坏情形（连跑/冷启）定，不按单跑实测拍（§156 形态三）。 */
+  for(let i=0;i<200 && !(typeof l2State!=='undefined'&&l2State&&l2State.app&&l2State.app.stage&&l2State.app.stage.children[0]);i++) await t(500);
+  if(!(typeof l2State!=='undefined'&&l2State&&l2State.app&&l2State.app.stage&&l2State.app.stage.children[0]))
+    return JSON.stringify({key, fail:'100s 内模型未进入舞台'});
   const app=l2State.app, m=app.stage.children[0];
   if(!m||!m.internalModel) return JSON.stringify({key, fail:'舞台首个子节点没有 internalModel'});
   const im=m.internalModel, core=im.coreModel, ppu=im.pixelsPerUnit||1;

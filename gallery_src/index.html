@@ -617,11 +617,19 @@ function vmemCommitter(key, read){ let t = null;
             flush(){ if(t){ clearTimeout(t); t = null; vmemSet(key, read()); } } }; }
 
 /* ---------- 工具 ---------- */
-function thumbOf(skin){ return skin.cg ? ('thumbs/' + skin.key + '_cg.webp') : skin.image ? ('thumbs/' + skin.key + '.webp') : ''; }
-function fullOf(skin){ return skin.cg ? (P + skin.cg) : skin.image ? (P + skin.image) : ''; }
+/* 秘书舰 NPC 三族（tbniang / lingyangzhe32_3 / tansuozhe32_3）在索引里是 category='story' 且
+   skins=[]：它们确实没有随包下发的立绘资源（见 build_gallery_index.py L682）。所以下面这几个取
+   默认皮肤的小工具**必须**能接住 null —— 曾经的写法 `skin.cg` / `s.skins[0]` 会抛
+   `TypeError: Cannot read properties of undefined (reading 'cg')`，而 makeCard 抛错是发生在
+   `list.forEach` 里 ⇒ 整批渲染中断，那三张剧情卡的缩略图/卡片一个都不出（分区标题还在，
+   底下空白，极易被误判成"索引少了条目"）。更远的连带：apply() 与页面底部的 ?ship= 直达 IIFE
+   在同一个 <script> 块里，renderGrid() 一抛错，后面的 IIFE 就再也不会注册 ⇒ `?ship=` 全部静默失效。 */
+function thumbOf(skin){ if(!skin) return ''; return skin.cg ? ('thumbs/' + skin.key + '_cg.webp') : skin.image ? ('thumbs/' + skin.key + '.webp') : ''; }
+function fullOf(skin){ if(!skin) return ''; return skin.cg ? (P + skin.cg) : skin.image ? (P + skin.image) : ''; }
 function hasSpine(s){ return s.spineSkins && s.spineSkins.length; }
 function hasL2d(s){ return s.live2dSkins && s.live2dSkins.length; }
-function defSkin(s){ return s.skins[0]; }
+function defSkin(s){ return (s.skins && s.skins[0]) || null; }
+function skinCount(s){ return (s.skins || []).length; }
 function rarClass(r){ return r ? ('rar-'+r) : ''; }
 
 /* ---------- 筛选下拉填充 ---------- */
@@ -643,12 +651,12 @@ function makeCard(s){
   const badges=[]; if(hasSpine(s))badges.push('<span class="b-spine">SPINE</span>'); if(hasL2d(s))badges.push('<span class="b-l2d">L2D</span>'); if(s.voiceCount)badges.push('<span class="b-voice">🔊'+s.voiceCount+'</span>');
   const tags=[]; if(s.rarity)tags.push(`<span class="tag ${rarClass(s.rarity)}">${s.rarity}</span>`); if(s.faction)tags.push(`<span class="tag f">${s.faction}</span>`); if(s.type)tags.push(`<span class="tag s">${s.type}</span>`);
   card.innerHTML=`<div class="thumb">${th?`<img loading="lazy" src="${th}">`:'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#555;font-size:12px">无立绘</div>'}<div class="badge">${badges.join('')}</div></div>
-    <div class="body"><div class="nm">${s.name}</div><div class="py">${s.id} · ${pseudoKind(s)||s.skins.length+'皮肤'}</div><div class="tags">${tags.join('')}</div></div>`;
+    <div class="body"><div class="nm">${s.name}</div><div class="py">${s.id} · ${pseudoKind(s)||skinCount(s)+'皮肤'}</div><div class="tags">${tags.join('')}</div></div>`;
   /* 卡片可 Tab 聚焦：以前整张网格只有鼠标一条路，键盘走不到任何一张卡（§6.18 ④）。
      Enter/Space 的激活走 mainEl 上的**一个**委托监听器，不给千张卡各挂一个。 */
   if(GLASS_IO) GLASS_IO.observe(card); else card.classList.add('g');   // 毛玻璃按需挂载
   card.tabIndex=0; card.setAttribute('role','button');
-  card.setAttribute('aria-label',s.name+' · '+(pseudoKind(s)||s.skins.length+' 个皮肤'));
+  card.setAttribute('aria-label',s.name+' · '+(pseudoKind(s)||skinCount(s)+' 个皮肤'));
   card.onclick=()=>openShip(s,card);
   /* 缩略图淡入：懒加载的图到货那一刻不该"啪"地跳出来。
      complete 分支必须有 —— 命中缓存时 load 事件根本不会再发。 */
@@ -865,8 +873,8 @@ document.addEventListener('keydown',e=>{
 });
 
 function buildSkinList(s){
-  const el=document.getElementById('mSkins'); el.innerHTML='<div class="lab">皮肤 / 变体 ('+s.skins.length+')</div>';
-  s.skins.forEach(sk=>{
+  const el=document.getElementById('mSkins'); el.innerHTML='<div class="lab">皮肤 / 变体 ('+skinCount(s)+')</div>';
+  (s.skins||[]).forEach(sk=>{
     const sp=s.spineSkins.includes(sk.key), l2=s.live2dSkins.includes(sk.key);
     const d=document.createElement('div'); d.className='skin'+(sk===curSkin?' on':''); d.dataset.k=sk.key;
     const th=thumbOf(sk);
@@ -877,6 +885,19 @@ function buildSkinList(s){
 }
 function setSkin(sk){ curSkin=sk; paintSrc='cg'; const s=curShip;
   const nameEl=document.getElementById('mName'), pyEl=document.getElementById('mPy'), metaEl=document.getElementById('mMeta');
+  /* 无皮肤的空卡（秘书舰 NPC 三族，skins=[]）：弹层里除了标题没有可看的东西。
+     必须早退 —— 下面每一行都要读 sk.key / sk.image，sk 为 null 直接抛。 */
+  if(!sk){
+    nameEl.textContent=s.name; pyEl.textContent=s.id; metaEl.innerHTML='';
+    const tag=document.createElement('span');
+    tag.textContent='该角色在本地资产里没有立绘 / 动态资源（npc 条目：只有名字与配音档）';
+    metaEl.appendChild(tag);
+    document.getElementById('mTabs').innerHTML='';
+    viewEl.innerHTML='<div class="note">索引里这张卡没有皮肤条目。<br>'
+      +'它们是秘书舰 NPC（领航员-TB / 领洋者-娜比娅 / 探索者-艾普洛），'
+      +'游戏侧只有名字与台词档，立绘资源未随 AssetBundle 下发。</div>';
+    return;
+  }
   if(s.sil){
     /* 剪影不是皮肤：标题位给"这是什么"，来源做成可点入口跳回本体船 —— 用户要的就是
        "别混在皮肤区，但要能找到、能管理"（§88 / 2026-10-03 拍板）。 */

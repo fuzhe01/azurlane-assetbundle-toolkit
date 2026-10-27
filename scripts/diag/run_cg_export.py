@@ -12,6 +12,12 @@ import sys as _p_sys, os as _p_os
 _AL_ROOT = _p_os.path.dirname(_p_os.path.dirname(_p_os.path.dirname(_p_os.path.abspath(__file__))))
 _p_sys.path.insert(0, _p_os.path.join(_AL_ROOT, "scripts"))
 import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 
 
 def _chrome_fallback():
@@ -52,6 +58,7 @@ proc = subprocess.Popen([
     '--use-angle=swiftshader', '--window-size=1280,900',
     url,
 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+proc = chrome_tree.install(proc)
 
 def wait_ws():
     for _ in range(60):

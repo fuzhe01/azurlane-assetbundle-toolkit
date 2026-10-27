@@ -69,6 +69,8 @@ proc = subprocess.Popen(
     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
 )
 
+proc = chrome_tree.install(proc)
+
 
 def wait_ws():
     for _ in range(80):
@@ -157,6 +159,12 @@ while time.time() - t0 < int(arg("--timeout", "600")):
 # 6) 像素断言：产物非空、有内容（近黑低、非全透明）
 fails = 0
 from PIL import Image  # noqa: E402
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 for f in folders.split(","):
     p = os.path.join(P.OUT, "CG_v2", f + ".png")
     if not os.path.isfile(p):

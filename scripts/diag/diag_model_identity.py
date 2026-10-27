@@ -62,7 +62,10 @@ COMPARE = """
 (function(){
   try{
     const hook = window.__l2model;
-    const stg = (window.l2State && l2State.app && l2State.app.stage)
+    /* ⚠️ 不能写 `window.l2State`：页面用 `let l2State` 声明（不是 window 属性），
+       `window.l2State` 恒 undefined ⇒ stg 恒 null ⇒ 本探针永远报 hasStage/hasPage=false，
+       看起来像"页面没起来"。`typeof` 既不抛异常又兼容两种声明方式（2026-10-27 实测）。 */
+    const stg = (typeof l2State!=='undefined' && l2State && l2State.app && l2State.app.stage)
                   ? l2State.app.stage : null;
     const page = stg ? stg.children[0] : null;
     const out={

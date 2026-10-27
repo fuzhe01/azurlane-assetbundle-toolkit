@@ -7898,3 +7898,142 @@ git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 `
 **别做的无效尝试**（本轮实测均失败，浪费约 20 分钟）：换 gitee / ghproxy 镜像、`git config --global` 改
 `http.proxy`、反复重试裸 `git push`、检查「GitHub 是否可达」——**问题从来不是可达性**。
 
+## §156. 探针「假成功 / 恒失败」三形态：清理器报成功却没杀、全局变量问错对象、预算按单跑拍（2026-10-27）
+
+**背景**：接手上一轮未提交改动时，先把「验收工具本身」当被测对象查了一遍。一次查出三个
+**独立**缺陷，全都属于「探针给出的结论不可信」，而不是产品坏了。**先修尺子，再量东西。**
+
+### 形态一：`taskkill /T /F /PID <launcher>` 对 Edge **报成功却没杀**（假绿灯 + 资源泄漏）
+
+`chrome_tree.kill_tree(pid)` 的实现是 `taskkill /T /F /PID <Popen 的 pid>`。实测（2026-10-27）：
+
+```
+Popen pid = 6320，7 秒后 proc.poll() == 0     ← 启动器早就退了，用户数据目录已交给新孵化的主进程
+taskkill /T /F /PID 6320  → 退出码 128，无输出
+再查同一 profile → 16~20 个 msedge 进程【全部存活】
+```
+
+`/T` 顺着祖谱走，而祖谱已经断了（启动器死了），于是它「成功」地什么也没杀。**探针退出数分钟后
+那棵浏览器树仍在跑**（实测 280MB、20 个进程）。这类"清理动作静默失败"是**假绿灯的同族**：
+报告说收干净了，实际机器在被慢慢吃掉，而且下一次跑批处理时会多出一堆抢 profile 的僵尸。
+
+**修法（`scripts/diag/chrome_tree.py`）**：
+- 判据从「`taskkill` 退出码」改成**回读**——杀完再查一次同一 `--user-data-dir` 还有没有进程；
+- 兜底手段用 **profile 全名匹配**，不按进程名杀：`profile = .diag/chrome_<tag>_<pid>`，每个进程唯一，
+  所以永远碰不到并发会话的浏览器（按 `msedge.exe` 全杀会误伤别人的会话）；
+- `install(proc)` 从 `proc.args` **自动认回** `--user-data-dir`，所以 16 个调用点一行不用改；
+- 残留时往 `stderr` 打一行（不静默、也不抛异常打扰退出）。
+
+**对照实验（必做，否则改完不知道有没有用）**：同一棵树上先跑旧法（`taskkill /T /F` 单发）
+证明残留 16 个，再跑新法（`kill_tree(pid, profile)`）证明残留 0。**只有"旧法残留/新法杀净"
+这个双向对照才算证明**；单跑新法杀净可能是碰巧。
+
+### 形态二：探针写 `window.<变量>`，而页面用 `let` 声明（恒失败，且伪装成"页面没起来"）
+
+`l2d_coord_forensics.py` 的就绪判据写的是 `window.l2State`。实测：
+
+```
+typeof window.l2State = 'undefined'      ← 页面是 `let l2State = ...`，不是 window 属性
+typeof l2State        = 'object'
+'l2State' in window   = false
+```
+
+于是门槛**第一次判就通过**、后续读所有字段全是 `undefined`，探针报
+`fail: '45s 内模型未进入舞台'`、**恒 exit 3**——看起来像"模型加载不出来"，实为探针自己写错了对象。
+`diag_model_identity.py` 有同一处错法（`window.l2State` → `stg` 恒 null ⇒ 永远报
+`hasStage/hasPage=false`）。
+
+**修法**：判据写 `typeof l2State !== 'undefined' && l2State && ...`。
+`typeof` 对未声明标识符**不抛异常**，因此同时兼容 `let`（词法作用域、不挂 window）与
+挂在 window 上的写法 —— 比 `window.X` 更稳。
+
+**通用规则**：探针要读页面的变量时，**先 `typeof` 探一下，别假设它挂在 window 上**。
+另有两条同类：`?ship=` 直达与页面主脚本在**同一个 `<script>` 块**里，前一段抛错会让后者
+静默不注册（见 §157）；页面脚本里的 `let/const` 顶层变量一律**不是** window 属性。
+
+### 形态三：加载预算按「单跑实测」拍，连跑时假失败（间歇，最阴）
+
+`interact_verify.py` 的模型就绪预算是 `80 × 500ms = 40s`。实测：
+
+| 场景 | 结果 |
+|---|---|
+| 单独跑 `interact_verify.py`（只 1 个模型） | PASS，等 ~2.7s |
+| **连跑 5 个模型**（同一页面内逐皮肤切换，排在最后的 `ougen_8`） | 超 40s ⇒ `err:'40s 内模型未加载'` |
+| 同一模型在**探测脚本**里量（预算是 150s+） | 稳定进舞台 |
+
+差异来源：每个皮肤三件套约 40MB、服务器**单线程**，连跑时前面积压的请求把最后一个挤到 40s 之外；
+而"单跑"时它是第一个、只用 2.7s。⇒ **预算必须按"最坏情形（连跑 / 冷启 / 排在最后）"定，
+不能按单跑实测拍**。同族证据：`l2d_inspector_verify.py` 早就把预算抬到 150s（注释里写着
+"aersasi_2 在 40~60s 区间浮动"），而 `interact_verify` 停在 40s —— **同一批探针里预算不一致，
+就是这类间歇假失败的温床**。
+
+**修法**：抬到 `200 × 500ms`（上限 100s，与 inspector 的 150s 同量级）。
+
+### 附带：默认参数指向**不存在**的文件（必然失败）
+
+`gallery_ui_shots.py` 的 `--pages` 默认是 `index.html,index_b.html`，而 `index_b.html`
+**全库不存在**（`git log --all` 无记录、D 盘上也没有）⇒ 默认跑必然在 preflight 阶段
+报 404 退出 1。同一处还有皮肤 key 写死 `ninghai_4` / `tansuozhe_2`——那是**另一份全库画廊**
+才有的模型，在本项目上恒 `NO_SHIP`。
+
+**通用规则**：探针的默认参数（页面路径、样本 key、端口）必须**指向本项目实有的东西**，
+并且**默认值要能跑通**；要对比两份就显式传参。改默认值时顺手核对一遍"这个名字今天还在不在"。
+
+### 判据（本轮真跑的，可复现）
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| `chrome_tree` 对照实验 | 旧法残留 16 / taskkill rc=128 | 新法回读 0 残留 |
+| 探针自清（`gallery_home_verify` 跑完） | 残留 20+ 进程 | 残留 **0** |
+| `l2d_coord_forensics.py aersasi_3` | 恒 exit 3（`window.l2State`） | **exit 0**，`identityHits=[]` / `flipHits` 命中 Head/Special/Body |
+| `diag_model_identity.py` | `stg` 恒 null | hook 与 page 同一对象，参数随时间变化 |
+| `interact_verify.py`（全 5 模型连跑） | 最后一个偶发 `err` | **ALL PASS** |
+| `gallery_ui_shots.py`（默认参数） | exit 1（index_b 404） | **exit 0**，5 张图 |
+
+**否证/已排除的假设**：
+- ❌「浏览器进程是探针**异常退出**漏掉的」——不是。实测的是**正常退出路径**下
+  `taskkill /T /F` 本身就无效（启动器已死，祖谱断），与异常无关。
+- ❌「`interact_verify` 报 `err` 是产品加载失败」——不是。同模型在 150s 预算的探针里稳定进入，
+  且单跑通过、连跑失败 ⇒ 是预算口径问题。
+- ❌「`--disable-background-timer-throttling` 能解决加载慢」——不足以。该 flag 只去掉定时器节流，
+  40MB×多皮肤的**串行网络+解码**时间省不掉，只能抬预算。
+
+**涉及**：`scripts/diag/chrome_tree.py`（★改写，判据落到回读）、`scripts/diag/cdp_ready_selftest.py`
+（★新增，就绪门槛的阴性对照自测）、`scripts/diag/l2d_coord_forensics.py`、
+`scripts/diag/diag_model_identity.py`、`scripts/diag/interact_verify.py`、
+`scripts/diag/gallery_ui_shots.py`。
+
+### §156 续：全库体检（`scripts/diag/` 320 个探针）——同族问题成规模存在（2026-10-27）
+
+**做法**：把上面三条判据写成扫描脚本跑全库（**方法在 WF-46**），而不是只修"我碰到的那几个"。
+结果证明**同类错误确实是成规模的**，不是孤例：
+
+| 判据 | 全库命中 | 处理 |
+|---|---|---|
+| 起浏览器但没 `chrome_tree.install()` | **40 个** | 补 import + `install()`，**判据：40 → 0** |
+| Live2D 等待预算 < 100s | **5 个**（40/45/55/55/40s） | 抬到 100s，与 inspector 的 150s 同量级 |
+| 写 `window.<let 声明的变量>` | **2 个**（已修） | 改 `typeof` |
+| 裸 `document.readyState` 当门槛 | **0 个**（其余全是注释） | 无动作 |
+
+**批量改写的两条工程教训**（都是实测撞出来的，值得记）：
+
+1. **只做最小可证安全的那一种改动，别顺手多做。** 第一版脚本还想把 `proc.terminate()` 与
+   裸 `taskkill` 一起换成 `kill_tree(pid, profile)`，结果两个坑：
+   ① f-string 的 `--user-data-dir={ROOT}/.diag/x` 剥掉花括号后得到 `kill_tree(pid, ROOT)` ——
+   **语义全错但语法合法**（`py_compile` 抓不到）；
+   ② 裸 `taskkill` 常带续行实参（`stdout=`/`stderr=`），正则替换后会留下悬空参数 ⇒ 语法错。
+   ⇒ 定稿只加 `import` + 一行 `install()`：`install()` 从 `proc.args` 自动认 profile，
+   等价于修好泄漏，而"加两行"是可证明安全的。**改写范围越大，"看着对"的风险越高。**
+2. **`py_compile` 通过 ≠ 改动正确。** 上面那两个坑里有一个（f-string 剥花括号）语法完全合法，
+   必须靠**人工看 diff 里的表达式**才能发现。批量机械改写后，"5 个抽样逐个读 diff"是必要步骤，
+   不是形式主义。
+
+**顺带发现的独立问题（本轮未改，另行处理）**：24 个探针把 `CHROME` 写死成
+`C:/Program Files/Google/Chrome/Application/chrome.exe`，而本机**只有 Edge**（该路径不存在）
+⇒ 这些探针在当前机器上起不来。正本解法已存在：`scripts/paths.py` 的 `CHROME`
+（`AL_CHROME` env → PATH → 已知安装位，含 Edge 兜底）。**与 §156 三形态无关，别混在一起改。**
+
+**验证（改前/改后同一脚本）**：漏 `install()` **40 → 0**；预算偏小 **5 → 0**（全部 ≥100s）；
+45 个改动文件 `py_compile` **全 0**；抽样实跑（`l2d_hand_probe`、`l2d_costume_ui_verify`）
+**正常退出后残留 0**（改前是 20+ 进程常驻）。
+

@@ -1,32 +1,44 @@
 # -*- coding: utf-8 -*-
-"""画廊 UI 样板对比截图：同一批界面状态，在两个页面（改前 / 改后）各截一张。
+"""画廊 UI 截图：依次打开若干界面状态各截一张（跨「列表 + 三种查看器 + 语音页」）。
 
-用途：改视觉语言时，先看样板再铺开——判据是"人眼看图"，所以工具只负责
-把两边拍成**完全同一视角、同一尺寸、同一等待时长**的成对图片。
+用途：改视觉语言时先看样板再铺开——判据是"人眼看图"，所以工具只负责
+把每个状态拍成**同一视角、同一尺寸、同一等待时长**的图片。
 
-  py -3 scripts/diag/gallery_ui_shots.py                       # 默认比 index.html vs index_b.html
-  py -3 scripts/diag/gallery_ui_shots.py --pages a.html,b.html --out .diag/uishots
+  py -3 scripts/diag/gallery_ui_shots.py                              # 截 index.html 一套（5 张）
+  py -3 scripts/diag/gallery_ui_shots.py --pages a.html,b.html --tags before,after
+  py -3 scripts/diag/gallery_ui_shots.py --out .diag/uishots
 
-⚠️ 两个坑（本轮踩过）：
+⚠️ 三个坑（都踩过）：
   1. 无头窗口尺寸必须对齐用户实机（默认 2560,1600）——弹窗上限按 vw/vh 算，小窗口看不出真实观感。
   2. 打开皮肤后**不要**给 .view 刷背景色（取景量具 gallery_framing_ab.py 会刷，那是为了量落笔像素）；
      这里要看的就是用户实际看到的底。
+  3. **默认只截 `index.html`**。旧默认还写了一张 `index_b.html`（"改前页"），但那份校对页
+     从来没入库、D 盘上也不存在（`git log --all` 无记录）⇒ 默认跑必然在 `preflight` 阶段
+     报 404 退出 1（2026-10-27 实测）。要对比两份就显式 `--pages a.html,b.html`。
+     皮肤 key 同理：**必须是本项目 index.json 里实有的**（haitian_3 / benningdun_2 /
+     aersasi / aersasi_2 / aersasi_3 / antu_2 / ougen_8），旧默认的 ninghai_4 / tansuozhe_2
+     来自另一份全库画廊，在本项目上恒 NO_SHIP。
 """
 import sys, os, json, time, base64, argparse, subprocess, urllib.request
 sys.stdout.reconfigure(encoding='utf-8')
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import websocket, chrome_tree
+import websocket, chrome_tree, cdp_wait
 
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
-CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
-BASE = 'http://127.0.0.1:8777/gallery_v2'
+CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
+# ⚠️ BASE 不许再写死 8777：本项目当前服务在 8778（8777 上是另一份画廊，如旧机拷贝的全库）。
+# 在错误的服务上截出的"改前/改后"样板看起来正常，实际两个页面都不是本项目产物。
+BASE = os.environ.get('SHOTS_BASE', 'http://127.0.0.1:8778/gallery_v2')
 WAIT = {'painting': 4.0, 'live2d': 11.0, 'spine': 11.0, 'voice': 4.0}
 
 # 界面状态清单：(文件名, tab, 皮肤 key)。覆盖「列表 + 三种查看器 + 语音页」
-STATES = [('1_grid', None, None), ('2_live2d', 'live2d', 'ninghai_4'),
-          ('3_painting', 'painting', 'ninghai_4'), ('4_spine', 'spine', 'tansuozhe_2'),
-          ('5_voice', 'voice', 'ninghai_4')]
+# ⚠️ 皮肤 key 必须存在于**当前项目**的 index.json（实测现有 7 个皮肤：
+#    haitian_3 / benningdun_2 / aersasi / aersasi_2 / aersasi_3 / antu_2 / ougen_8）。
+#    以前写的是 ninghai_4 / tansuozhe_2，那是旧机全库才有的模型 → 本项目上必 NO_SHIP。
+STATES = [('1_grid', None, None), ('2_live2d', 'live2d', 'aersasi_2'),
+          ('3_painting', 'painting', 'haitian_3'), ('4_spine', 'spine', 'aersasi'),
+          ('5_voice', 'voice', 'aersasi_2')]
 
 
 class Page:
@@ -141,8 +153,9 @@ def assert_rendered(pg, page, name, tab):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--pages', default='index.html,index_b.html', help='逗号分隔：改前页,改后页')
-    ap.add_argument('--tags', default='before,after')
+    ap.add_argument('--pages', default=os.environ.get('SHOTS_PAGES', 'index.html'),
+                    help='逗号分隔：要截的页面（默认只 index.html；对比两份写 a.html,b.html）')
+    ap.add_argument('--tags', default=os.environ.get('SHOTS_TAGS', 'cur'))
     ap.add_argument('--win', default='2560,1600')
     ap.add_argument('--out', default=os.path.join(ROOT, '.diag', 'uishots'))
     ap.add_argument('--port', type=int, default=9431)
@@ -160,7 +173,15 @@ def main():
         time.sleep(7)
         pg.ev("localStorage.clear()")
         pg.cmd('Page.navigate', {'url': f'{BASE}/{page}'})
-        time.sleep(6)
+        # 就绪门槛（scripts/diag/cdp_wait.py）：不能拿 document.readyState 当判据 ——
+        # CDP 会话初连时执行上下文还在 about:blank，其 readyState 天生 'complete'，
+        # 门槛第一次判就放行，后面全打在空白页上（本工具的症状是 5 张全空白 PNG）。
+        # 同时替代原来那句裸 time.sleep(6) 的赌博。
+        _ok, _secs, _last = cdp_wait.wait_ready(pg.ev, f'{BASE}/{page}', budget=150)
+        print(f'  [ready] ok={_ok} {_secs}s' + ('' if _ok else f' last={_last}'))
+        if not _ok:
+            pg.close()
+            raise SystemExit(f'! {page}: 页面在预算内未就绪（探针故障，非产品故障）')
         for name, tab, key in STATES:
             r = open_state(pg, tab, key)
             if tab:

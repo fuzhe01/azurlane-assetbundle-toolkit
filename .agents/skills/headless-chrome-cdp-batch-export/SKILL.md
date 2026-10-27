@@ -1,7 +1,7 @@
 ---
 name: headless-chrome-cdp-batch-export
 description: 无头 Chrome + CDP 批量驱动本地网页完成渲染/截图/资产导出。当任务需要用浏览器前端运行时（如 Spine/WebGL/Canvas/JS 库）批量产出图片或数据文件时使用——触发词：无头浏览器批量导出、CDP 驱动网页、headless chrome 批量截图、浏览器渲染落盘、autostart 参数自动化。不适用于单次网页截图和 QwenWork 内置媒体生成工具。
-version: 1.8.2
+version: 1.8.4
 ---
 
 # 无头 Chrome + CDP 批量导出
@@ -409,6 +409,74 @@ version: 1.8.2
     别只看"导出完成 N/N"（脚本会把空作业算完成，`cg_exists` 也可能跳过但无内容）。
     全量带 `--timeout` 覆盖默认值，用 `Start-Process` 脱宿主运行 + 记 PID 到 `.diag/`，
     长时批处理三分法判定"真跑完/崩了/被截断"，别拿 `exit 0` 当完成证据。
+
+40. **收尾清理的判据必须是「回读进程列表」，不是 `taskkill` 的退出码；且只能按自己的
+    `--user-data-dir` 匹配（2026-10-27 实测，一次假绿灯 + 一次资源泄漏）**：
+    `Popen([chrome,...])` 拿到的 pid **常常只是一个已退出的启动器** —— 它把用户数据目录交给
+    重新孵化的主进程后就退了，祖谱断掉，于是 `taskkill /T /F /PID <那个 pid>` **"成功"地
+    什么也没杀**（实测退出码 128、无输出，而同一 profile 下 16~20 个浏览器进程全部存活，
+    探针退出数分钟后仍在跑）。修复形态：
+    ```python
+    def kill(proc_path):                       # 唯一安全的判据 = profile 全名
+        left = pids_using(proc_path)           # 查 CommandLine 里含该 user-data-dir 的进程
+        for p in left: taskkill /F /PID p
+        return not pids_using(proc_path)       # ← 判据落在回读上
+    ```
+    - **按 profile 名匹配，不按进程名杀**：`--user-data-dir=<自己的>_<pid>` 天然唯一，
+      而 `taskkill /IM msedge.exe` 会误杀并发会话正在用的浏览器（本项目多会话共用工作树）。
+    - 注册成 `atexit`（异常退出也要跑），并在残留时**打一行到 stderr**（不静默）。
+    - **验收必须双向**：旧法要能复现出残留（证明陷阱真实存在），新法回读为 0 才算修好；
+      单跑新法杀净可能是碰巧。本机 `Windows 10/11 + Edge` 复现稳定。
+    - 同理适用于任何"我把资源收掉了"的动作：判据一律落在**回读外部状态**，不落在自己的返回码上。
+
+41. **页面变量的就绪/读取判据用 `typeof X !== 'undefined'`，不要写 `window.X`（2026-10-27 实测，
+    探针恒失败却伪装成"页面没起来"）**：页面用顶层 `let l2State = ...` 声明时**不挂到 window**，
+    于是 `window.l2State` 恒 `undefined`：等待门槛第一次判就"通过"、后续读所有字段全 undefined，
+    症状是 `fail: '45s 内模型未进入舞台'` 这类**看起来像产品坏了的假红**。
+    实测 `typeof window.l2State === 'undefined'` 而 `typeof l2State === 'object'`。
+    ⇒ 判据写 `typeof l2State !== 'undefined' && l2State && ...`：`typeof` 对未声明标识符**不抛异常**，
+    同时兼容 `let`（词法作用域）与挂在 window 上的写法，比 `window.X` 更稳。
+    查到一处要**全库扫**（同类错法常成对出现）。
+
+42. **超时预算按「最坏情形」定，不按单跑实测拍；同类等待的预算要同量级（2026-10-27 实测）**：
+    同一批探针里 `l2d_inspector_verify` 是 150s、`interact_verify` 是 40s。实测
+    `interact_verify` **单跑 1 个模型 2.7s 通过**，而**连跑 5 个模型**时排在最后的那个
+    超 40s 报 `err:'40s 内模型未加载'` —— 每个皮肤三件套约 40MB、服务器**单线程**，
+    连跑时前面请求把最后一个挤到 40s 之外。⇒ 排"最坏情形清单"：**连跑多样本 / 冷启首跑 /
+    排在批处理最后 / 大贴图皮肤**；`--disable-background-timer-throttling` 只去定时器节流，
+    省不掉串行网络+解码时间。排查手法：把同批探针的等待预算列成一张表，不一致就逐个问为什么。
+
+43. **探针的默认参数必须指向"今天还存在"的东西，且默认值要能跑通（2026-10-27 实测）**：
+    截图工具的 `--pages` 默认写着 `index.html,index_b.html`，而 `index_b.html` **全库不存在**
+    （`git log --all` 无记录、盘上也没有）⇒ 默认跑必然 404 退出 1；皮肤 key 还写死成
+    **另一份画廊**才有的 `ninghai_4` ⇒ 恒 `NO_SHIP`。**改探针时顺手核一遍"这些名字今天还在不在"**
+    （路径 `Test-Path`；样本 key 对目标页面 `index.json` 的实有条目），要对比两份就显式传参。
+
+44. **就绪/等待类判据上线前必须做阴性对照自测，只报阳性 = 无区分力的假绿灯（2026-10-27 实测）**：
+    曾经用「poke 一下看是否同绿」做对照，结果**两侧同绿** ⇒ 判据根本没有判别力，等于没验。
+    正确形态是一条能自证的自测：**阴性侧（`about:blank`，其 `readyState` 天生 `complete`）
+    必须被拒 + 阳性侧（真页）必须放行**，两条都过才算这道门有拦截力。
+    就绪判据的三件套：① `location.href` 真等于目标 URL；② `document.readyState==='complete'`；
+    ③ 业务标志在（`window.<GLOBAL>` 非空 / 目标 DOM 存在）。
+    另一同族陷阱：谓词写成 `G.ships && G.ships.length`，JS 返回**最后一个操作数的值**（数字），
+    Python 侧 `is True` 恒假 ⇒ 门退化成"白等满超时"，症状是"工具很慢"而不是"门没生效"。
+
+45. **同类缺陷会成规模存在：查到一处要扫全库，并把「漏 X 的个数」做成可重复跑的数（2026-10-27 实测）**：
+    修完「清理器报成功却没杀 / 全局变量问错对象 / 预算按单跑拍」三处后，把同一批判据写成脚本扫
+    `scripts/diag/` 的 320 个探针，命中 **40 个**缺整树清理、**5 个**等待预算偏小。
+    ⇒ **只修"我碰到的那几个"不是修复，是抽样**。流程：先量化基线（"漏 X 的个数"），
+    批量改完跑同一个脚本，数归零才算解决。
+
+46. **批量机械改写的红线：只做最小可证安全的那一种改动；改写范围越大，"看着对"的风险越高（2026-10-27 实测踩坑）**：
+    第一版脚本想同时把 `proc.terminate()` 与裸 `taskkill` 换成"带 profile 回读的 kill"，撞两个坑：
+    - f-string 的 `--user-data-dir={ROOT}/.diag/x` 剥掉花括号后得到 `kill_tree(pid, ROOT)`
+      —— **语义全错但语法完全合法**；
+    - 裸 `taskkill` 常带续行实参（`stdout=`/`stderr=`），正则替换后留下悬空参数 ⇒ 语法错。
+    定稿只加两行（`import chrome_tree` + `proc = chrome_tree.install(proc)`）：
+    `install()` 从 `proc.args` 自动认 `--user-data-dir`，**等价地**修好泄漏。
+    ⇒ 配套三条硬规：① **干跑默认**，人读输出；② 小样本实改后**逐份人工读 diff 里的表达式**
+    （`py_compile` 只证明语法合法、不证明语义对）；③ 批量后抽样**实跑**，判据落在外部可观测状态
+    （进程数为 0），不落在脚本自己的退出码上。收尾删掉批量留的 `.bak`。
 
 40. **机器只有 Edge / 无 Google Chrome 时，headless CDP 起不来（2026-10-18 实测）**：
     `msedge --headless[=new] --remote-debugging-port=<p> --remote-allow-origins=* --user-data-dir=<独立>`

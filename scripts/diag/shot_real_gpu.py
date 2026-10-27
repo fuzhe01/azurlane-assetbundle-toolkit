@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 sys.path.insert(0, os.path.join(ROOT, 'scripts', 'diag'))
 
 import paths as P  # noqa: E402
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8777
 CLIP = sys.argv[2] if len(sys.argv) > 2 else 'idle'
@@ -56,6 +57,7 @@ def main():
             '--window-size=1400,1000',
             URL]
     proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = chrome_tree.install(proc)
     print('已启动有头 Edge（真实 GPU），PID', proc.pid)
 
     ws_url = None

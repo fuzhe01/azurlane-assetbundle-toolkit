@@ -3334,3 +3334,101 @@ py -3 scripts/diag/l2d_poly_truth_verdict.py --sample \
 
 **涉及文件**：`scripts/diag/l2d_group_cmp.py`（新建）、`scripts/diag/l2d_poly_truth_verdict.py`、
 `scripts/diag/l2d_motion_fidelity_audit.py`、`Output/_ab/{E,F,official}/`、`Output/Live2D/`。
+
+## WF-46 探针清单体检：假成功 / 恒失败 / 预算失配三查（2026-10-27 实测）
+
+**触发**：接手一批未提交的探针改动；或者**任何一次"验收通过"要拿去下结论**之前。
+本项目的教训是反复的：**尺子坏了比东西坏了更贵**——假绿灯让真故障过关，恒失败让好产品背锅，
+而两者都表现为"跑了、有输出、有退出码"。
+
+**核心认知**：探针的输出**不是证据**，探针的**判据**才是。所以体检的第一层是
+「这条判据在阴性侧会不会红」，第二层才是「它现在报什么」。
+
+### 三步体检（每步都要有阴性对照，缺一步就等于没查）
+
+**① 清理/收尾类动作：判据必须落在"回读"，不能落在退出码**
+
+```bash
+# 对照实验模板（旧法必须有残留，新法必须杀净，双向都要）
+py -3 - <<'PY'      # 或写成一个 .diag 探针
+# 起一棵浏览器 → 记录 profile → 旧法杀 → 数残留（应>0，证明陷阱真实存在）
+#                  → 新法杀 → 再数（必须 0）
+PY
+```
+
+判据：**旧法残留 > 0 且 新法残留 = 0**。单跑新法杀净不算证明。
+`taskkill` 的退出码在这里是**假的**（实测退出码 128 而什么都没杀，见 §156 形态一）。
+
+**② 就绪/等待类判据：必须先证明"它真的会等"（否则是白等满超时的假速度）**
+
+```bash
+py -3 scripts/diag/cdp_ready_selftest.py        # 阴性(about:blank 必须被拒) + 阳性(真页必须放行)
+```
+
+判据：**① 阴性通过 且 ② 阳性通过**。⚠️ **只报阳性 = 无区分力的假绿灯**
+（2026-10-27 实测过一次「`--poke` 对照同绿」的事故，判据本身没有判别力却看起来验证过了）。
+同类必查项，都是本项目踩过的：
+- 谓词写成 `G.ships && G.ships.length` ⇒ JS 返回**最后一个操作数**（数字），Python 侧
+  `is True` 恒假，门退化成白等满超时；
+- 读页面变量写成 `window.X`，而页面用 `let X` ⇒ 恒 undefined，门槛第一次判就放行（§156 形态二）；
+- `document.readyState` 单独当门槛 ⇒ `about:blank` 天生 complete（`cdp_wait.py` 的由来）。
+
+**③ 超时预算：按"最坏情形"拍，不按单跑实测拍**
+
+排查动作：把同一批探针的预算**列成一张表**，不一致就逐个问"为什么"。
+
+```bash
+py -3 - <<'PY'
+import re,glob
+for f in sorted(glob.glob('scripts/diag/*.py')):
+    s=open(f,encoding='utf-8',errors='replace').read()
+    for m in re.finditer(r'for\(let i=0;i<(\d+) && !\(.*?stage.*?children\[0\]\);\s*i\+\+\)\s*await t\((\d+)\)', s):
+        print(f'{f}: {int(m.group(1))*int(m.group(2))/1000:.0f}s')
+PY
+```
+
+判据：**同类等待的预算应同量级**（本项目 inspector 150s / interact 40s 就是失配）。
+最坏情形清单：**连跑多个样本**、冷启（首跑）、排在批处理最后、大贴图皮肤。
+
+### 踩坑记录
+
+1. **"默认参数"是最容易腐烂的地方**：`gallery_ui_shots.py` 默认截一张全库都不存在的
+   `index_b.html`、皮肤 key 写死成**另一份画廊**才有的 `ninghai_4`。改探针时顺手核一遍
+   "这些名字今天还在不在"（页面 `Test-Path`、样本 key 对 `index.json` 的 `live2dSkins`）。
+2. **同类错误会在同一批探针里成对出现**：`window.l2State` 同时出现在
+   `l2d_coord_forensics.py` 与 `diag_model_identity.py`。查到一处必须
+   `Select-String -Path scripts/diag/*.py -Pattern 'window\.l2State'` 全库扫一遍。
+3. **`proc.poll()` 非空 ≠ 树已死**：Chromium/Edge 的启动器进程会早退，把用户数据目录
+   交给重新孵化的主进程。判"树死没死"只能按 `--user-data-dir` 回读进程列表。
+4. **修完必须跑"改前会红、改后该绿"的双向验证**，不能只跑改后（本轮每个修复都附了改前实测记录，
+   见 §156 的判据表）。
+
+**涉及**：`scripts/diag/chrome_tree.py`、`scripts/diag/cdp_wait.py`、
+`scripts/diag/cdp_ready_selftest.py`（★自测）、`scripts/diag/clean_diag_profiles.py`、
+`docs/TROUBLESHOOTING.md` §156。
+
+### WF-46 追加（2026-10-27 全库执行结果）：批量机械改写的操作规约
+
+**判据先行**：动手前先把「漏 X 的个数」做成一个**可重复跑的数**（本例 40），
+改完跑同一个脚本，数必须变成 0。没有这个数就只能说"我改了 40 个文件"，不能说"问题解决了"。
+
+**三步顺序**（顺序不可换）：
+
+1. **干跑**（脚本默认不写盘）→ 人读输出，确认要改哪些、每种改法各命中几个。
+2. **小样本实改 + 逐份读 diff**：挑 3–5 个**形态各异**的（本例：普通 `proc=`、
+   `self.proc=`、f-string 路径、含 11 处 terminate 的极端样本），改完 `py_compile` +
+   **人工比对 diff 里的表达式**。
+   ⚠️ `py_compile` 只证明"语法合法"，**不证明语义对**：实测有一个改动把
+   `--user-data-dir={ROOT}/...` 剥成 `kill_tree(pid, ROOT)`，语法全绿而语义全错。
+3. **批量实改 → 跑判据 + 全量语法 → 抽样实跑**（本例抽样 2 个：正常退出后浏览器残留必须是 0）。
+
+**改写范围的红线：只做最小可证安全的那一种改动。**
+本例第一版脚本顺手把 `terminate()` / 裸 `taskkill` 也一起换，撞了两个坑
+（f-string 剥花括号语义错、taskkill 续行实参致语法错）。定稿只加两行（import + `install()`），
+因为 `install()` 会从 `proc.args` 自动认 profile，**等价地**修好了泄漏。
+
+**收尾必做的三件**：
+- 删掉批量改写留下的 `.bak`（本例 38 个）——它们是临时产物，不是备份；
+- 把「顺带发现的、与本轮无关的独立问题」单独记档，**不要顺手一起改**
+  （本例：24 个探针把浏览器路径写死成本机不存在的 Google Chrome，正解是走 `scripts/paths.py`）；
+- 抽样实跑，**判据落在外部可观测状态上**（进程数），不落在脚本自己的退出码上。

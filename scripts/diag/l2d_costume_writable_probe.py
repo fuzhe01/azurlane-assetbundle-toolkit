@@ -18,6 +18,10 @@ import sys, os, json, time, subprocess, urllib.request
 sys.stdout.reconfigure(encoding="utf-8")
 import websocket
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CAND = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
@@ -54,6 +58,7 @@ class Probe:
             f"--user-data-dir={PROFILE}", "--no-first-run", "--no-default-browser-check",
             "--headless=new", "--gpu", "--window-size=1300,900", url],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        chrome_tree.install(self.proc)   # atexit 兜底：判据落在 profile 回读上（见 chrome_tree docstring）
         for _ in range(120):
             try:
                 for t in json.load(urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json")):

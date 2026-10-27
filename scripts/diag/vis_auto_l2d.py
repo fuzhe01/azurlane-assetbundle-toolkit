@@ -3,6 +3,12 @@
    采样参数看动作是否真的在播放。结果写文件."""
 import sys, os, json, time, base64, subprocess, urllib.request
 import websocket
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 root = r'D:\Azur Lane Assets'
 OUT = os.path.join(root, '.diag', '_vis_auto_out.txt')
 CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
@@ -32,6 +38,7 @@ def go(name, clip):
         '--no-default-browser-check', '--disable-background-timer-throttling',
         '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--window-size=1200,1000', url],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = chrome_tree.install(proc)
     ws = None
     for _ in range(80):
         try:
