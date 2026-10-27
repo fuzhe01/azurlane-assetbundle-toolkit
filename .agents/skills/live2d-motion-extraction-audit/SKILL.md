@@ -5,7 +5,7 @@ name_zh: Live2D 动作提取完整性与保真审计
 description: Integrity and fidelity audit for re-exporting Live2D motions from Unity AssetBundles (AnimationClip to motion3.json). Covers enumerating all three clip containers (m_StreamedClip / m_DenseClip / m_ConstantClip) with a binding-count assertion, constant-curve emission checks against moc3 defaults with audio-driven exemptions, unfalsifiable-anchor tests for key field layout, diffing against an external authoritative motion3.json baseline with ceiling-calibrated thresholds, and an env-switch plus byte-identical control-group protocol for removing legacy guardrails. Use when extracting or re-exporting Live2D motion data, when curves go missing, or when users report parts moving independently, unnatural transitions, jittering limbs, wrong easing. Trigger words include motion3.json audit, ConstantClip, genericBindings, bezier control point, tangent field layout, guardrail removal. Not for browser runtime playback (live2d-web-runtime-integration) or static painting restoration (unity-assetbundle-painting-restore).
 description_en: Integrity and fidelity audit for re-exporting Live2D motions from Unity AssetBundles (AnimationClip to motion3.json), covering three-container curve enumeration, constant-curve decisions, field-layout anchor tests, authoritative baseline diffing, and byte-identical control-group guardrail removal.
 description_zh: 从 Unity AssetBundle 重导 Live2D 动作（AnimationClip → motion3.json）时的完整性与保真审计流程。覆盖三容器曲线枚举（m_StreamedClip / m_DenseClip / m_ConstantClip，只读 streamed 会丢 60%+ 绑定）+ 绑定数求和断言、定值曲线可否补入（逐条比 moc3 默认值，音频驱动参数一律豁免）、键记录字段布局的不可钻空子锚点自证（附两个已被推翻的无效判据）、外部权威 motion3.json 基准比对与天花板校准阈值、以及拆历史护栏的 env 开关 + 逐字节对照组协议。当需要重导/校验 Live2D 动作数据、或用户反馈"部件各动各的/过渡像刚学建模的/小臂乱摆/动作太快/曲线少了/像抽一帧"时使用。触发词：Live2D 动作重导、motion3.json 审计、AnimationClip 丢曲线、ConstantClip、DenseClip、genericBindings、贝塞尔控制点、切线字段、参考版比对、拆护栏、A/B 逐字节、空壳动作。不适用：网页侧运行时播放集成（live2d-web-runtime-integration）、静态立绘/Spine 还原（unity-assetbundle-painting-restore）、通用管线安全落地方法论（safe-pipeline-fix-targeted-rerun，本技能第 5 步是它在动作数据场景的特化）。
-version: 1.3.3
+version: 1.3.5
 argument-hint: Point at the model/motion output directory and the clips to audit
 argument-hint-en: Point at the model/motion output directory and the clips to audit
 argument-hint-zh: 给出模型/动作产物目录与要审计的 clip 名
@@ -78,25 +78,122 @@ StreamedClip 的每条键记录是 `index(int32) + 4×float`。**谁是值、谁
 
 ⚠️ **字段解释自洽 ≠ 拿它算 Hermite 就保真**。Unity 密集键的切线字段本就不该直接当 Hermite 切线用（算出的控制点会飞出段外）。切线该不该用，交第 4 步的外部基准裁决。
 
-## 第 4 步：外部权威基准——找、比、按天花板校准阈值
+## 第 4 步：外部权威基准——**先审基准，再用它判别人**
 
-**触发条件**：本地推断穷尽（第 3 步之后仍有"该不该贝塞尔"这类两难）→ **向用户要游戏内实录或参考查看器的录屏当基准，不要继续猜**。真实成本账：本轮在此之前的两次根因误判都靠本地推演收场，全部作废；拿到同模型的权威 `motion3.json` 后一次锁定。
+**触发条件**：本地推断穷尽（第 3 步之后仍有"该不该贝塞尔"这类两难）且**手上没有任何权威数据文件** → 向用户要游戏内实录或参考查看器的录屏。真实成本账：本轮在此之前的两次根因误判都靠本地推演收场，全部作废。
 
-**找权威导出**：第三方 Live2D 参考查看器常挂着同一批模型的原始 `motion3.json`（大概率来自游戏原始 Live2D 发行包，而不是 AssetBundle 反解）。方法是从查看器前端产物（`/assets/index-*.js`）里 grep `model3.json` 路径模板，反查其静态资源目录规律，再逐 clip 拉取。**注意目录名可能是 `motions/` 而我们的产物是 `motion/`**，比对前先做子目录候选枚举；参考库通常只覆盖部分模型，404 的跳过并计数，够当抽样基准即可。
+### 4.0 基准自审（**最容易被跳过、代价最大的一步**）
 
-**比对项，按重要性排序**（前三项必须 100%，否则不是"精度差异"而是解析 bug）：
+**任何「拿 A 当 gt 判 B」的比对，先独立证明 A 自己忠实，再用于裁决。**
+
+真实事故（2026-10-25~27，两次裁决方向 180° 反）：把第三方参考查看器的 `motion3.json` 当真值，
+判出「F 组更忠实、E 组在过度插值」。而那个参考库本身就是**有损降级版** —— 它把 Unity 的
+smoothstep 段统一写成 `type=0` Linear。于是「也降级成 Linear」的 F 组自动高分（99.75%），
+「忠实还原曲率」的 E 组被判成不一致（62.98%）。
+
+改用**源包 `m_StreamedClip` 的三次多项式**作真值后结论完全反转：
+
+| 组 | 采样点 | 平均偏差 | 最大偏差 | 超 0.5 曲线 |
+|---|---|---|---|---|
+| **E（忠实还原多项式）** | 181961 | **2.68786e-07** | 3.67162e-05 | **0** |
+| F（零切线贝塞尔→Linear） | 181961 | 0.294278 | 8.65986 | 1359 |
+| 官方参考导出 | 181961 | 0.289905 | 8.65985 | 1353 |
+
+**F 与官方偏差几乎逐位相同 ⇒ 它们是同一类降级产物，不能互为真值。**
+
+**基准自审的做法**：不拿「另一个导出」当基准，直接回源。Unity 键 = `(index, v, inSlope, outSlope)`，
+段内真值是 `τ = t − t_起点键` 的三次多项式 `v(τ) = Aτ³ + Bτ² + Cτ + D`；在段内多个点（至少 frac = 1/8, 1/4, 3/8, 1/2, 3/4）求值，
+与待判组逐点比。参考实现：`scripts/diag/l2d_poly_truth_verdict.py`。
+
+**一段原始字节就足够定性**（该样本 `benningdun_2/wedding` → `ParamForearmRAngleY8`，
+起点键 `A=725.46875 B=-435.28128 C=0 D=-0.017`，段 [0.0330, 0.4330]）：
+
+| frac | 多项式真值 | 官方线性 | 差 |
+|---|---|---|---|
+| 0.250 | **-3.644344** | **-5.820750** | **+2.176**（最大分歧） |
+| 0.500 | -11.624501 | -11.624500 | -0.000001（**对称恒等点**） |
+
+`B/dt²=3` 且 `A/dt³=-2` ⇒ 该多项式就是 smoothstep。官方 Linear 丢了曲率；
+**段中点恒等**正说明「拿段中点做判据」看不见这件事（见下方空判据）。
+
+### 4.1 比对项，按重要性排序（前三项必须 100%，否则不是"精度差异"而是解析 bug）
 
 1. 动作组集合 —— 参考有我们没有 = 漏登记
 2. 曲线 `Id` 集合 —— 少了就是丢曲线（回到第 1 步）
 3. 关键帧时间与值 —— 逐条必须一致，不一致 = 解析错位
-4. 段类型分布（linear / bezier / stepped 三方对比）
-5. 逐曲线采样偏差 —— **必须按运行时真实语义求值**（如 `Meta.AreBeziersRestricted` 决定贝塞尔走朴素参数化还是解出横向控制点），否则你在拿自己的错误求值判自己对
+4. 逐曲线采样偏差 —— **必须按运行时真实语义求值**（如 `Meta.AreBeziersRestricted` 决定贝塞尔走朴素参数化还是解出横向控制点），否则你在拿自己的错误求值判自己对
+5. 段类型分布（linear / bezier / stepped 三方对比）—— **只作描述，不作裁决**（见下方）
 
-**阈值按实测天花板校准，不要拍脑袋**（本轮把 WARN 线从直觉的 5% 改成实测可达上限对应的 12%，实测落 3.8%~9.6%）：
+**⚠️ 「段类型一致率」不是保真指标**：它衡量的是**写法偏好**，不是曲线形状。smoothstep 与 Linear
+在段中点、段两端恒等，只在 1/4 点分歧 —— 必须逐点求值才能看见差异。用它当裁决依据会得出与真实保真度无关的排名。
 
-- **"阶梯段缺失"不是缺陷**：参考版 1070 条阶梯段里 1067 条两端值相同（与线性完全等价），真跳变仅 3 条且都在 1 帧内完成 → 补它零视觉收益。
-- **"源数据里的 1 帧硬翻"不是我们的偏差**：某参数一帧内 +10 → −10，参考版 27 处同类硬翻只把 2 处标阶梯，其余照样线性——游戏也做这一下。
-- **贝塞尔控制点推不出来就是天花板**：四种候选切线公式拟合参考控制点，最高命中 16.7%（且那是"切线 = 0"的平凡情形）。可达上限 = 曲线集合 100% 一致 + 关键帧时间/值 100% 一致 + 约 93% 段类型一致，剩余约 7% 用线性弦近似（表现为缓动略少，不会导致部件乱动）。**这一项别再攻**。
+### 4.2 阈值按实测天花板校准，不要拍脑袋
+
+本轮把 WARN 线从直觉的 5% 改成实测可达上限对应的 12%（实测落 3.8%~9.6%）。两个已被证伪的「天花板」：
+
+- ~~"阶梯段缺失"不是缺陷~~ —— 仍成立（参考版 1070 条阶梯段里 1067 条两端值相同），但**不要用它解释偏差**
+- ~~"源数据里的 1 帧硬翻"不是我们的偏差~~ —— 仍成立（游戏也做这一下）
+- **✅ 已推翻：「贝塞尔控制点推不出来就是天花板」**。旧结论是「四种候选切线公式拟合参考控制点，最高命中 16.7%，所以是天花板，别再攻」。它错在**目标是参考库的控制点，而参考库已被降级**。改以源包多项式为准后，**系数挂在段起点键上，c1/c2 双 100.00% 精确可复现**（τ = t − 起点时间）：
+  ```
+  m0 = C ,  m1 = 3A·dt² + 2B·dt + C
+  c1y = v0 + m0·dt/3 ,  c2y = v1 − m1·dt/3
+  ```
+  ❌ 已证伪的两种口径：终点键系数（c1 74.15% / c2 74.64%，几何偏差最高 2e10）、
+  `c2y = v1 − C(终点键)·dt/3`（91.32%）。**这一项现在可攻，而且已经攻下，别再当天花板。**
+
+### 4.3 「贴弦贝塞尔 = 线性」的等价判据（读别人产物时必用）
+
+第三方产物的贝塞尔控制点常「恰好贴在弦的 1/3、2/3 处」，数学上精确等价于线性。判：
+
+```
+|c1y − (v0 + (v1−v0)/3)| ≤ tol  且  |c2y − (v0 + 2(v1−v0)/3)| ≤ tol
+```
+（对零切线的 smoothstep 则是 `c1y=v0, c2y=v1` —— **两者必须分开判**，混一起就会把 smoothstep 误判成 Linear，
+这正是 F 组降级器干的事。）实测例（`benningdun_2/idle/Circulation5`）：
+```
+E   : Linear [0, 0, 0, 4.983, 1.661]
+OFF : Bezier [0, 0, 1, 1.661, 0.554, 3.322, 1.107, 4.983, 1.661]
+      0.554 = 1.661/3 ,  1.107 = 2×1.661/3 ,  3.322 = 2×4.983/3   ⇒ 精确等价线性
+```
+
+### 4.4 判据自标定（写任何审计工具前必做，见 `docs/WORKFLOWS.md` WF-43）
+
+| # | 闸门 | 为什么 |
+|---|---|---|
+| 1 | **恒等检测**：构造已知不同的一对样本，必须判红 | 防判据退化成恒等式 |
+| 2 | **检查集大小**：PASS 必须打印 `checked=N`，N=0 报 `NO_DISCRIMINATION` | 防单向判据空转 |
+| 3 | **双向覆盖**：A→B 与 B→A 各自建桶报数 | 单向判据只证明一个方向 |
+| 4 | **基准自审**：见 4.0 | 基准错则结论 180° 反 |
+
+### 4.5 「某组尚未换入 / 尚未部署」是必须被证伪的任务前提（**别先动手覆盖**）
+
+任务清单里出现「把 X 组换入生产」「生产还是旧版」时，**第一步不是跑换入脚本，而是做一次
+全量文件级对账**。实测（2026-10-27）：清单写着「E 组尚未换入」，而
+`Output/Live2D/` 与 `Output/_ab/E/` **367/367 个 `motion3.json` md5 逐字节相同** ——
+换入早已完成。若照清单执行，会拿一个未必更对的版本把已正确的产物覆盖掉。
+
+- **判据只能用文件内容，不能用 mtime**：硬链换入不改 mtime（同 inode），
+  `Output/Live2D/..home.motion3.json` 的 mtime 比源目录 `_ab/E` 还早，看时间戳会得出反向结论。
+- **三档递进**：① 逐文件 md5（`diff=0 且 only=0`）→ ② 曲线 `Id` 集合 → ③ 逐点采样偏差。
+  前两档不过就别看第三档。
+- **纯本地就够，别联网**：各组产物在 `Output/_ab/*`、生产在 `Output/Live2D/`、
+  官方库在 `D:\Azur Lane Assets\Output\Live2D\`，`json.load` 10 秒跑完全量。
+  走 HTTP 的长尾会与「服务器在不在线」耦合，诊断结论不可信。
+
+### 4.6 复用共享求值器时的 API 陷阱（会静默产出虚假偏差）
+
+正本求值器 `l2d_motion_fidelity_audit.py`：
+
+1. `Curve.__init__(self, segs)` **只收一个参数** —— `Curve(segs, fadeIn, fadeOut)` 直接 TypeError。
+2. **没有 `.t0` / `.t1` 属性** —— 时间范围自己取 `segs[0][1]` 与 `segs[-1][3]`；
+   且记住 `parse_segments` 返回序 `(T,t0,v0,t1,v1,c1v,c2v)` ⇒ **`t1=b[3]`、`v1=b[4]`，索引写反不报错**。
+3. **两条曲线长度不等时必须采样公共交集 `[max(t0), min(t1)]`** —— 否则 `Curve.at(t)`
+   对越界点钳到末值，把「比长度」混进「比形状」（官方导出会做关键帧简化而更短）。
+
+⚠️ **手写 Segments 段长表前必须先与正本对拍**：正本 `SEG_LEN={0:3,1:7,2:3,3:3}` 是
+「类型码之后」的长度，`extract_motions.py` 自产表是 `{0:2,1:7,2:1,3:3}`，两套不可混用。
+把 Bezier 段长写成 7（应为类型码后 6 个数）会切片错位并产出误导结论。
+
 
 ## 第 5 步：拆历史护栏——env 开关 + 逐字节对照组
 
@@ -116,7 +213,7 @@ StreamedClip 的每条键记录是 `index(int32) + 4×float`。**谁是值、谁
 
 1. **根因（已修）** —— 附修前/修后量化数字（某样本：偏差中位 1.376 → 0.0；92/98 条曲线偏差 > 0.5 → 11/278）。
 2. **已排除假设** —— 逐条写"查过、判据是什么、为什么排除"，防止下一位重走。
-3. **天花板** —— 明确"不是 bug，别再去攻"，并给出可达上限的百分比构成。
+3. **天花板** —— 明确"不是 bug，别再去攻"，并给出可达上限的百分比构成。⚠️ **写这一节前先确认基准是对的**：本轮曾把一个「有损参考导出」写进天花板，导致真正的可行项（贝塞尔系数还原）被误封三天。
 4. **未决（交接）** —— 现象 + 已量化数据 + 候选修法（列 2~3 条，注明各自代价）。
 
 ⚠️ **交接命令里的 env 配方必须是"实际通过验收的那一条"**，不是"格式上更正确的那一条"。真实返工案例：交接文档写的是绝对坐标贝塞尔开关（符合 Cubism 规范但未过基准验收，对参考版偏差最甚 296），而实际换入并验收通过的是"关键帧 + 线性 + 补定值曲线"。按错的命令重跑 = 全量返工。
@@ -131,7 +228,13 @@ StreamedClip 的每条键记录是 `index(int32) + 4×float`。**谁是值、谁
 - **权威基准首选 `AssetStudioModCLI -m live2d`**（本地可复现，比社区录屏可靠）：`AssetStudioModCLI.exe <live2d bundle 文件> -m live2d -o <目录> --log-level warning`（合法值是 `warning` 不是 `warn`）。四物证判据：① `.moc3` 应**逐字节一致**（md5 全等，不一致才怀疑 moc3 抠取）；② `.physics3.json` 应**逐字段/逐值/组级一致**（文件大小差一两成通常只是浮点 JSON 格式位数，别当内容差异）；③ `.model3.json` 是运行时接线，**必须**有 `FileReferences.Physics`、`Groups` 含 `EyeBlink`/`LipSync`、真实 `HitAreas`——裸 reconstruct 常缺这三样，靠管线里 `fix_model3.py` 补（不动 moc3/physics3）；④ `motion3.json` 曲线数：rec 只出"该 clip 真动画到的参数"，AS 会给每个 moc3 参数都铺一条 ⇒ **仅凭数量定不了谁对**，要按绑定数 + 绑定集 vs moc3 参数集断言。配套工具 `scripts/diag/l2d_rec_vs_assetstudio_diff.py`。
 - **别默认漏读的是 `m_DenseClip`**：碧蓝 Live2D（实测 aersasi_2 28 clip / ougen_8 55 clip）`m_DenseClip.m_CurveCount` **全部为 0**，动画数据在 **StreamedClip + ConstantClip**。所以曲线数差距优先怀疑两处：AS **铺全量参数** vs rec 只出真动画参数；以及 `extract_motions.py` **默认丢 `m_ConstantClip` 复位曲线**（`L2D_MOTION_EMIT_CONST=1` 才导出）。dense 是否真存在，先用 `scripts/diag/l2d_dense_audit.py`（只读）实测三容器曲线数，别直接动刀。
 - **拿自己的求值器判自己的保真度**：采样求值必须复刻运行时语义（`AreBeziersRestricted` 等）。
-- **把天花板当 bug 长期攻**：阶梯段、源数据硬翻、不可推的贝塞尔控制点这三项都无收益。
+- **把天花板当 bug 长期攻**：阶梯段、源数据硬翻这两项确实无收益。⚠️ **「贝塞尔控制点推不出来」已不在这一列**——它曾被误当天花板，实际是 100% 可还原（见第 4 步 4.2）。
+- **拿「另一个导出」当基准**：第三方参考库 / 官方参考导出都可能是有损降级版。真值只在源包 `m_StreamedClip` 的多项式里。**基准自己要先被审。**
+- **判据给出近 100% 一致率就当数据干净**：先构造一对已知不同的样本喂进去，必须判红，否则判据退化成恒等（例：段中点偏离对零切线 smoothstep **恒为 0**，因为 `0.125v0+0.375v0+0.375v1+0.125v1 ≡ 0.5(v0+v1)`）。
+- **单向判据的空转 PASS**：只查 `Linear→Bezier` 方向的审计，遇到「已全写成 Bezier」的组会零违例 ⇒ 那是**检查集为空**，不是正确。PASS 行必须同时打 `checked=N`，N=0 报 `NO_DISCRIMINATION`。
+- **两组独立数据给出同一个怪数**：先怀疑测量端（求值器/索引序），不是被测端。实测 E/F 两侧最大偏差都恰好 35.4、最差曲线同名 ⇒ Stepped 段取了 `v0` 而应取 `v1`（`type=3` InverseStepped）。
+- **手写 motion3 求值器**：正本在 `scripts/diag/l2d_motion_fidelity_audit.py`。`SEG_LEN={0:3,1:7,2:3,3:3}`（**类型码之后**的数据长度），指针从 **2** 起，`type==1` 取 `seg[i+1:i+7]` 六个数且**返回序 `t1=b[3]、v1=b[4]`**（写反会让统计荒谬却不报错：56968 段只命中 111 段）。⚠️ `extract_motions.py` 自产 motion3 的段长表是 `{0:2,1:7,2:1,3:3}`，两套不可混用。
+- **运行时扫描窗口不跟 clip 时长**：固定「前 5 秒」会让长动作（`mail` 的手掌消失在中后段）漏检。判据要打印实际覆盖窗口与截断 clip 数，截断数必须为 0。
 - **阈值拍脑袋**：判据阈值要从实测可达上限反推，不要默认 5%。
 - **本地一直猜而不要基准**：第 3 步之后仍两难就该向用户要实录，别连开第三条猜想。
 - **"列表少了"往往是排序不是缺失**：动作组集合 104 vs 104 零差异，只因参考版按字母排而 bundle 里是乱序，主动作沉在下面。先比集合再谈缺失，前端排序即可，不要动数据。
@@ -157,15 +260,26 @@ StreamedClip 的每条键记录是 `index(int32) + 4×float`。**谁是值、谁
 - [ ] 补入的定值曲线：等于 moc3 默认值的条数 / 总条数，豁免清单逐条附驱动方
 保真
 - [ ] 字段布局锚点：值字段一致率（实测应为 100%）；斜率字段不作为判据
+- [ ] **基准自审**：真值取自源包 `m_StreamedClip` 三次多项式（不是另一个导出），文中给出至少一段原始系数 + 逐点对照表
 - [ ] 权威基准：动作组集合零差异；曲线 Id 集合零缺失；关键帧时间/值零不一致
 - [ ] 采样偏差：中位 ≤ 阈值、超阈曲线占比 ≤ WARN 线（阈值注明"按实测天花板校准"）
+- [ ] 每个判据已过四条闸门：恒等检测（已知不同必判红）/ `checked=N` 非零 / 双向覆盖 / 基准自审
+- [ ] 求值器已标定：已知 Linear 段取中点 == 两端均值；smoothstep 取 1/4 点必须偏离线性
 拆护栏
 - [ ] 对照组与现产出逐字节一致（sha256 全等，报 N/N）
 - [ ] 实验组逐曲线偏差分布已给出，结论明示收益正/负/不可判
 交付
-- [ ] 根因 / 已排除假设 / 天花板 / 未决 四类分开归档
+- [ ] 根因 / 已排除假设 / 天花板 / 未决 四类分开归档（天花板一节须注明「基准已验证」）
 - [ ] 交接命令里的 env 配方 == 实际换入并通过验收的配方
+- [ ] 「未提交的脚本改动 == 产出该产物的代码」已证死：同配方重跑到临时目录，逐文件 sha256 比对（实测 5 模型 367/367 `motion3.json` 全等）
 ```
+
+**本项目当前的 E 组配方（终态，2026-10-27 定稿；逐字节复现 367/367）**：
+```
+L2D_MOTION_SEGTYPE=1 L2D_MOTION_BEZIER=1 L2D_MOTION_LINEAR=0 L2D_MOTION_EMIT_CONST=1
+```
+含义：Stepped 段写真阶梯、其余一律 Bezier（对有曲率的段按 `m0=C, m1=3A·dt²+2B·dt+C` 写绝对控制点）、
+不强制线性、补 ConstantClip 复位定值曲线。**不再降级零切线段为 Linear**（那一版是 F 组，已否证）。
 
 ## 读取 Segments 的首末帧（衔接选组 / 复位目标）
 

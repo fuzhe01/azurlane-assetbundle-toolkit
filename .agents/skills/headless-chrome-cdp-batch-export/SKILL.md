@@ -1,7 +1,7 @@
 ---
 name: headless-chrome-cdp-batch-export
 description: 无头 Chrome + CDP 批量驱动本地网页完成渲染/截图/资产导出。当任务需要用浏览器前端运行时（如 Spine/WebGL/Canvas/JS 库）批量产出图片或数据文件时使用——触发词：无头浏览器批量导出、CDP 驱动网页、headless chrome 批量截图、浏览器渲染落盘、autostart 参数自动化。不适用于单次网页截图和 QwenWork 内置媒体生成工具。
-version: 1.8.1
+version: 1.8.2
 ---
 
 # 无头 Chrome + CDP 批量导出
@@ -40,6 +40,19 @@ version: 1.8.1
 3. **WebGL 走软渲染**：无头环境 GPU 不可用，WebGL 页面会黑屏或崩溃。加 `--enable-unsafe-swiftshader --use-angle=swiftshader` 强制 SwiftShader 软渲染。实测 2400px 长边约 2s/张，可接受；输出尺寸设上限防纹理超限。
 4. **`toBlob` 需要 `preserveDrawingBuffer:true`**：WebGL 上下文创建时必须传 `preserveDrawingBuffer: true`，否则事件循环清空帧缓冲后 `toBlob`/`toDataURL` 拿到黑图或空图。批量循环里逐项 `dispose()` 纹理/资源，防 4096² 页纹理堆爆显存。
 5. **`Runtime.evaluate` 前须等页面就绪**：`/json` 出现 tab ≠ 页面加载完成。探针若在目标 DOM（如 `#prog`）存在前发送，evaluate 返回 null 或抛异常。驱动脚本应对 `null` 探针结果做容错重试，或先 evaluate 一个存在性检查再进入正常轮询。
+   ⚠️ **`about:blank` 是这条的致命变种（2026-10-27 实测）**：CDP 连上 tab 时执行上下文可能还停在 `about:blank`，
+   而**空白页的 `readyState` 天生就是 `'complete'`** ⇒ `while (readyState !== 'complete') sleep()` 第一次判就放行，
+   以为等到了真实页面，实际在空白上下文里求值 —— 症状是探针报 `openShip is not defined` / `window.GALLERY` 为 false，
+   极易被误读成"产品坏了"。**就绪必须三件同时成立**：
+   ① `location.href` 真的等于目标 URL（不是 `about:blank`）；
+   ② `document.readyState === 'complete'`；
+   ③ 业务标志在（`window.<GLOBAL>` 非空 / 目标 DOM 节点存在）。
+   五项指纹对照（空白 vs 真实页面）：`location.href`、`outerHTML.length`（空白恒约 39）、`document.scripts.length`（空白 0）、
+   `document.title`、`window.<GLOBAL>`。另两条：等待中的 `continue` **不要计入重试预算**（否则"页面慢"会被记成"页面死在空白"）；
+   `/json` 列表会混入 `chrome-extension://` 的 `background_page`，必须按目标 URL 子串过滤 tab。
+   页面级就绪 ≠ 模型级就绪——重运行时页面（本项目 263KB html + vendor 需 41~43 秒才 complete）complete 之后
+   模型还要若干秒才进舞台，得另有一个业务级超时。
+   实现见本项目 `scripts/diag/cdp_wait.py` 的 `wait_ready()`。
 
 ## 验证类任务的额外坑（做"批量断言"而非"批量导出"时）
 
@@ -53,6 +66,7 @@ version: 1.8.1
      或在 JS 侧 `=== true` / `Boolean(...)`；写完先故意在页面加载前跑一次，确认它真的会等待。
 4. **两个 chrome 实例并发跑 CDP 会互相抢**，表现为 `Execution context was destroyed`。批量验证串行执行，或确保端口/profile 完全隔离且不重叠运行。
    4b. **同一类报错还有第二种成因**：探针刚连上 tab 就 `Runtime.evaluate`，而页面仍在导航 → 执行上下文被销毁。这种**不是并发问题**，串行也照犯。判据：先轮询 `document.readyState === 'complete'`，再对首次求值配"最多 6 次、每次 sleep 4s"的重试（同一张 tab 的默认上下文导航后会重建，重连即可）。⚠️ 别据此判产品坏了——本轮两个验收脚本就是这么假红过。另：脚本崩在半路会把 Chrome 整棵树漏在机器上（`proc.terminate()` 写在最后一行 = 异常时永不执行），注册 atexit 的整树 `taskkill /T /F` 才是兜底。
+   ⚠️ 只用 `readyState` 当门槛是**假门槛**（`about:blank` 也是 complete），必配 ①URL ②readyState ③业务标志 三件，详见上方「关键坑位」第 5 条。
    4c. **第三种形态最阴：不报错，只是静默附着到别人的浏览器**（2026-09-27 实测）。探针的 `PORT` 与 `--user-data-dir` 写死时，第二个会话起不来新实例（端口被占），`/json` 列出的却是**别人那个正在跑的浏览器**里的同一 URL → 两边驱动交替点同一个页面。症状不是异常而是**数据整齐地错位**：每条断言读到的"当前值"恰好等于**上一次操作**的结果（实测：逐部位点击，`played` 整体滞后一位 ⇒ 62 个部位报出 38 条 WIRING 假红 + 一个模型"加载失败"）。
       ⇒ 判据：结果出现**统一偏移一位 / 整序列平移**这种"太整齐"的形状，先怀疑探针侧污染，不要去改产品；
       跑任何 CDP 探针前先查那条端口上有没有别的 python 在跑

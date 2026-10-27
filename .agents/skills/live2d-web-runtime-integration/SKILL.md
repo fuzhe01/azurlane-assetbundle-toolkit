@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.17
+version: 1.10.18
 ---
 
 # Live2D 网页运行时集成
@@ -377,6 +377,47 @@ const started = mm.state.currentGroup;                  // 必须回读：区分
 handler 缺失时探针要**显式报错**，绝不回落到 `mm.startMotion` 继续测——回落等于自造假阴性。
 验收判据（工具 `scripts/diag/l2d_touchidle_probe.py`）：before 出画 53 → mid 57（clip 生效）→
 after **53（与 before 相等）**，且位移 >0.3 的判定区数 = **0**。
+
+### 7.3 CDP 就绪必须三件同时成立——`about:blank` 的 `readyState` 天生就是 `'complete'`
+
+**症状**（会被误判成产品坏了）：探针一连上就报
+`ERR openShip is not defined` / `openShip is undefined` /
+`Cannot read properties of undefined (reading 'internalModel')` / `Execution context was destroyed`。
+
+**根因**：CDP 连上 tab 的瞬间，执行上下文可能还是 `about:blank`，而
+`about:blank` 的 `document.readyState` **天生就是 `'complete'`**。于是
+
+```js
+while (document.readyState !== 'complete') sleep();   // ✗ 第一次判就放行
+```
+
+这个门槛形同不存在，后续所有 `Runtime.evaluate` 都打在空白页上。
+
+**实测指纹**（空白上下文 vs 真实页面）：
+
+| 判据 | `about:blank` | 真实页面 |
+|---|---|---|
+| `document.URL` | `about:blank` | 目标 URL |
+| `document.scripts.length` | 0 | 多个 |
+| `document.documentElement.outerHTML.length` | 39 | 数十万 |
+| `window.GALLERY` | `false`/undefined | 对象 |
+| 时间线 | 连上即刻 | **41~43 秒**才 complete（263KB html + vendor + 索引） |
+
+**正确判据（三件同时成立，缺一不可）**：
+
+1. `location.href` 真的等于目标（含 query / `#` 差异归一）
+2. `document.readyState === 'complete'`
+3. **业务标志在**（如 `typeof window.GALLERY === 'object'`）—— 这一条才是真正区分
+   「页面加载完了」与「执行上下文还没换过去」的判据
+
+固化实现：`scripts/diag/cdp_wait.py` 的 `wait_ready(ev, want_url, budget, flag)`，
+返回 `ok` + 实际耗时，超时给出最后观测到的三项状态。踩坑补充：
+
+- 等待中的 `continue` **不要计入重试预算**，否则慢页面（本项目 41s）会被判超时。
+- 连 `/json` 列表时 `chrome-extension` 的 `background_page` 会混进来，
+  **必须按目标 URL 子串过滤 tab**（如 `gallery_v2`），不能取列表第 0 个。
+- 页面级就绪 ≠ 模型级就绪：本项目点完 live2d tab 后模型进舞台还要更久，
+  「45s 内模型未进入舞台」是模型级超时，别拿它反推页面没加载好。
 
 ## 8. 落地检查清单
 

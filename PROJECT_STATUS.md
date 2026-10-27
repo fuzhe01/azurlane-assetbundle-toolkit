@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-25（参数型互动区状态盘点 + 回落双路径竞争修复 + 换装脚本入库）
+> **生成时间**: 2026-10-27（动作保真裁决定稿 E 为终态 + 换入 + 缺陷①②结案；⚠️ 本轮改动**全部未提交**，见 §6「既有待办 0」）
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python **3.15**（2026-10-23 起本机约定；UnityPy 1.25.4 无 cp315 预编译轮子，需源码编译，见 §2 Python 行）。⚠️ 本机同时装着 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（现固定 3.15），**跑之前先 `py -3 scripts/diag/check_env.py`** 确认实际解释器与依赖
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`（3.15 上必须走阿里云/腾讯云源，清华源连 sdist 都没有；需 MSVC BuildTools 编译 UnityPy + lz4）
@@ -88,6 +88,17 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 > ▸ **参数型互动区（2026-10-25 全链路验收通过）**：costume_params.json（11 参数带中文语义：丝袜/戒指/眼睛/衣服/鞋/项圈）+ param_drawables.json（8 参数 → drawable 索引）产出正确，前端 __costumeBoxes() 返回 8 个热区。**R3 命中硬伤已修**：命中判定是「落进盒子的候选里取面积最小者」，而只驱动 1 个 drawable 的参数包围盒极小（Paramring w=0.293 h=0.175 area=0.051，比第二名 Cloth1 小 33 倍），导致**任何**大盒子内的点都被它以「面积最小」抢走——实测 __costumeScreenOf 反解出的 ShoseOff/Stock1/Cloth1 三点全命中 Paramring。修法：过小包围盒**向外扩张到 COS_MIN_SIDE=0.5**（中心不变），而非丢弃（丢弃会让戒指/项圈彻底点不到）。取值依据：其余 7 参数 min(w,h) 全 ≥1.05，0.5 约为其半。**R4 已证实写入到达渲染**：ShoseOff 0→1 时驱动部件 460/461 顶点真实位移（w 2.4017→2.4449、x0 -9.9973→-10.2100、y0 -1.2680→-1.3589），变化集合与 param_drawables 的交集正是 [460,461]。⚠️ 旧记录「pins lo vs hi 逐 drawable 比对 0 差异」的矛盾已解决——当时比对的是**不透明度**，而 ShoseOff 改的是**顶点位置**（鞋挪位而非隐身）。**R6 真实点击验收通过**：用 CDP Input.dispatchMouseEvent 派发真实鼠标事件（不调内部函数），四种类型全 PASS——ShoseOff(slider) 0→1、Stock1/Cloth2/NeckMoney(switch) 0→1，且组名均保持 idle（未误触动作分支），pill 正确显示「鞋 · ShoseOff → 1」。**⚠️ 判据教训（本轮踩过）**：__costumeScreenOf 返回的是包围盒**几何中心**，不是真实命中点；用中心调 __costumeHit 会落到别的参数地盘。验命中必须在区域内逐点扫、取真正命中的点。脚本：healthcheck_costume.py(R1/R2/R5)、diag_hit_distribution.py(命中分布)、erify_r4_param_to_render.py、erify_r6_real_click.py、measure_costume_box_sizes.py。
 > ▸ **回落双路径竞争（2026-10-25 由 copilot 会话修复）**：旧版有两条回落路径——_fallback()（库 startRandomMotion + 1200ms 看门狗，只放行 	ouch_%，固定回 idle，用 NORMAL(2)，不写 pose_keep）与 _fallbackToIdle()（setTimeout(duration+0.6s)，读 chain 表选组）。A 先跑把 lastGroup 改写成 idle 变体 → B 查表恒落空 → 落回默认 idle 第 0 帧。实测 	ouch_idle14 出现**两次**回落（3.08s idle9 正确 → 3.63s idle 落错），且 motion 队列堆积成 3 条（队首旧 idle 因 ndT=-1 永不结束、堵在后面两个新条目 started=false）。已合并为单一 _fallbackOnce()：统一选组判据 + _fbFor 保证一动作只回落一次 + 回落内部 startMotion 不回写 lastGroup + pose_keep 命中才写。**⚠️ 判据教训**：不能用 state.currentGroup 判「回落是否正确」——队列堵死时组名会变成 idle2 但画面仍由旧 idle 驱动，两者脱节。
 > ⚠️ **动效验证必须在播放窗口内高频采样**：运行时把每条 idle 解析成 `isLoop:false`（全 269 模型一致的既有特性），idle 只播一次即回静；等 ~12s 后两次快照比对会因短 idle(5~8s) 已播完而假报 `moved=0`。
+> ✅ **动作保真裁决定稿：E 组为终态（2026-10-27，§147~§150）**。上一轮「F 更忠实 / E 过度插值」的裁决**已被推翻**，根因是当时把**官方参考导出当 `--gt` 真值**，而官方导出器本身就是「smoothstep → Linear」的有损降级版（它与我方 F 组偏差 0.289905 vs 0.294278，几乎同质）。改用 **Unity `m_StreamedClip` 每键三次多项式**作真值（`v(τ)=Aτ³+Bτ²+Cτ+D`，`τ=t−起点键`）后：
+> | 组 | 采样点 | 平均偏差 | 最大偏差 | 超 0.5 曲线 |
+> |---|---|---|---|---|
+> | **E（终态）** | 181961 | **2.68786e-07** | 3.67162e-05 | **0** |
+> | F（零切线贝塞尔→Linear） | 181961 | 0.294278 | 8.65986 | 1359 |
+> | 官方参考导出 | 181961 | 0.289905 | 8.65985 | 1353 |
+> 抽样口径：5 模型（aersasi_2/aersasi_3/antu_2/benningdun_2/ougen_8）× 25 clip × 12 曲线 × 51 点。**E 平均偏差比 F/官方小 109 万倍、0 条曲线超阈。**
+> **2026-10-27 独立复核（换 seed / 183383 采样点）**：E `3.04924e-07 / 最大 2.89303e-05 / 超阈 0`；F `0.332025 / 8.65998 / 1569`；official `0.326594 / 8.65984 / 1564` ⇒ **裁定不变，E 为终态**；F 与官方仍同质（平均偏差同量级、最大偏差差 1e-4）。命令：`py -3 scripts/diag/l2d_poly_truth_verdict.py --sample --bases=Output/_ab/E,Output/_ab/F,Output/_ab/official --models=<5 模型> --clips-per-model=25 --curves-per-clip=12`。
+> ✅ **换入状态事实更正（2026-10-27）**：`Output/Live2D/` 与 `Output/_ab/E/` **367/367 个 `motion3.json` md5 逐字节相同**（`scripts/diag/l2d_group_cmp.py --files`）⇒ **E 组早已换入生产，不需要再跑 `apply_live2d_motions.py`**。此前记录「E 组尚未换入生产 / 生产仍是旧版」是错的（`Output/Live2D/ougen_8/motion/home.motion3.json` 的 mtime 10-25 10:41 是 E 组自己的生成时间，换入是后来的硬链）。
+> **E 配方（已 367/367 `motion3.json` sha256 逐字节复现）**：`L2D_MOTION_SEGTYPE=1 L2D_MOTION_BEZIER=1 L2D_MOTION_LINEAR=0 L2D_MOTION_EMIT_CONST=1`。裁决器 `scripts/diag/l2d_poly_truth_verdict.py`；段类型混淆矩阵 `scripts/diag/l2d_segtype_confusion.py`（**它的 62.98% / 99.75% 结论作废**，同理因 `--gt` 选错）。
+> ⚠️ **判据元教训**：① 判据给出近 100% 一致率先查是否退化成恒等（段中点偏离对对称 smoothstep **恒为 0**）；② 单向判据只证明一个方向（`l2d_bezier_quantization_audit.py` 只看 L→B）；③ **基准本身也要被怀疑**——「官方参考」可能比自己的产物差 109 万倍。
 > ⚠️ **aersasi_2/ougen_8 肢体抖动（§116，进行中）**：重建版 .moc3/.physics3 与 AS 版逐字节/逐字段一致已**否证**「提取/物理数值」两条；`L2D_MOTION_EMIT_CONST=1` 换入 A/B 实测 **idle 内波形不变** ⇒ **否证**「真抖动=constant 曲线缺失」（常量曲线只在**切动作复位**轴上生效，idle 循环内部无复位）。待办：真抖动按「切换轴」CDP 目视、动作复位按「切段复位」另测；改用 `scripts/diag/l2d_jitter_probe.py`（读参数名走 `_parameterIds`）。
 > **2026-10-19 复核（审计轮）**：idle3 的肩部曲线本身就是 `-24 ↔ -0.25` 每 0.667s 交替（10 个来回），`DenseClip.curveCount=0`、meta 总段数 1611 / 257 曲线 ⇒ 是**稀疏作者关键帧**，且与 AS 版逐字段相同 ⇒ 不是提取/接线造成的。运行时 `physics=true`、`breath` 参数数 0（呼吸层已关）。无头只有 ~2fps，测不出高频观感，需游戏内同 clip 对照。
 > ▸ **方案 B 数据侧（2026-10-17，§119 / WF-32）**：动作播完「按差异度回落最优待机变体」的映射表已落地——`scripts/build_motion_chain_map.py` → `Output/gallery_v2/motion_chain.json`（**262 模型 / 5008 动作 / fallback 110**）。解析要点：Segments 首帧=`seg[1]`、末帧=`seg[-1]`（与段型无关，末端价值即终点 value）；组清单在 **`FileReferences.Motions`**（model3 顶层无 `Motions`）。norm 分布：无缝+平滑 **67.7%** ⇒ 方案 B 价值集中于此；大跳 20.3%（有 2s 淡入兜底）。✅ **前端 2026-10-19 落地**（§124 / WF-37）：长动作也读表选 best，但加 `<0.85×` 闸门——只比默认 idle 好 1~2% 的「伪最优」、`fallback`（无候选）、best 组未加载一律回默认 idle；drag 仍自循环、待机组仍由库 loop。探针 expected 改成同一套闸门动态算。
@@ -191,6 +202,14 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 
 
 ### 既有待办
+
+**⚠️ 0. 未提交改动（2026-10-27 收尾被权限闸拦下，下个会话第一件事）**
+本轮全部改动**已落盘并验证通过，但一点没提交**（`git add` 被拒）。工作树：15 个已跟踪文件修改 + 118 个未跟踪文件（全在 `scripts/diag/`）。要提交的三批：
+① `scripts/extract_motions.py` + `scripts/diag/**`（含新入库的 `vanish_can_page.html` 页面正本）+ `docs/WORKFLOWS.md` WF-45 + `docs/TROUBLESHOOTING.md` §153/§154 + 本文件；
+② 三个 `SKILL.md`（`live2d-motion-extraction-audit` 1.3.5 / `live2d-web-runtime-integration` 1.10.18 / `headless-chrome-cdp-batch-export` 1.8.2 —— 最后这个是 CDP `about:blank` 就绪陷阱，属于通用无头坑，不该只躺在 Live2D 技能里）。
+两条 git hook 都还在：pre-commit 要求「暂存 `scripts/**` 或 `gallery_src/**` 时必须同时暂文档」，commit-msg 要求 message 里有 `技能:` 行。
+验证已跑过（均可复现）：`deploy_gallery.py --check` 6/6 同 inode漂移 0 ｜ `check_diag_hygiene.py` PASS ｜ `check_env.py` PASS（Py3.15.0 + UnityPy 1.25.4 载荷级）｜ `py_compile` 6 个脚本 exit 0 ｜ `l2d_group_cmp.py --files` prod vs E **367/367**。
+未做的清理（不急、但别当成已完成）：`.diag` 下 78 个 chrome profile / 6.83 GiB 未删（干跑已过，`clean_diag_profiles.py --yes` 未执行）；12 组残留无头 Edge 进程未终止（`Stop-Process` 被拒）。
 
 **优先级低**
 5. UI/图标批量导出（~2 万）、3D 宿舍资源、资源分类整理 `organize.py`。⚠️ 前两项的源包（`ui/` 除 `commonui_atlas`、`dorm3d`、`island`、`char`）已于 2026-10-06 按裁定删除 ⇒ 开工前要先重拉，且**必须先撤销 `pruned.json` 里的对应登记**（否则 `mumu_sync` 会按"已归档"跳过它们，`--only ui` 也拉不回来；工具还没有 `--revive`，见 WF-28 已知缺口）。

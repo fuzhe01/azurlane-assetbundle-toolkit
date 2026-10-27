@@ -3205,3 +3205,132 @@ git ls-tree -r --name-only <branch> | grep -vxF -f <(git ls-tree -r --name-only 
 **删分支的正确姿势**：远端用 git push origin --delete <branch>；
 若目标是让远端**物理缩小**，删分支后远端 pack 仍留着对象，需要平台侧
 「危险区 → 清理/GC」或联系支持，GitHub 会自动在空闲时 GC，不保证立即回收。
+
+
+## WF-43 审计判据上线前的自标定：四条闸门 + 基准审查（2026-10-27）
+
+**触发**：要写一个新判据 / 新比对工具来判断「A 比 B 忠实 / 一致 / 正常」，尤其是准备据此做换入决策时。
+**代价背景**：2026-10-25~27 连续两轮裁决方向被推翻（先判 F 忠实、再判 E 忠实），全部源自判据本身有缺陷，
+而非被测数据有问题。一个没有自标定的判据比没有判据更危险 —— 它给出可信的数字。
+
+### 判据（新工具上线前逐条过）
+| # | 闸门 | 做法 | 不过的后果 |
+|---|---|---|---|
+| 1 | **恒等检测** | 构造一对**已知不同**的样本喂进去，必须判红 | 判据退化成恒等式（例：段中点偏离对对称 smoothstep 恒为 0） |
+| 2 | **检查集大小** | PASS 行必须同时打印 `checked=N` / `skipped=M`，N=0 时输出 `NO_DISCRIMINATION` 而非 PASS | 单向判据空转（例：只查 L→B，E 组无 L 段 ⇒ 零违例 = 空集） |
+| 3 | **双向覆盖** | 判「写法偏好」类问题必须两个方向都建桶（A→B 与 B→A 各自报数） | 只能证明一个方向 |
+| 4 | **基准自审** | 用 X 当 `--gt` 判 Y 之前，先独立证明 X 自己忠实（拿源数据/原始字节，不拿另一个导出） | 基准错则结论 180° 反（例：官方参考导出是 smoothstep→Linear 有损降级版） |
+
+### 参考实现
+- `scripts/diag/l2d_poly_truth_verdict.py` —— 真值取自源包 `m_StreamedClip` 三次多项式，逐点求值比对；55 行内完成「基准自审」。
+- `scripts/diag/l2d_segtype_confusion.py` —— `--selftest` 参数即闸门 1 的落地形式；`--verify` 做解析器对拍。
+- 通用做法：审计脚本的 PASS 模板固定成 `PASS checked=N skipped=M max_dev=X`。
+
+### 踩坑
+1. **「一致率 99.99%」先当红灯看**：近满分几乎必然是判据恒等，不是数据干净。
+2. **两组独立数据给出同一个怪数 = 异常在测量端**：E/F 两侧最大偏差都恰好 35.4、最差曲线同名 ⇒ 求值器错（Stepped 段取了 `v0` 而非 `v1`）。
+3. **统计结果荒谬先查索引序**：`parse_segments()` 返回 `t1=b[3]、v1=b[4]`，写反后 56968 段只命中 111 段且不报错。
+4. **求值器必须先标定**：对已知 Linear 段取中点应精确等于两端均值；对 smoothstep 取 1/4 点必须偏离线性 —— 这两条自测先过，再拿来判别人。
+5. **不手写求值器**：正本在 `scripts/diag/l2d_motion_fidelity_audit.py`（`SEG_LEN`/`parse_segments`/`Curve.at`），段长表 `{0:3,1:7,2:3,3:3}`、指针从 2 起；自产 motion3 的段长表是 `{0:2,1:7,2:1,3:3}`，两套不可混用。
+
+**涉及**：`scripts/diag/l2d_poly_truth_verdict.py`、`scripts/diag/l2d_segtype_confusion.py`、
+`scripts/diag/l2d_motion_fidelity_audit.py`、`scripts/diag/l2d_bezier_quantization_audit.py`、
+`docs/TROUBLESHOOTING.md` §147~§150。
+
+## WF-44 会话数据丢失后的三源取证恢复（2026-10-27 实测）
+
+**触发**：系统还原 / 崩溃导致 `.copilot/session-state` 与本地会话库丢失，只剩 D 盘工作树，
+需要回答「昨天做到哪、改了哪些文件、结论是什么」。
+
+**核心认知**：会话记录会没，**工作树不会**。恢复不是「找回对话」，而是「从产物反推做过什么」。
+三个可能的信息源，按可靠性排序，**必须交叉**：
+
+### 判据（三源取证）
+| 源 | 取什么 | 判据 |
+|---|---|---|
+| ① git 工作树 | `git status --short`（未见文件）、`git diff --numstat`（改了多少行）、每文件 mtime | 未提交改动 = 正在进行的工作；mtime 给出时序 |
+| ② `.diag/` 临时产物区 | 探针 `.py` 的 docstring、它们写出的 `json`/`log` | **唯一会记录「量了什么、得到什么数」的地方**（在 `.gitignore` 里，不进 git） |
+| ③ 产物目录 mtime | `Output/_ab/E` 与 `Output/_ab/F` 的目录时间戳 | 定出实验组的产出顺序（实测 E 10-25 11:56 早于 F 17:52） |
+
+三源时间线**一致**才敢确认顺序；单看 git 会漏掉所有未入库探针，单看产物会漏掉工具还没跑完的部分。
+
+### 恢复后必须补的一件事
+**把「未提交的脚本改动 == 产出该产物的代码」证死**：用同配方重跑到临时目录，逐文件 sha256 比对正式产物。
+实测 5 模型 **367/367 `motion3.json` 全等** ⇒ 才有资格把这个未提交改动当作「已验证的终态代码」提交。
+配方（E 组）：`L2D_MOTION_SEGTYPE=1 L2D_MOTION_BEZIER=1 L2D_MOTION_LINEAR=0 L2D_MOTION_EMIT_CONST=1`。
+
+### 踩坑
+1. **别把「退出码 0」当跑完**：探针在服务不在线 / 字段名错 / 检查集空时照样 exit 0 并写出 `{}` 或 `[]`。判据落在产物非空性上。
+2. **长跑前先探活**：8778 的唯一可靠启动是 `powershell mode=async detach=true` 跑 `serve_gallery_8778.py`；扫描前查一次 `Get-CimInstance Win32_Process -Filter "Name='python.exe'"` 看它在不在。
+3. **`--bases` 含空格路径必须整体加引号并拼 `--bases=$b`**：PowerShell 直接传会被 argparse 按空格切断。
+4. **官方参考库子目录是 `motion` 不是 `motions`**（两种都存在），枚举必须两个候选都试，否则 load 全空。
+5. **`.diag/` 删了没有 git 兜底**：不确定就先 `check_diag_hygiene.py --archive`（打包 + 逐份 md5 回读校验），别直接 `rm`。
+
+**涉及**：`docs/TROUBLESHOOTING.md` §152、`scripts/diag/check_diag_hygiene.py`、
+`scripts/diag/l2d_poly_truth_verdict.py`、`scripts/diag/serve_gallery_8778.py`、
+`scripts/extract_motions.py`。
+
+## WF-45 多候选产物组的离线对账：三档判据 + 必须绕开网络（2026-10-27）
+
+**场景**：同一条数据管线产出了多个候选版本（本轮：`E` / `F` / `official` 三组，各 5 模型
+共 367 个 `motion3.json`），要判「哪一组进生产」，以及「生产目录里现在到底是哪一组」。
+
+**为什么不能用网络对账**：第一版对账工具走 HTTP 拉参考库，长尾请求两次被网络策略拦，
+而且诊断结论会与「服务器在不在线」耦合。**本地已有全部材料时不联网**：
+
+- 我方各组产物：`Output/_ab/{E,F,official}/`
+- 生产目录：`Output/Live2D/`
+- 官方参考库：`D:\Azur Lane Assets\Output\Live2D\`
+
+⇒ 纯本地 `json.load` 就够，10 秒跑完全量。
+
+**三档判据，从粗到细，前两档不过就别看第三档**：
+
+| 档 | 判据 | 工具 | 通过条件 |
+|---|---|---|---|
+| 1 | 逐文件 md5 | `l2d_group_cmp.py --files` | `diff=0 且 only=0` |
+| 2 | 曲线 `Id` 集合 | `l2d_group_cmp.py --sample`（曲线数可读） | 每 clip 集合相同 |
+| 3 | 逐点采样偏差 | `l2d_group_cmp.py --sample --ref=<组>` | 分布达标 + 阈值有依据 |
+
+⚠️ **第 3 档的「参考」必须是真值，不能随便选一组」。** 本轮实测（`antu_2`，29945 曲线）：
+以官方参考为基准则 F 超阈 32 条、E 超阈 4382 条 ⇒ 看起来「F 大胜」。但**官方参考本身是
+smoothstep→Linear 的有损降级版**，谁降级彻底谁高分。换用源包 `m_StreamedClip` 三次多项式
+真值后结论完全反转：E 平均偏差 `3.05e-07`、超阈 **0**；F `0.332`、超阈 1569。
+⇒ **每个「参考」都要先自证是真值**（详见 WF-43 闸门 4 与 §147）。
+
+**固定命令序列**：
+
+```bash
+# ① 生产到底是哪一组（先做这一档，能直接推翻任务清单里的前提）
+py -3 scripts/diag/l2d_group_cmp.py --files
+# ② 曲线级
+py -3 scripts/diag/l2d_group_cmp.py --sample --models antu_2 --ref Output/_ab/official
+# ③ 真值裁决（唯一能定终态的一档）
+py -3 scripts/diag/l2d_poly_truth_verdict.py --sample \
+  --bases=Output/_ab/E,Output/_ab/F,Output/_ab/official \
+  --models=aersasi_2,aersasi_3,antu_2,benningdun_2,ougen_8 \
+  --clips-per-model=25 --curves-per-clip=12
+```
+
+**判据**：
+- 第 1 档 `same=367 / diff=0` ⇒ 两组**就是同一份数据**（硬链或复制导致），别再换入。
+- 第 3 档「最忠实组平均偏差应 ≤ 1e-6 且超阈 0」；若最优组也在 1e-1 量级，说明**没有一组
+  是真的**，回去查提取器的段类型/控制点公式，而不是挑一个相对最好的换入。
+- 换 seed 或改 `--clips-per-model` 重跑一次，结论必须不变（本轮 `2.68786e-07` vs
+  `3.04924e-07`，量级一致，同为唯一 0 超阈组）。
+
+**踩坑**：
+1. **不要用 mtime 判换入状态**。硬链换入不改 mtime（同 inode），
+   `Output/Live2D/ougen_8/motion/home.motion3.json` 的 mtime（10-25 10:41）比源目录
+   `Output/_ab/E`（15:48）还早，看时间戳会得出完全相反的结论（§153）。
+2. **`Curve(segs, fadeIn, fadeOut)` 是错写法**，正本只收 `segs`；采样区间必须取
+   两条曲线的公共交集 `[max(t0), min(t1)]`，否则 `Curve.at` 钳末值会把「比长度」
+   混进「比形状」（§154）。
+3. **别手写 Segments 段长表**。正本 `parse_segments` 的 `SEG_LEN={0:3,1:7,2:3,3:3}` 是
+   「类型码之后」的长度，而 `extract_motions.py` 自产的段长表是 `{0:2,1:7,2:1,3:3}`
+   —— 两套不可混用。手写表把 Bezier 写成 7 会切片错位，产出误导结论（本轮删掉了这样一个探针）。
+4. **`parse_segments` 返回序 `(T, t0, v0, t1, v1, c1v, c2v)`**：`t1=b[3]`、`v1=b[4]`。
+   索引写反后统计全错**且不报错**。
+
+**涉及文件**：`scripts/diag/l2d_group_cmp.py`（新建）、`scripts/diag/l2d_poly_truth_verdict.py`、
+`scripts/diag/l2d_motion_fidelity_audit.py`、`Output/_ab/{E,F,official}/`、`Output/Live2D/`。
