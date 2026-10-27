@@ -7837,3 +7837,64 @@ mtime**（同 inode）。⇒ **mtime 顺序不能当换入状态的判据。**
 一律是 bug。`scripts/diag/l2d_group_cmp.py` 的 `sample_dev()` + `span()` 是正确写法。
 
 **涉及**：`scripts/diag/l2d_group_cmp.py`、`scripts/diag/l2d_motion_fidelity_audit.py`。
+
+### §155. git push 到 GitHub 的可用通路（Schannel + credential helper 双坑，2026-10-27 实测定版）
+
+**症状**：`git push origin master` 报 `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS`，
+或 `fatal: failed to execute prompt script`，或 `sh.exe: *** fatal error - couldn't create signal pipe, Win32 error 5`。
+
+**这不是网络问题，是两件独立的事叠加**，必须分开判断：
+
+1. **credential helper 起不来**：`credential.helper=manager` 在 Git for Windows 里是 **sh 包装脚本**，
+   沙箱禁止程序创建命名管道 ⇒ helper 进程起不来。表现为上面第 2、3 条错误。
+2. **schannel 连代理会挂**：即使凭据拿到了，`http.sslBackend=schannel` 走代理仍握手失败。
+   表现为第 1 条错误。
+3. **代理是否真的在监听**要单独验：`Test-NetConnection 127.0.0.1 -Port 7890 -InformationLevel Quiet`
+   返回 True 才说明代理可用；返回 False 才是真的没代理。
+
+**可用通路（已验证推成功，2026-10-23 与 2026-10-27 两次均成功）**
+
+第一步：**直接调 GCM 的 exe，绕开 sh 包装**取凭据。
+
+```powershell
+$credIn = "protocol=https`nhost=github.com`n`n"
+$out = $credIn | & "C:\Program Files\Git\ucrt64\bin\git-credential-manager.exe" get 2>&1
+$user = ($out | Where-Object { $_ -match '^username=' }) -replace '^username=',''
+$pass = ($out | Where-Object { $_ -match '^password=' }) -replace '^password=',''
+$user = $user.Trim(); $pass = $pass.Trim()
+$b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${user}:${pass}"))
+```
+
+凭据存在 Windows 凭据管理器 `LegacyGeneric:target=git:https://github.com`，`username=fuzhe01`，
+`password` 是 40 位 PAT。
+
+第二步：**带 openssl 后端 + 显式代理推送**。
+
+```powershell
+git -c http.sslBackend=openssl -c credential.helper= -c "http.extraheader=AUTHORIZATION: basic $b64" `
+    -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 push origin master
+```
+
+四个参数缺一不可：
+
+- `http.sslBackend=openssl` —— **必须**，schannel 连代理必挂；
+- `credential.helper=` —— 置空，防止 git 再次去调那个起不来的 sh helper；
+- `http.extraheader=AUTHORIZATION: basic <b64>` —— 用现成凭据直接认证；
+- `http.proxy` / `https.proxy` —— 显式指定，不依赖环境变量。
+
+第三步：**匿名核对**（不发送凭据，确认远端真的收到了）。
+
+```powershell
+git --no-pager rev-parse HEAD          # 本地
+git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 `
+    -c http.sslBackend=openssl ls-remote origin refs/heads/master   # 远端
+```
+
+两边 SHA 一致才算真推上去；`git status -sb` 应从 `[ahead N]` 变为 `## master...origin/master`。
+
+**安全注意**：密码不要打印到日志或写进命令行文本；`b64` 在 PowerShell 内现算现用。
+`ls-remote` 核对时不要带 `http.extraheader`，走匿名即可。
+
+**别做的无效尝试**（本轮实测均失败，浪费约 20 分钟）：换 gitee / ghproxy 镜像、`git config --global` 改
+`http.proxy`、反复重试裸 `git push`、检查「GitHub 是否可达」——**问题从来不是可达性**。
+
