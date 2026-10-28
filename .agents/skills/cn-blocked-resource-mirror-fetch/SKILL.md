@@ -9,6 +9,7 @@ argument-hint: Give the blocked URL or resource (GitHub file / npm package / sta
 argument-hint-en: Give the blocked URL or resource (GitHub file / npm package / static asset) to fetch and the local save path
 argument-hint-zh: 给出被墙的 URL 或资源（GitHub 文件 / npm 包 / 静态资源）及本地保存路径
 user-invocable: true
+version: 1.1.0
 ---
 
 # 国内受限网络被墙资源镜像取数
@@ -31,6 +32,30 @@ curl -sL --max-time 10 -o probe.out -w "%{http_code} $(wc -c < probe.out)B\n" "<
 ```
 
 一次并行探测多个候选，选返回 200 且字节数合理的那个。
+
+## 链 0：本机代理造成的「假被墙」（先分清这一层再换源）
+
+`curl`/浏览器能通、但**某个程序**报 502 或 `fetch failed` 时，源没被墙，是它自己走了代理。
+判据只有一条：**同一域名两次探测（带代理 / `--noproxy "*"`）结果相反**。
+
+```bash
+curl -s -o NUL -w "proxy:%{http_code}\n"  --max-time 15 -x http://127.0.0.1:7890 <URL>
+curl -s -o NUL -w "direct:%{http_code}\n" --max-time 15 --noproxy "*"        <URL>
+```
+
+代理侧典型形态：`CONNECT 200` 之后 **TLS 立刻 EOF**（`SSL_UNEXPECTED_EOF`），
+看起来像被墙，其实是代理节点拒绝该 SNI。直连成功即可确认。
+
+⚠️ **三个只在这种场景出现的坑**：
+1. **改 Windows「代理例外列表」(`ProxyOverride`) 常常无效**。Node/Electron 程序往往读的是
+   进程环境变量 `HTTPS_PROXY` / `NO_PROXY`；而不少自研 HTTP 层**只读 `NO_PROXY`，根本不读
+   `ProxyOverride`**。注册表改动只影响新进程，对已在运行的进程零作用。
+   ⇒ 改完必须**重开那个程序**，并用上面的两次探测复验，别假设生效。
+2. **改代理软件的 profile 不会热生效**。运行中的内核读的是启动时生成的 `config.yaml`，
+   `profiles/*.yaml` 只是源文件（`external-controller` 为空时也没有 API 可推）。
+   判据：对比两个文件的 mtime —— profile 更新而 config 没动就是没生效。
+3. **订阅型 profile 会被定时自动更新覆盖**（24h 重下发）。临时加的两行规则会消失
+   ⇒ 长期方案写进代理软件的「自定义规则」/覆写脚本，而不是改订阅文件。
 
 ## 链 1：GitHub raw 文件 / 仓库内容
 

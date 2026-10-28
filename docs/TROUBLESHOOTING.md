@@ -8435,3 +8435,49 @@ pin 每帧写同值就不刷新」，并据此在产品 ticker 里补了一次 `
 
 **涉及文件**：`scripts/diag/shot_budget.py`（fit/summarize/diff/crop/audit）、`AGENTS.md`「看图预算」、
 `docs/WORKFLOWS.md` WF-50、`.agents/skills/headless-chrome-cdp-batch-export`（§截图产物不得直接进上下文）。
+
+## §161. 恢复会话报「422 model returned an empty response」：不是上下文超限，是通道层不可达（2026-10-28）
+
+**症状**：从检查点恢复一条旧会话后，每次发送都立即失败，文案一律是
+`422 The model 'qoder/dfmodel' returned an empty response ... conversation exceeds the model's context window`。
+
+**判据（一次分清「模型层空输出」和「网络层不可达」）**：
+- 中继日志里该次请求 `messageCount=47`，内容块 0、工具调用块 0、错误块 1 ⇒ 模型根本没产生输出，与长度无关。
+- 上游错误体是 `qoder: transport error: fetch failed` / `code: TRANSPORT` ⇒ 网络层。
+- 把**同一份原始请求体**（145 KB / 47 条消息）换通道原样重放 → 200 且正常返回 `tool_calls` ⇒ 长度假设被彻底否证。
+
+**根因**：FlClash 规则里只有 `DOMAIN-SUFFIX,qoder.com.cn,DIRECT`（国内版），
+缺 `qoder.com` / `qoder.sh`（国际版），于是落到兜底 `MATCH,赔钱机场` 走节点；
+该节点对这些域名 **CONNECT 200 之后 TLS 立刻 EOF**。绕过代理直连则 TLS 1.3 正常
+（`api2.qoder.sh` 404、`qoder.com` 200，均为「可路由」而非失败）。
+
+⚠️ **两个反直觉点（都实测过）**：
+1. **改 Windows 系统代理例外列表（`ProxyOverride`）无效**。中继进程持有
+   `https_proxy=http://127.0.0.1:7890` + `no_proxy=loopback`，是**进程环境变量**起决定作用
+   （注册表改动只影响新进程）；且 `channel-pack` 的 `channelProxyBypassed()` 只读 `NO_PROXY`，
+   **完全不读** `ProxyOverride`。实测加上 `*qoder.com;*qoder.sh` 后中继仍 502。
+2. **恢复中卡住的会话重试时，UI 选的模型不生效**。每次失败前一行都是
+   `zero-message continuation returned` —— 它重放的是「被打断的那一轮」，模型取该轮记录值，
+   而不是界面当前选择。故「换个模型再试」对这类会话无效：渲染层已打印
+   `explicit-selection-applied`，而 agent host 自始至终没有出现 `Changing model to:`。
+
+**修法**：给 FlClash 配置补两条前置规则，然后**在 FlClash 里重新应用一次配置**：
+```yaml
+    - 'DOMAIN-SUFFIX,qoder.com,DIRECT'
+    - 'DOMAIN-SUFFIX,qoder.sh,DIRECT'
+```
+⚠️ 运行中的内核只读**启动时生成**的 `config.yaml`，改 `profiles/*.yaml` 不会热生效
+（`external-controller` 为空，没有可推的 API）。判据：`config.yaml` 的 mtime 会跳到重载时刻。
+
+⚠️ **订阅自动更新会覆盖 profile**（该 profile `auto_update=1` / 24h），
+加的两行会被重新下发冲掉 → 长期方案是写进 FlClash 的「自定义规则」
+（`database.sqlite` 的 `rules` / `profile_rule_mapping` 表），或用覆写脚本。
+
+**已排除的假设**：
+- 上下文超限 —— 47 条 / 145 KB 的同一份载荷换通道即 200。
+- 模型下线或额度耗尽 —— 同日 `qodercn/dmodel`、`trae/deepseek-v4.1-flash`、
+  `raccoon/sn-deepseek-v4-1-flash-1017` 等通道全部 200。
+- 改 `ProxyOverride` 让中继绕开代理 —— 无效果，理由见反直觉点 1。
+
+**涉及文件**：FlClash `profiles/322576993176522752.yaml`（当前订阅 profile）、
+`config.yaml`（运行时快照，需重载才更新）、备份 `*.bak-qoder-direct-20261028`。
