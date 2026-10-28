@@ -40,15 +40,16 @@ SNAP_ALL = r"""
   if(!m||!m.internalModel) return '{"err":"NO_MODEL"}';
   var c=m.internalModel.coreModel, n=c.getDrawableCount(), out=[];
   for(var i=0;i<n;i++){
-    var op=0, bx=null;
+    var op=0, bx=null, vis=-1;
     try{ op=+c.getDrawableOpacity(i); }catch(e){}
+    try{ vis=c.getDrawableDynamicFlagIsVisible(i)?1:0; }catch(e){}
     try{ var v=c.getDrawableVertexPositions(i);
       if(v&&v.length>=2){ var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
         for(var k=0;k+1<v.length;k+=2){
           if(v[k]<x0)x0=v[k]; if(v[k]>x1)x1=v[k];
           if(v[k+1]<y0)y0=v[k+1]; if(v[k+1]>y1)y1=v[k+1]; }
         bx=[+x0.toFixed(3),+y0.toFixed(3),+x1.toFixed(3),+y1.toFixed(3)]; } }catch(e){}
-    out.push([i,+op.toFixed(4),bx]); }
+    out.push([i,+op.toFixed(4),bx,vis]); }
   return JSON.stringify({n:n, rows:out});
 })()
 """
@@ -164,7 +165,8 @@ def main():
                 if a[2] and b[2]:
                     db = max(abs(a[2][0] - b[2][0]), abs(a[2][1] - b[2][1]),
                              abs(a[2][2] - b[2][2]), abs(a[2][3] - b[2][3]))
-                if abs((a[1] or 0) - (b[1] or 0)) > 0.02 or db > 0.5:
+                if abs((a[1] or 0) - (b[1] or 0)) > 0.02 or db > 0.5 \
+                        or (len(a) > 3 and a[3] != b[3]):
                     drift += 1
                     break
         print('冻结后本底漂移: %d / %d 个 drawable 仍在变' % (drift, h[0]['n']))
@@ -206,10 +208,13 @@ def main():
                 if a[2] and b[2]:
                     db = max(abs(a[2][0] - b[2][0]), abs(a[2][1] - b[2][1]),
                              abs(a[2][2] - b[2][2]), abs(a[2][3] - b[2][3]))
-                if dop > 0.02 or db > 0.5:
-                    r = driven.setdefault(i, {'maxdop': 0.0, 'maxdb': 0.0, 'at': []})
+                dvis = (len(a) > 3 and a[3] != b[3])
+                if dop > 0.02 or db > 0.5 or dvis:
+                    r = driven.setdefault(i, {'maxdop': 0.0, 'maxdb': 0.0,
+                                              'vis': set(), 'at': []})
                     r['maxdop'] = max(r['maxdop'], dop)
                     r['maxdb'] = max(r['maxdb'], db)
+                    r['vis'].add(b[3] if len(b) > 3 else -1)
                     r['at'].append(got)
             for i in WATCH:
                 a, b = base['rows'][i], s['rows'][i]
@@ -225,16 +230,58 @@ def main():
         print('\n=== 真正随 %s 变化的 drawable：%d 个 ===' % (PID, len(driven)))
         for i in sorted(driven):
             d = driven[i]
-            print('  #%-4d %-30s maxdOp=%.3f maxdBox=%.2f @%s'
-                  % (i, names.get(i, '?'), d['maxdop'], d['maxdb'], d['at'][:6]))
+            print('  #%-4d %-30s maxdOp=%.3f maxdBox=%.2f vis={%s} @%s'
+                  % (i, names.get(i, '?'), d['maxdop'], d['maxdb'],
+                     ','.join(str(x) for x in sorted(d['vis'])), d['at'][:6]))
 
-        mapped = [460, 461]
-        print('\n=== 映射表声明的驱动件 ===')
-        for i in mapped:
-            d = driven.get(i)
-            a = base['rows'][i]
-            print('  #%-4d %-30s base(op=%.3f box=%s) 随参数变化=%s'
-                  % (i, names.get(i, '?'), a[1], a[2], 'YES' if d else 'NO'))
+        # 映射表声明值从 param_drawables.json 读，不再硬编码（硬编码会掩盖「表本身缺项」）
+        mapped = []
+        try:
+            pdz = json.load(open(os.path.join(ROOT, 'Output', 'gallery_v2',
+                                              'param_drawables.json'), encoding='utf-8'))
+            mapped = list((pdz.get(KEY) or {}).get(PID) or [])
+        except Exception as e:
+            print('[WARN] param_drawables.json 读取失败:', e)
+        missing = [i for i in mapped if i not in driven]
+        extra = [i for i in sorted(driven) if i not in mapped]
+        print('\n=== 映射表声明 vs 实测 ===')
+        print('  表声明 %d 个: %s' % (len(mapped), mapped))
+        if missing:
+            print('  [缺口] 表里列了但实测无效果: %s' % missing)
+        if extra:
+            print('  [漏项] 实测有效果但表里没有: %s (%s)'
+                  % (extra, ','.join(names.get(i, '?') for i in extra)))
+        if not missing and not extra:
+            print('  一致，零差异')
+
+        # 镜像配对：驱动件在画面另一侧有没有几何对称的同伴？它跟着这个参数动吗？
+        # 这是「某部位只剩一边」类问题的判死仪器：配对件存在但不动 ⇒ 数据/参数绑定的锅；
+        # 配对件根本不存在 ⇒ 该模型本来就只做了一边。
+        print('\n=== 镜像配对检查（驱动件的几何镜像伙伴）===')
+        for i in sorted(driven):
+            bx = base['rows'][i][2]
+            if not bx:
+                continue
+            mir = [-bx[2], bx[1], -bx[0], bx[3]]
+            hits = []
+            for j in range(base['n']):
+                if j == i:
+                    continue
+                b2 = base['rows'][j][2]
+                if not b2:
+                    continue
+                if (b2[0] + b2[2]) / 2 <= 0 and (bx[0] + bx[2]) / 2 <= 0:
+                    continue
+                dd = max(abs(b2[k] - mir[k]) for k in range(4))
+                if dd <= 0.8:
+                    hits.append((j, dd, base['rows'][j][1], b2))
+            print('  #%-4d %-22s 镜像盒=%s → %d 个候选'
+                  % (i, names.get(i, '?'), [round(v, 2) for v in mir], len(hits)))
+            for j, dd, opj, b2 in hits[:5]:
+                print('        #%-4d %-22s base(op=%.2f) 跟随本参数=%s d=%.2f V=%s'
+                      % (j, names.get(j, '?'), opj,
+                         'YES' if j in driven else '**NO**', dd,
+                         [round(v, 2) for v in b2]))
 
         # 左半区（V 空间 x<0）低处部件：脚/腿候选
         print('\n=== V 空间 x<0 且 y<3 的部件（脚/腿候选，含不可见）===')
@@ -243,9 +290,10 @@ def main():
             if not bx:
                 continue
             if bx[2] < 0.5 and bx[1] < 3.0:
-                print('  #%-4d %-30s op=%.3f box=%s 随参数变=%s'
-                      % (i, names.get(i, '?'), base['rows'][i][1], bx,
-                         'YES' if i in driven else 'no'))
+                print('  #%-4d %-30s op=%.3f vis=%s box=%s 随参数变=%s'
+                      % (i, names.get(i, '?'), base['rows'][i][1],
+                         base['rows'][i][3] if len(base['rows'][i]) > 3 else '?',
+                         bx, 'YES' if i in driven else 'no'))
 
         unpin(pg)
         print('\n[完成] 已清除 pins')

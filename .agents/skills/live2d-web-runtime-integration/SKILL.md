@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
-description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**，**以及逐帧探针的仪器体检前置（§25：十一条仪器 bug、出帧源解耦、采样点挂 `coreModel.update` 入口、保活必须周期重发、坐标只许用页面出口、`stringify` 丢 undefined 键、pins 对比须先让渡）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见、逐帧探针、出帧源、1Hz 节流、fps 假绿、探针仪器坏了。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.21
+description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**，**以及逐帧探针的仪器体检前置（§25：十一条仪器 bug、出帧源解耦、采样点挂 `coreModel.update` 入口、保活必须周期重发、坐标只许用页面出口、`stringify` 丢 undefined 键、pins 对比须先让渡）**，**以及「模型少了一个部件」的定性流程（§27：不透明度绑定反查必须带阳性对照、几何镜像配对区分「有件但关着」与「真的缺件」、真实播放态不冻结审计回答观感、像素差分不能当缺件证据、canvas rect 只许问页面、`getParameterId` 不存在、`getParameterIndex` 越界返回 count）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全/少一只鞋少一条腿/某个部位消失"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见、逐帧探针、出帧源、1Hz 节流、fps 假绿、探针仪器坏了、部位消失、少一只鞋、少一条腿、部件是不是丢了、参数反查、不透明度绑定、镜像配对。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
+version: 1.10.22
 ---
 
 # Live2D 网页运行时集成
@@ -1234,3 +1234,88 @@ ShoseOff 盒 2.5×2.7 但鞋形斜置 ⇒ 兜底把 287 个边角点判给它，
 6–8 分钟，退出码 0=可信 / 2=环境 / 3=仪器红）；
 `scripts/diag/l2d_param_effect_scan.py`（逐档 pin + 冻结闸，回答「参数到底驱动哪些部件」）；
 `scripts/diag/l2d_action_state_audit.py`（逐动作曲线审计，回答「切这个动作会把参数写成什么」）。
+
+## 27. 「模型少了一个部件」怎么定性：反查绑定 + 镜像配对 + 真实播放态（2026-10-28，version 1.10.22）
+
+用户说「少了一只鞋 / 少半条腿 / 某部位消失」时，**默认答案不是「渲染丢件」，而是「素材侧关着」**。
+但要证明它，必须走四步；只做像素差分是**得不出结论**的（本项目为此翻盘三次）。
+
+### 第 0 步：先按观感分类
+
+| 观感 | 第一假设 | 第一条判据 |
+|---|---|---|
+| 「少一半」「边缘被硬切一块」 | 某总开关参数缺省关闭 | ① 不透明度绑定反查 |
+| 「整件不显示但点得到」 | `partOpacity=0` | `getPartOpacityByIndex` 全扫 |
+| 「只有播某些动作时才有」 | 参数只在少数动作里被推高 | ② motion3 曲线全扫 |
+| 「位置错 / 比例怪」 | 不是缺件，是坐标画框问题 | 换技能（painting restore / spine） |
+
+### ① 反查绑定：**必须有阳性对照组，否则 0 命中不可信**
+
+问题：「drawable `#411/#413` 恒 `op=0/vis=0`，是哪个参数在关它？」逐参数 `pin=1` 后读它的 `op/vis`。
+
+四条硬约束（都踩过）：
+
+1. **必须页内单次 JS 同步扫描**。串行 CDP 往返实测 582 参数 × 2 = 1164 次 ≈ **50 s**；
+   按 0.3 s/次估 350 s 会超宿主超时被强杀，`atexit` 不执行 ⇒ Chrome 整棵树泄漏（一轮泄漏 10~12 个进程）。
+   全塞进页面一次跑完，JS 单线程顺带挡住 rAF（否则 `loadParameters()` 会把值拉回曲线）。
+2. **只调 `coreModel.update()`，不调 `internalModel.update()`**（后者会重跑动作/物理）。
+3. **参数名只能从 `c._parameterIds` 取**（`csmVector`，`.at(i)` / `.getSize()`）。
+   `CubismModel` **不存在** `getParameterId(i)` —— 按它写会实测 0 次并静默给出「没有参数控制它」的假结论。
+   读写用 `getParameterValueByIndex` / `setParameterValueByIndex`。
+4. `getParameterIndex(name)` 对**不存在的名字返回 `count`（不是 −1）** ⇒ 必须判 `>= count`。
+
+**阳性对照组是承重的**：同一轮带一对已知被某参数控制的件（实测 `#184/#461 ↔ ShoseOff`），
+阳性零命中就直接 `exit 3`，**不许**把主目标的零命中当结论。
+
+`ougen_8` 实跑：目标件基线 `[[0,0],[0,0]]`、阳性 `[[1,1],[1,1]]`；
+目标件唯一命中 **`Param233 = 1 → [[1,1],[1,1]]`**，阳性命中 `Stock2` / `Param326`。
+
+### ② 几何镜像配对：区分「有件但关着」与「真的缺件」
+
+左右两侧部件名不同、索引不同，唯一可靠的配对是**包围盒镜像**：
+
+```
+镜像盒 = [-bx1, bx0, by0, by1]      # x 取反、左右边换位、y 不变
+在其余全部 drawable 里找 d ≤ 0.8 的候选，报它的 op/vis 与「是否跟随本参数」
+```
+
+`ougen_8`：`#411↔#461 d=0.50`、`#413↔#462 d=0.34`、`#408↔#183 d=0.94`、`#407↔#460 d=1.01`、
+`#665↔#463 d=1.11` 等；16 件合并框镜像后与左鞋 5 件合并框**四边差 d4=1.33** ⇒ 是第二套鞋件 **且全 `vis=0`**。
+⇒ 结论「有件但关着」。**配对不上**才可能是「真的缺件」。
+
+### ③ 真实播放态审计（**不冻结**）：观感问题只能在播放态回答
+
+冻结态只答「底座长什么样」，用户问的是「播 idle 时是不是少一只鞋」。另跑一遍**不冻结**的审计：
+采样器挂 `requestAnimationFrame` **只读不写**，逐帧记参数取值 + 目标件 `op/vis`。
+`ougen_8`：`def=0/min=0/max=1`；`idle`、`idle9` 各 220 帧参数**全程 0.0000**、16 件「曾可见」= 0。
+⇒ 素材侧缺省关闭。它在 `touch_idle2/4/10/18` 的 1.08s→3.95s 之间 `0→1→0`（某些动作才补上）。
+
+### 像素差分只能量「变化范围」，**不能**当「有没有件」的证据
+
+`ShoseOff −1→+1`：changed 3146 px（0.353%）、`left 3146 / right 0`，曾被读成「该模型只有一条腿配鞋件」。
+实际右侧 `V x[6,11] y[-2.3,2.6]` 区内有 **88 件 / 可见 44 件**，只是镜像件 `vis=0`。
+⇒ **「差分右半 0 变化」≠「右半无件」**。凡是拿差分下「缺件」结论的，都必须先过镜像配对与反查。
+
+### 坐标：区域框绝不许手写
+
+- `document.querySelector('canvas')` 抓到的是背景画布 `#bgfx`（页面第一个 canvas）⇒ 必须 `#l2wrap canvas`。
+- canvas rect 一律 `getBoundingClientRect()` **问页面**；不许按视口/dpr 硬编码（本项目差过 45 px）。
+- **手写 V←canvas 逆映射是地雷**（一版把 `LEFT_OFF`/`TOP_OFF` 重复扣两次，给出负坐标框）。
+  正解：canvas 相对坐标直接量，再**由实测变化簇反推 V 区间**，反推值要能对上某个 drawable 的包围盒才算校验通过。
+- 区域框**必须由实测变化簇反推**，跨模型、跨姿态一律不复用。
+
+### 性能与产物
+
+- 反查类长任务用 `py -3 -u`：被强杀时 Python 重定向输出会留 **0 字节**（缓冲未 flush）。
+- `scipy` 在本机**不可用** ⇒ 连通域自写 8 邻域 BFS。
+- `param_drawables.json` 是手写映射、**会漏项**：实测 `Param233` 驱动 16 件却登记 0 件、
+  `ShoseOff` 登记 `[460,461]` 实驱 `#183/184/460/461/615`（漏 3）⇒「表里没有」不能当证据。
+
+### 工具
+
+`scripts/diag/l2d_opacity_binding_hunt.py`（反查，内置阳性对照红闸 + `exit 3`）、
+`scripts/diag/l2d_param_effect_scan.py`（正查 + `vis` 列 + 映射表缺口/漏项 + 镜像配对段）、
+`scripts/diag/l2d_param233_visual.py`（冻结态两帧差分）、
+`scripts/diag/l2d_param233_live_audit.py`（真实播放态逐帧审计）、
+`scripts/diag/shot_regions.py`（像素模块 + 自写 BFS）。
+离线省事：`.diag/all_draw.json`（842 件 `[i,name,op,vis,box]` 快照）能免开浏览器做全部几何分析。
