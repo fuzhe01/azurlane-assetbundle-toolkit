@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**，**以及逐帧探针的仪器体检前置（§25：十一条仪器 bug、出帧源解耦、采样点挂 `coreModel.update` 入口、保活必须周期重发、坐标只许用页面出口、`stringify` 丢 undefined 键、pins 对比须先让渡）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见、逐帧探针、出帧源、1Hz 节流、fps 假绿、探针仪器坏了。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.20
+version: 1.10.21
 ---
 
 # Live2D 网页运行时集成
@@ -962,6 +962,10 @@ cliff = {p: v for p, v in action_end.items()
 
 ## 23. 参数型互动区（点局部换装）：命中判定的三个坑（2026-10-25，version 1.10.17）
 
+> ⚠️ **坑一的结论已被部分推翻**（2026-10-28，见 §23.4）：包围盒口径本身是错的，
+> 判定形状必须换成**真实三角形**；重叠裁决按**渲染序**而不是「面积最小者」。
+> 坑二（几何中心 ≠ 命中点）与坑三（换装改顶点不是 opacity）仍然成立，继续用。
+
 需求形态：点画面上的鞋/丝袜/衣角/戒指，切换对应 Cubism 参数两态，**不播 motion**
 （播动作会把姿态一起改掉）。数据侧 = 「参数 → 驱动 drawable 索引」映射，
 热区 = 这些 drawable 顶点包围盒的并集。
@@ -1151,3 +1155,82 @@ opacity 可能全程为 1。用顶点包围盒（`getDrawableVertexPositions` �
 一次性取证跑完就归档清掉。极小对照页（`glmin.html` / `glmin_size.html` / `gl_two_ctx.html`）
 要跟着探针一起入库——探针以 `file:///.../scripts/diag/glmin_size.html` 引用它们，
 放 `.diag/` 会在清理时静默断链。
+
+## 26. 参数型热区最终形态：真实三角形 + 渲染序裁决 + 幽灵区第二遍 + 点击当天几何（2026-10-28，version 1.10.21）
+
+§23 坑一的「包围盒 + 面积最小者」已被**整条替换**。这里是与 §23 不同的部分，重复的坑不再抄。
+
+### 判定形状：真实三角形，不是包围盒
+
+`ougen_8` 实测同一批热区，多边形覆盖 6233 个采样点 vs 仅盒覆盖 8916 点 = **盒把判定区放大 1.43 倍**。
+斜置部件（四边形/盒面积比 0.49）最严重。这就是「点旁边空地也触发」。
+
+```js
+// 索引是 moc3 静态数据 ⇒ 永久缓存；顶点每帧变 ⇒ 每次重新拷贝
+const triOf = i => _triCache[i] || (_triCache[i] = core.getDrawableVertexIndices(i));
+function inTriV(x,y,pos,idx){
+  const e = -0.004;                     // ← 接缝容差，缺了所有热区都点不到
+  for (let k=0;k+2<idx.length;k+=3){
+    const a=idx[k]*2,b=idx[k+1]*2,c=idx[k+2]*2;
+    // 重心坐标；三条边同号即在内
+    ...
+  }
+}
+```
+
+⚠️ **接缝容差 `e=-0.004` 是承重的**：相邻三角共边，浮点误差会让**边界点全落空**，
+症状是「所有热区都点不到」，极易误判成「产品整体失效」。
+
+### 重叠裁决：渲染序 > 不透明度 > 面积 > id
+
+`getDrawableRenderOrders(i)` 返回**整张表**（`ougen_8` 长度 842），`ro[i]` 才是第 i 个的渲染序，
+序号大 = 后画 = 在上。
+
+**已否决两条**（都实测过，别再试）：
+- 「面积最小者胜」→ NeckMoney 可达率 59.4%；
+- 「只按部分重叠的 z 裁」→ NeckMoney 到 100% 但 Cloth1 100%→41.2%、Cloth3 100%→50%，
+  净效果只是**把不公平转移给别的热区**。
+
+### 隐藏件必须跑第二遍（幽灵区）
+
+`partOpacity` 由动作控制，静止态很多热区的驱动部件**全部 `opacity=0`**
+（`Paramring` drawable 796、`NeckMoney` drawable 502 都是）。只判可见件 = 它们彻底点不到。
+第二遍只补隐藏件，且**仅在没有任何可见件被点到的位置**获胜（无隐藏件的热区直接跳过）。
+
+### 兜底不能吃「盒内但多边形没覆盖」的边角
+
+ShoseOff 盒 2.5×2.7 但鞋形斜置 ⇒ 兜底把 287 个边角点判给它，`own=287 / win=390 = 135.9%`。
+**可达率超 100% 就是口径错的信号**，不是数据错。收窄成「该热区**所有**部件都没有可用三角形」
+后才降到 100%。
+
+### 点击链路：读的必须是**点击那一刻**的几何，且命中判在 `onDown`
+
+两处真实产品缺陷，都会让「探针报参数没变」而实际是点空了：
+1. 代码注释写「点击那一刻再算一次」，实现却是 ticker 每 4 帧（≈66–110 ms）重建快照。
+   小部件面积仅 6.47（V 空间），80 ms 内就漂出点位。
+2. 命中判在 `onUp`，而 `pointerdown`→`pointerup` 实测隔 **80–160 ms**。
+
+修法：`pickGeo()` 分道（探针要求冻结时返回快照，产品走 `freshGeo()` 每次现建）+
+**按下定命中、抬起执行**（`onDown` 存 `cosDown`，`onUp` 优先用它，空了才补算）。
+
+铁证（仪器侧看着像产品坏了）：`__costumeScreenOf` 报 n=104 命中，
+**紧接着**一次 `__costumeHit` 返回 None；事件探针显示 `pointerdown` 时 hit=null、
+`pointerup`（80 ms 后）hit=ShoseOff。
+
+### 做「参数影响哪些 drawable」的测量之前必须冻结姿态
+
+不冻结时这个测量**完全不可用**：idle 每帧把参数写回曲线值，呼吸/物理让全身顶点逐帧漂 ⇒
+实测逐档差值**非单调**（`#697` 在 want=-0.5 变 32.14、want=+0.25 只变 4.25），
+会误报「47 个 drawable 随参数变化」，冻结后真相是 **5 个**，本底漂移 **0/842**。
+
+冻住三件套（缺一不可）：`mm.groups.idle='__hz_frozen__'`（**最关键**，`stopAllMotions()`
+挡不住库的自动重启）/ `im.updateNaturalMovements=function(){}` / `im.physics.reset()`。
+判据要报「冻结后本底漂移 N/842」，不报这个数就没法区分「参数没效果」与「冻结没生效」。
+⚠️ 冻结时机只能在需要它的判据**之前**：漂移对照判据需要 idle 在跑，提前冻结会让它恒为 0。
+
+### 基线工具
+
+`scripts/diag/l2d_hotzone_reachability.py`（多边形口径 + 幽灵统计 + 守恒/阴性对照/几何稳定三闸，
+6–8 分钟，退出码 0=可信 / 2=环境 / 3=仪器红）；
+`scripts/diag/l2d_param_effect_scan.py`（逐档 pin + 冻结闸，回答「参数到底驱动哪些部件」）；
+`scripts/diag/l2d_action_state_audit.py`（逐动作曲线审计，回答「切这个动作会把参数写成什么」）。

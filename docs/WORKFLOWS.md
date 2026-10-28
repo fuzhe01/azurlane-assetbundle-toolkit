@@ -3719,3 +3719,87 @@ py -3 scripts/diag/shot_budget.py --audit .diag --max-kb 200
   `.diag/ownership_entry_diag.py`，`cdp_helper.py` 的 docstring 引 `gpu_vs_swiftshader_ab.py`。
   移动后不改 = 下一个会话按注释去找文件找不到。
 
+
+## WF-52 参数型热区的「多边形命中 + 渲染序裁决 + 可达率基线」三段式（2026-10-28 收敛）
+
+**适用**：一个参数（换装/装扮类）在模型上需要一块「点它切换」的可点击区，而这块区由
+若干 drawable 构成，且这些 drawable 之间、以及与其它参数的热区之间**互相重叠**。
+
+### 三段式（缺任一段都得不到可信结论）
+
+**① 判定形状必须用真实三角形，不能用轴对齐包围盒。**
+`getDrawableVertexIndices` / `getDrawableVertexIndexCount` / `getDrawableVertexPositions` 都可用，
+用重心坐标判定落点。实测 `ougen_8`：多边形覆盖 6233 个采样点，仅盒覆盖 8916 点 ⇒ **盒把判定区
+虚增 1.43 倍**，这正是「点旁边空地也触发」的直接来源。
+- 索引是 moc3 静态数据 ⇒ 可永久缓存（`_triCache`）；顶点每帧变 ⇒ **每次都要重新拷贝**成
+  `Float32Array`（core 返回的是会被下一帧覆盖的视图）。
+- 接缝容差取 `e = -0.004`：相邻三角共边，浮点误差会让边界点**全落空**（症状是所有热区都点不到）。
+
+**② 重叠裁决按渲染序，不按面积。**
+`getDrawableRenderOrders(i)` 返回**整张表**（`ougen_8` 长度 842），`ro[i]` 才是第 i 个的渲染序，
+序号大 = 后画 = 在上。裁决优先级：`渲染序大` → `不透明度高` → `面积小` → `id 字典序`。
+- ⚠️ **已否决**：「面积最小者胜」——NeckMoney 可达率只有 59.4%。
+- ⚠️ **已否决**：「按绘制序 z 裁决部分重叠」的第一版——NeckMoney 到 100% 但 Cloth1
+  100%→41.2%、Cloth3 100%→50%，净效果只是**把不公平转移给别的热区**。
+
+**③ 隐藏部件要单独跑第二遍（幽灵区），兜底只能收窄到「全体无三角形」。**
+很多热区的驱动部件在静止态**全部 `opacity=0`**（`partOpacity` 由动作曲线控制，静止时不显示）。
+只判可见件 = 这些热区彻底点不到。做法：
+- 第一遍只补可见件；第二遍只补**隐藏件**，且**仅在没有任何可见件被点到的位置**获胜
+  （没有隐藏件的热区直接跳过第二遍）。
+- 兜底（盒内但多边形没覆盖）**不能**用「盒覆盖」当条件：ShoseOff 盒 2.5×2.7 但鞋形斜置 ⇒
+  兜底把 287 个边角点判给它，`own=287 / win=390 = 135.9%`（超过 100% 就是口径错的信号）。
+  收窄为「该热区**所有**部件都没有可用三角形」后才降到 100%。
+
+### 可达率基线（`scripts/diag/l2d_hotzone_reachability.py`）
+
+口径：屏幕网格与模型坐标网格各扫一遍，`own` = **多边形**覆盖到自己的采样点数（可见 + 幽灵），
+`win` = 最终判给自己的点数，**可达率 = win / (own + 幽灵)**；同时输出「谁抢走了谁的多少点」。
+三道仪器闸：**守恒**（Σwin == 有赢家的点数）、**阴性对照**、**几何稳定**。退出码 0=基线可信 /
+2=环境故障 / 3=仪器红。单次 6–8 分钟。
+
+### ⚠️ 做逐档参数测量之前必须先冻结姿态（这是最容易踩的一条）
+
+不冻结时「参数 A 影响哪些 drawable」这个测量**完全不可用**：idle 每帧把参数写回曲线值，
+呼吸/物理让全身顶点逐帧漂 ⇒ 实测 `ougen_8/ShoseOff` 逐档差值**非单调**
+（`#697` 在 want=-0.5 变 32.14、want=+0.25 只变 4.25），全是漂移噪声；
+会被误读成「47 个 drawable 随参数变化」，冻结后真相是 **5 个**，本底漂移 **0/842**。
+
+**冻结三件套，缺一不可**：
+1. `mm.groups.idle = '__hz_frozen__'` —— **最关键**。`stopAllMotions()` 挡不住：
+   `MotionManager.update` 里 `if(isFinished()) … startRandomMotion(groups.idle)` 会让 idle 立刻重启。
+2. `im.updateNaturalMovements = function(){}` —— 关掉呼吸 + 自然摆头。
+3. `im.physics.reset()` —— 清掉上一姿态残留速度。
+
+判据必须**每次之间真的 `sleep(0.5)` 连采 4 次**，并报「冻结后本底漂移 N/842」；
+不报这个数就没法区分「参数没效果」和「冻结没生效」。
+
+⚠️ **冻结的时机只能在需要它的判据之前**：漂移对照判据**需要** idle 在跑，
+提前冻结会让那个对照恒为 0、失去区分力。
+
+### 判定入口的两个真实缺陷（都曾让点击落空却让探针「参数没变」）
+
+1. **读缓存的几何**：注释写「点击那一刻再算一次」，实现却是 ticker 每 4 帧（≈66–110 ms）重建快照。
+   小部件实测面积仅 6.47（V 空间），80 ms 内就漂出点位。
+   修法：`pickGeo()` 分道——探针要求冻结时返回快照，产品走 `freshGeo()` **每次现建**。
+2. **命中判在 `onUp`**：`pointerdown`→`pointerup` 实测隔 80–160 ms，期间几何已漂走。
+   修法：**按下定命中、抬起执行**（`onDown` 里存 `cosDown`，`onUp` 优先用它，空了才补算）。
+
+**这两条的仪器侧症状**：`__costumeScreenOf` 报 n=104 命中，**紧接着**一次 `__costumeHit`
+返回 None；事件探针显示 `pointerdown` 时 hit=null、`pointerup`（80 ms 后）时 hit=ShoseOff。
+
+### 踩坑记录
+
+- **探针口径要跟着判定形状一起改**：`VS_SWEEP` 的 `own` 从「盒覆盖」改「多边形覆盖」后，
+  才能看出 ShoseOff 的 135.9% 异常。口径不跟着改 = 新判定形状的缺陷被旧口径掩盖。
+- **`__costumeScreenOf` 的反解循环里几何必须提到循环外取一次**：否则上千点 × 1.5 ms = 秒级，
+  且同一轮内各点用的是不同时刻的几何，口径不一致。
+- **`gallery_ui_shots.Page` 的 port 是 CDP 调试端口**，不能用画廊服务的 8778（会 `no CDP tab`）。
+  验收探针用 9405、逐档 pin 诊断用 9411。
+- **`SNAP` 遍历 842 个 drawable 耗时数百 ms** ⇒ 取点与派发之间不能插昂贵操作（否则判据自己制造漂移）。
+- **`JSON.stringify` 丢 `undefined` 键** ⇒ 页内先归一成 `null`，Python 侧再 `.get()` 兜底。
+
+**涉及文件**：`gallery_src/index.html`（`buildCosGeo`/`_triCache`/`inTriV`/`pickGeo`/`freshGeo`/
+`costumeHitV`/`__costumeHitAllV`/`__costumeScreenOf`/`onDown`/`onUp`）、
+`scripts/diag/l2d_hotzone_reachability.py`、`scripts/diag/l2d_costume_hotzone_verify.py`、
+`scripts/diag/healthcheck_costume.py`。

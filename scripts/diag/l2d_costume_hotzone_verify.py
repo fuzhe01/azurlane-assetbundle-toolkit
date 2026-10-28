@@ -37,6 +37,24 @@ sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 
 from gallery_ui_shots import Page  # noqa: E402
 
+# 冻住姿态三件套（与 l2d_hotzone_reachability.py 的 NEUTRALIZE 同源，缺一不可）：
+#   ① `mm.groups.idle` 改成不存在的组名 —— `MotionManager.update` 里 `if(isFinished()) …
+#      startRandomMotion(groups.idle)` 会让 idle 立刻重启，`stopAllMotions()` 挡不住；
+#   ② `im.updateNaturalMovements` 置空 —— 呼吸 + 自然摆头每帧写 ParamAngle*/ParamBreath；
+#   ③ `im.physics.reset()` —— 清掉上一姿态残留速度。
+# 缺任何一个，参数效果都会被本底演化淹没（实测 ougen_8/ShoseOff 逐档差值非单调）。
+NEUTRALIZE = """(function(){var m=(window.__l2ModelRef&&window.__l2ModelRef())||null; if(!m) return 'NO_MODEL';
+  var im=m.internalModel, mm=im&&im.motionManager, done=[];
+  if(mm&&mm.groups){ if(!mm.__idleBak) mm.__idleBak=mm.groups.idle;
+    mm.groups.idle='__hz_frozen__'; done.push('idleOff:'+mm.__idleBak); }
+  try{ if(mm){ mm.queueManager.stopAllMotions(); mm.state.reset&&mm.state.reset(); } done.push('mot'); }catch(e){}
+  if(typeof im.updateNaturalMovements==='function'){
+    im.updateNaturalMovements=function(){}; done.push('breath'); }
+  if(im.physics&&typeof im.physics.reset==='function'){ try{ im.physics.reset(); done.push('physReset'); }
+    catch(e){} }
+  return done.join(',');})()
+"""
+
 KEY = sys.argv[1] if len(sys.argv) > 1 else 'ougen_8'
 PID = sys.argv[2] if len(sys.argv) > 2 else 'ShoseOff'
 # ⚠️ URL 必须带 `#gallery_v2`：`Page` 类靠标签页 URL 匹配（要求含 gallery_v2），给裸路径会 no CDP tab。
@@ -304,7 +322,31 @@ def main():
         if not hn or hn.get('id') != PID:
             print('[FAIL] 屏幕点没落到目标热区（命中 %s）' % (hn or {}).get('id')); return 1
 
+        # 🔴 SNAP **必须先取**（2026-10-28 实测，假红来源）：SNAP 遍历 842 个 drawable，实测耗时数百 ms。
+        #    旧序「确认命中 → snapA → 派发点击」里，取点与真正点击之间隔了这段时间，而 ougen_8 的鞋部件
+        #    nVis=1、面积仅 6.47（V 空间），idle 的呼吸/物理在这一间歇里已把它挪出该屏幕点
+        #    ⇒ onUp 里 `costumeHitAt` 返回 null ⇒ `costumeToggle` 根本没被调用（`pin` 恒 null、
+        #    参数 0→0），而画面差异仍有几十个 drawable（idle 本底演化），看起来像"点了没效果"。
+        #    实测同一点：`__costumeScreenOf` 给出 n=104 命中点，**紧接着**一次 `__costumeHit` 就返回 None。
+        #    ⇒ 取完快照后，派发前必须再验一次命中，且这一步要紧贴点击。
         snapA = pg.ev(SNAP)
+        hn2 = None
+        for attempt in range(6):
+            hn2 = json.loads(pg.ev("JSON.stringify(window.__costumeHit(%d,%d))" % (cx, cy))
+                             or 'null')
+            if hn2 and hn2.get('id') == PID:
+                break
+            print('   [retry %d] 派发前复核命中 %s，重新取点' % (attempt + 1, (hn2 or {}).get('id')))
+            time.sleep(0.5)
+            sc = json.loads(pg.ev("JSON.stringify(window.__costumeScreenOf(%s))"
+                                 % json.dumps(PID)) or 'null')
+            if not sc:
+                break
+            cx, cy = sc['cx'], sc['cy']
+            snapA = pg.ev(SNAP)
+        if not hn2 or hn2.get('id') != PID:
+            print('[FAIL] 派发前复核未命中目标热区（命中 %s）' % (hn2 or {}).get('id')); return 1
+
         # 真实输入派发（pointerdown + pointerup，位移 0 才算点击；onUp 里 moved>=6 会当成拖拽）
         for typ in ('mousePressed', 'mouseReleased'):
             pg.cmd('Input.dispatchMouseEvent', {'type': typ, 'x': cx, 'y': cy,
@@ -472,6 +514,26 @@ def main():
             print('   ⚠️ 该参数不在 STATE_TOGGLES 里（本模型无同名状态机条目）⇒ 让渡不适用，'
                   '未让渡态也不会被 _on 覆盖，④ 的 pins 对比可以照常做')
         pg.require_frames(1.0)
+
+        # ---------- ④ 的前置：**冻住姿态**（2026-10-28 新增，缺了必然假红）----------
+        # 判据 ④ 要比「pin 在 lo」与「pin 在 hi」两份顶点快照的差集，并要求差集与
+        # param_drawables 声明的驱动件有交集。问题：不冻结时 idle 每帧把参数写回曲线值，
+        # 同时呼吸/物理让全身顶点逐帧漂 —— 实测（ougen_8/ShoseOff，8 档扫描）
+        # 逐档差值**完全非单调**（#697 在 want=-0.5 变 32、want=+0.25 只变 4.25），
+        # 那是漂移噪声，不是参数效果。冻结后同一扫描给出干净的 5 个真驱动件
+        # （#460 op 0→1、#461 op 1→0.428、#183/#184/#615 仅高值档参与），本底漂移 0/842。
+        # ⚠️ 只能在 ④ 之前冻：前面的 ⑤ 漂移对照**需要** idle 在跑，否则那个对照恒为 0 而失去意义。
+        print('\n④ 前置冻结姿态:', pg.ev(NEUTRALIZE))
+        time.sleep(1.2)
+        pg.require_frames(1.0)
+        # 冻结自检：连采 2 次（间隔 0.6s）确认本底真的不动，否则 ④ 的读数仍然不可信
+        fA = pg.ev(SNAP)
+        time.sleep(0.6)
+        fB = pg.ev(SNAP)
+        fdrift = json.loads(pg.ev(DIFF % (json.dumps(json.loads(fA)), json.dumps(json.loads(fB)))))
+        print('   冻结后本底漂移: %d 个 drawable' % fdrift.get('changed', -1))
+        if fdrift.get('changed', 1) > 0:
+            print('   ⚠️ 冻结没完全生效，④ 的差集里可能混有漂移：%s' % fdrift.get('idx'))
 
         # 驱动部件清单要在**两端态快照之前**取好：判据红了要能当场打印这两个部件的读数。
         driven_pre = []
