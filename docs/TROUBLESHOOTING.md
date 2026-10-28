@@ -8481,3 +8481,12 @@ pin 每帧写同值就不刷新」，并据此在产品 ticker 里补了一次 `
 
 **涉及文件**：FlClash `profiles/322576993176522752.yaml`（当前订阅 profile）、
 `config.yaml`（运行时快照，需重载才更新）、备份 `*.bak-qoder-direct-20261028`。
+**验收（2026-10-28 18:35 重载后实测，通过）**：
+- `config.yaml` mtime 跳到 18:35:43，qoder 三条规则都在（`qoder.com.cn` / `qoder.com` / `qoder.sh`）⇒ 说明规则真的进了运行时。
+- 经代理 7890 探测：`qoder.com` 200、`api2.qoder.sh` 404、`openapi.qoder.sh` 404 ⇒ **TLS 不再被掐**（此前全为 `000`）。
+- 中继 `qoder/dfmodel` 探针 **200**，返回 `"content": "ok"`。
+
+⚠️ **首包等待变长了：68.7 秒**。qoder 要先建连+排队+思考才吐第一个 token，
+而 `QoderAdapter` 的首包超时是 `DSH_QODER_SSE_FIRST_TOKEN_TIMEOUT_MS`，默认 **120 秒**。
+68.7 秒虽在阈值内，但余量只有 1.7 倍 —— 网络抖动或排队时可能撞 `TRANSPORT`/超时，
+读到「用几秒没反应就失败」的现象时先看这个阈值，而不是怀疑配置没生效。
