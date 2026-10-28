@@ -3596,3 +3596,48 @@ ButtHeart1=12, ButtHeart2=1`。输出在 `motion_chain.json` v3。
 - `scripts/diag/clean_diag_profiles.py` —— profile 回收
 - `scripts/cdp_slot.py` —— 端口 + profile 分配（`chrome_<tag>_<pid>`，每进程唯一）
 - `AGENTS.md`「脚本约定」、`docs/TROUBLESHOOTING.md §159`
+
+## WF-50 截图取证：把「看图」变成「读指标」（2026-10-28 事故后定为默认流程）
+
+**为什么**：图片进上下文是**按轮重发**的，代价 ≈ 体积 × 剩余轮数。2026-10-28 一张 1.7 MB PNG
+把会话推到 213 万 token 后中断（详见 `docs/TROUBLESHOOTING.md §160`）。所以"截图 → 直接看图"
+必须改成"截图 → 算指标 → 只在指标答不出时才看压缩图"。
+
+**判据（按顺序过，前一步能答就不进下一步）**
+
+| 步 | 问题类型 | 命令 | 判据 |
+|---|---|---|---|
+| 1 | 布局/空白/黑底/大致配色 | `shot_budget.py <img> --text-only` | 看 3×3 分块 alpha 覆盖率与平均色：`a=0.00` 的块是空的，`#000000/a=1.00` 是黑底 |
+| 2 | 改前改后是否真的变了、变在哪 | `shot_budget.py <after> --diff <before> --text-only` | `变化 0.00%` = 没变；包围盒告诉你只动了哪一块 |
+| 3 | 逐像素级断言（某部件像素数、颜色阈值） | 直接写脚本算，**不要看图** | 输出数字 |
+| 4 | 以上都答不出（形状怪、遮挡关系、字体渲染） | 先 `--crop` 关键区域，再 `--max-kb 200 --max-edge 1024`，**只把压缩图送进上下文** | 一张一次；看完当场把结论写进 `docs/` |
+
+**标准动作**
+
+```powershell
+# 只取结论（零图片进上下文）
+py -3 scripts/diag/shot_budget.py .diag/uishots/after_3_painting.png --text-only
+
+# 两版对比（零图片进上下文）
+py -3 scripts/diag/shot_budget.py after.png --diff before.png --text-only
+
+# 必须人眼看：先裁关键区域（相对比例！），再压到预算
+py -3 scripts/diag/shot_budget.py shot.png --crop 0.35,0.05,0.75,0.45
+py -3 scripts/diag/shot_budget.py shot.crop.png --max-kb 200 --max-edge 1024
+
+# 收尾体检：列出所有超预算图（退出码即结论）
+py -3 scripts/diag/shot_budget.py --audit .diag --max-kb 200
+```
+
+**踩坑记录**
+- **`--crop` 用相对比例不用像素**：同一处 UI 在 2560 宽和 1400 宽窗口里像素坐标不同，比例才可复用。
+- **`alpha 全 255` 不等于"全透明"**：三态要分清——满幅不透明 / 部分透明（给包围盒）/ 全透明。
+  早期版本把满幅当成"无包围盒"打印成"全透明"，直接误导判定（已修）。
+- **别用 JPEG 换 PNG 来省体积**：UI 截图（大面积纯色 + 文字边缘）JPEG 压不到 PNG 的 1/5，
+  还引入块状伪影让"颜色对不对"失真。正解是**降分辨率 + 裁区域**。
+- **"少截几张"不是解**：数量不是主因，单张体积 × 剩余轮数才是；一张 1.7 MB 顶十张 100 KB。
+- **多张需求做拼图**（`make_review_sheet.py` / `make_pair_sheet.py`），一张顶多张。
+- **看完图立刻收尾**：结论当场写进 `docs/`，长取证任务建议看完就另起新对话——别把图留在上下文里当备忘。
+
+**涉及文件**：`scripts/diag/shot_budget.py`、`AGENTS.md`「看图预算」、
+`docs/TROUBLESHOOTING.md §160`、`.agents/skills/headless-chrome-cdp-batch-export`。

@@ -1,7 +1,7 @@
 ---
 name: headless-chrome-cdp-batch-export
 description: 无头 Chrome + CDP 批量驱动本地网页完成渲染/截图/资产导出。当任务需要用浏览器前端运行时（如 Spine/WebGL/Canvas/JS 库）批量产出图片或数据文件时使用——触发词：无头浏览器批量导出、CDP 驱动网页、headless chrome 批量截图、浏览器渲染落盘、autostart 参数自动化。不适用于单次网页截图和 QwenWork 内置媒体生成工具。
-version: 1.8.6
+version: 1.8.7
 ---
 
 # 无头 Chrome + CDP 批量导出
@@ -519,6 +519,22 @@ version: 1.8.6
     （ManagedWebGLRenderingContext/SceneRenderer/SkeletonBinary/SkeletonJson/TextureAtlas/
     AtlasAttachmentLoader/GLTexture/Skeleton/AnimationState）。真实渲染回归留待装真 Chrome 或 CDP
     环境就绪（验证脚本先备好）。详见 docs/TROUBLESHOOTING.md §122 与 docs/WORKFLOWS.md WF-36。
+
+47. **截图产物不得直接进上下文：图片按轮重发，一张大图能顶掉整个会话（2026-10-28 事故）**：
+    一张 1.7 MB 的 PNG 把会话推到 213 万 token 后中断，占总量 76%。机制是**图片进入上下文后每一轮都会
+    重发**，代价 ≈ 体积 × 剩余轮数——所以"当时看着还行"和"后来炸了"能同时成立。而 headless 截一张
+    2560×1600 整屏 PNG 实测 0.9~1.8 MB（本项目 `.diag/uishots` 15 张里 16 张 >200 KB，最大 1.77 MB）。
+    ⇒ **默认不看图，先读指标**：`shot_budget.py <img> --text-only` 给出尺寸/体积 + 3×3 分块平均色与
+    alpha 覆盖率 + 非透明包围盒，足够回答"是不是黑底 / 这块空不空 / 大致配色"；两版对比用
+    `--diff <baseline>` 拿"变化像素占比 + 变化包围盒 + 平均色差"（`0.00%` 就是没变），
+    比肉眼比对缩略图可靠。**必须人眼看时**：先 `--crop x0,y0,x1,y1`（**相对比例**，像素坐标跨分辨率
+    不复用）裁关键区域，再 `--max-kb 200 --max-edge 1024` 压（实测 1770 KB → 178 KB，判定力不减），
+    **只把压缩图送进上下文，原图永不进**；一次一张，多张需求做拼图（`make_review_sheet.py`）；
+    看完当场把结论写进 `docs/`，不要留图当备忘。**别用 JPEG 换 PNG 省体积**：UI 截图（大面积纯色 +
+    文字边缘）JPEG 压不到 PNG 的 1/5，还引入块状伪影让"颜色对不对"失真——正解是降分辨率 + 裁区域。
+    "少截几张"也不是解：数量不是主因，单张体积 × 剩余轮数才是。收尾体检
+    `shot_budget.py --audit .diag --max-kb 200`（退出码即结论）。实现与踩坑见
+    `scripts/diag/shot_budget.py`、`AGENTS.md`「看图预算」、`docs/TROUBLESHOOTING.md §160`、WF-50。
 
 
 ## 验证
