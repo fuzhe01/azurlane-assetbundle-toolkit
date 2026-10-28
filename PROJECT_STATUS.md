@@ -204,16 +204,8 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 
 ### 既有待办
 
-**✅ 0. 2026-10-27 收官轮改动已全部提交**（`b3adae9` 文档与技能 / 本条提交 管线与探针）：`extract_motions.py` 段类型三段式 + `Meta.FadeInTime` 真根因、`scripts/diag/**` 118 个入库探针（含 `vanish_can_page.html` 页面正本）、WF-45、§151/§153/§154、三个 `SKILL.md`。
-⚠️ **页面正本必须留在 `scripts/diag/`**：`Output/` 被 `.gitignore` 整体忽略，正本放那儿会随清盘静默消失，`vanish_can.py` 便拿旧扫描器跑出假绿灯；判据工具依赖的资产一律入库。
-验证（均可复现）：`deploy_gallery.py --check` 6/6 同 inode 漂移 0 ｜ `check_diag_hygiene` PASS ｜ `check_env` PASS ｜ `py_compile` 11 脚本 0 ｜ `l2d_group_cmp --files` prod vs E **367/367** ｜ `vanish_can` 实跑生产 `mail`（`durSrc=motion` / `dur=4.817` / `frames=144`，闸门 pass exit 0）。
-未做（别当成已完成）：`.diag` 78 个 chrome profile / 6.83 GiB 未删（`clean_diag_profiles.py --yes` 未执行）；残留无头 Edge 进程未终止。
-
-**✅ 0b. 2026-10-27 探针清单体检：三处「尺子坏了」已修 + 全库执行**（先查验收工具本身；此前"已通过"的部分结论不可采信）。细节见 `TROUBLESHOOTING.md` **§156** / 流程 **WF-46**：
-① 清理器**报成功却没杀**（`taskkill /T /F /PID` 对 Edge 无效，实测 rc=128 而 16~20 进程全活）⇒ `chrome_tree.py` 判据改为**按自己的 profile 回读**；
-② 探针写 `window.l2State` 而页面用 `let` 声明（`l2d_coord_forensics.py` **恒 exit 3**）⇒ 改 `typeof`；
-③ 加载预算按单跑拍（`interact_verify` 40s，连跑 5 模型超时）⇒ 抬到 100s。附带 `gallery_ui_shots` 默认截不存在的 `index_b.html` ⇒ 改只截 `index.html`。
-**全库执行**（320 个探针）：缺 `install()` **40→0** ｜ 预算 <100s **5→0** ｜ 45 文件 `py_compile` 全 0 ｜ 抽样实跑正常退出后浏览器残留 **0**。⚠️ **顺带查出、本轮未改**（勿与本轮三形态混改）：**24 个探针把 `CHROME` 写死成本机不存在的 `Google/Chrome`**（本机只有 Edge）⇒ 起不来；正解是 `scripts/paths.py` 的 `CHROME`（含 Edge 兜底）。
+**✅ 0 / 0b. 2026-10-27 收官轮改动已全部提交 + 探针清单体检三处「尺子坏了」已修** —— 逐字外迁 `docs/archive/PROJECT_STATUS_待办0-0b_逐字外迁_2026-10-28.md`（A31 段）。
+⚠️ 其中两条仍是活口：① `.diag` 78 个 chrome profile / 6.83 GiB 未删（`clean_diag_profiles.py --yes` 未执行）；② **24 个探针把 `CHROME` 写死成本机不存在的 `Google/Chrome`**（本机只有 Edge）⇒ 起不来，正解是 `scripts/paths.py` 的 `CHROME`（含 Edge 兜底）。
 
 **⏳ 0c. 用户四条互动区需求（2026-10-28 提出，需求①已定性、修复方案待拍板；②③④未开始）**
 - **① `ougen_8` 少一只鞋 / 左脚左腿消失** —— **已定性完（§163 / WF-53）**：素材侧缺省关闭（16 件由 `Param233` 控制、`def=0`、idle/idle9 各 220 帧全 0），**不是渲染丢件**。修复三选待用户拍板：(a) `Param233` 加进 `costume_params.json` + `param_drawables.json`（16 件）让面板可控；(b) 加载 ougen_8 时默认 pin `Param233=1`；(c) `ShoseOff` 的 `costumeToggle` 联动 `Param233`。⚠️ 两者是**独立**参数（`ShoseOff +1` 走交叉淡化、不碰 `Param233`），语义边界须先定。
