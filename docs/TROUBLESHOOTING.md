@@ -8186,6 +8186,131 @@ pin 每帧写同值就不刷新」，并据此在产品 ticker 里补了一次 `
 
 **当前状态**：产品仍是 HEAD 的「面积最小者胜」。这一条记为**已知缺口、未修**。
 
+### §158 续三：`__costumeScreenOf` 改为「区域内真实命中点」，解掉嵌套热区的前置阻塞（2026-10-28）
+
+**上一节留下的死结**：「改为内层优先」会让 `__costumeScreenOf` 返回的**几何中心**换主人 ⇒
+既有验收立即回归；不改优先级又救不出外层热区。**根因在出口函数的语义，不在判定规则**：
+包围盒中心**不保证落在自己的地盘里**（外层被内层抢走一块后是个「环」，环的包围盒中心恰在内层）。
+
+**修法（`gallery_src/index.html`，已完成）**：`__costumeScreenOf` 不再取包围盒中心，改为在
+网格上先扫出**该参数自己命中的像素掩码**，再用**棋盘距离变换**（两趟 O(nx·ny)）取「掩码内
+离边缘最远」的那个点；等距时取离几何中心最近者。返回 `{n, cx, cy, box, edge}`，新增 `edge`
+= 该点离热区边缘的格数（**探针应当把这个数打出来**：`edge=7~8` 说明点是区域内的，而不是擦边）。
+
+**判据**：改后 `__costumeScreenOf(id)` 的返回值用 `__costumeHit(cx,cy)` 回判**必须命中同一个 id**
+（`l2d_costume_hotzone_verify` 末行新增「经 `__costumeScreenOf` 拿到的点是真实命中点」即此条）。
+
+⚠️ **这并不等于嵌套优先级已修**：判定规则仍是「面积最小者胜」，外层在重叠区依旧点不到。
+解掉的是**前置阻塞**——现在改优先级不会再让既有验收脚本因为中心点换主人而回归。
+
+### §158 续四：探针抓 `PIXI.Container.prototype.addChild` 存模型引用 = 指向**已销毁对象**（2026-10-28）
+
+**现象**：同一份探针代码，同一页面，时红时绿。红的时候「模型没加载」「快照恒 `NO_MODEL`」。
+
+**根因**：旧写法注入 HOOK 劫持 `addChild`，命中带 `internalModel.coreModel` 的对象就记进
+`window.__l2model`。它**只在创建那一刻记一次**，换肤 / 切回绘画 / 重建舞台后 `__l2model`
+仍指向**已销毁的旧实例**——读参数不报错（对象还在内存里），但读到的值与画面无关。
+
+**修法**：产品侧提供活引用出口 `window.__l2ModelRef()`（内部读当前 `l2State`，永远指活的），
+探针一律改读它，HOOK 变量彻底弃用。改到的探针：`healthcheck_costume.py`（`MREF` 常量）、
+`l2d_costume_hotzone_verify.py`（`SNAP`/`READ` 的 `mref` 段）、`probe_costume_click_frames.py`。
+
+**判据（通用）**：凡是探针要读页面某对象，**优先找页面自己导出的只读出口**；找不到就推动加一个，
+不要用 monkey-patch 抓引用——抓到的引用没有生命周期保证。
+
+### §158 续五：`--headless=new` 的页面被判后台 ⇒ rAF 停摆（`setFocusEmulationEnabled` 治这一层）（2026-10-28）
+
+**现象**：探针里 Live2D 的 450 ms tween 实耗 2–3 s、参数 pin 要约 1.0 s 才落进 `coreModel`、
+`readUntilStable` 读到中途值判「参数值不稳定」、`core.update` 入口采样全帧同值被当成「写入被覆盖」。
+
+**根因**：`--headless=new` 下页面加载几秒后 `document.visibilityState` 变 `hidden`，
+浏览器**停掉 requestAnimationFrame**。A/B 对照（`ougen_8`，8 秒窗口）：
+
+| 做法 | 结果 |
+|---|---|
+| 不加任何保活 | rAF 推进 7 帧（≈1 fps），ticker 长期 Δ0 |
+| `--disable-renderer-backgrounding` + `--disable-backgrounding-occluded-windows` | **0 帧**，visibility 仍 hidden（无效） |
+| `Page.setWebLifecycleState('active')` | 第 1 秒仍 Δ0，只到 ≈1 fps（无效） |
+| `Emulation.setFocusEmulationEnabled(true)` | **393 帧 ≈ 49 fps，ticker 每秒精确推进 1000 ms，visibility 恒 visible** |
+
+**已落地**：`gallery_ui_shots.Page(keepalive=True)` 默认注入（`keepalive=False` 只用于阴性对照）。
+**这四条现象都是 rAF 停摆的投影，不要再归因于产品。**
+
+### §158 续六：出帧源降到**精确 1 Hz**、十一条仪器 bug 全表、`toggleState` tween 起点取错源（2026-10-28）
+
+**现象一（推翻续五的结论）**：只注入焦点仿真，页面**加载约 20 秒后**渲染器仍会失去「前台窗口」
+身份，出帧源被降到**精确 1 Hz**（`gapMax` 193 ms → 1033 ms），少数情况 rAF **完全停掉**
+（`vis=hidden`、`__rafc.n` 恒 0）。实测极简 800×600 WebGL 页（**不含任何产品代码**）：
+0–18 s 60.0 fps → 20 s 13.5 → 26 s 2.0 → 42 s 1.0，而**全程 `visibilityState=visible`、
+`hasFocus=true`** —— 两个属性都看不出问题。
+
+**这一次性推翻三条旧结论（留痕，勿再重犯）**：
+
+| 旧结论 | 翻盘判据 |
+|---|---|
+| 「`visibilityState=hidden` 是停摆的唯一成因，`setFocusEmulationEnabled` 是修法」 | 衰减期间 `hasFocus` 一直 true、`visibilityState` 一直 visible，伪造焦点完全挡不住 1 Hz |
+| 「点舰船卡触发帧率衰减」 | 极简页也会衰减，时间点与「加载后 18–23 秒」重合 ⇒ 每次点击恰好落在潜伏期尾声，是**时间巧合** |
+| 「极简页/对照页稳定 60 fps，可作排除法依据」 | 那些阴性对照只观测了 10–12 秒，**正好卡在潜伏期内** ⇒ 不能当依据 |
+
+**修法（两件事都做，缺一不可）**：
+1. `Emulation.setFocusEmulationEnabled(true)` + `Page.bringToFront`（治「被判后台」那一层）；
+2. **每 `KEEPALIVE_PERIOD`=8 s 重发 `Page.bringToFront`**（治「失去前台窗口身份」这一层）。
+   实测已衰减后调一次 → **1.5 fps 立刻回到 60.0，并持续稳定 32 秒以上不再衰减**。
+3. 再加一层兜底：**帧源解耦**。`ticker.stop()` 后自己用 `setInterval(4)` 调
+   `ticker.update(now)` 推帧，帧源不再经过浏览器 BeginFrame，节流管不到。实测同一条页面：
+   rAF 侧 0.0 fps、推帧侧 90.8 → 90.2 帧/秒持续 40 秒，`lastTime` 单调递增。
+
+**逐帧判据的前置闸**：`require_frames()` —— **只抓「帧源停摆」，不判「快不快」**。
+拿写死的 55 fps 判红时，红的是预热 + 硬件成本（1400×1000 的单帧成本 9–27 ms，本机物理上限
+36–58 fps），而停摆根本不存在。判据改为：① `n` 必须真在涨（≥ `MIN_FPS`=8，即排除 1 Hz 与停摆）；
+② 可达上限只写进 `last_gate` 供打印，**不参与判定**（`maxItv` 会被一次性长任务污染，实测 503.6 ms，
+拿它算上限会算出荒谬的 2 fps）。
+
+**十一条仪器 bug 全表**（全部真实踩过，每条都曾伪装成「产品缺陷」）：
+
+| # | 症状 | 判据 / 修法 |
+|---|---|---|
+| ① | `--headless=new` 被判后台 ⇒ `visibilityState=hidden` ⇒ rAF 停摆 | `setFocusEmulationEnabled` + `bringToFront`（续五） |
+| ② | `Page` 默认 `gpu=False` 走 SwiftShader | 对账「可见性/像素」的裸页必须 `gpu=True`（§137） |
+| ③ | `cdp_helper.open_page` **从未透传 gpu** | 改用 `gallery_ui_shots.Page(gpu=...)` |
+| ④ | 加载 18–30 秒后出帧源降到 1 Hz / 完全停掉 rAF（**零产品代码页同样发生**） | 周期 `bringToFront` + 帧源解耦（续六） |
+| ⑤ | 推帧器用累加器 `acc=step` ⇒ 430–2078 帧/秒 | 改 `due=floor((now-t0)/step)` 墙钟封顶 |
+| ⑥ | 速率在 Python 侧用墙钟算 ⇒ 往返时延被算成帧率 | 速率在**页内**用 `performance.now()` 算 |
+| ⑦ | 只推 `app.ticker` ⇒ 画面正常但 `core.update` **零调用** | 同时推 `PIXI.Ticker.shared`（`Application` 默认 `sharedTicker:false`，两者不同实例） |
+| ⑧ | 用帧率阈值判仪器 ⇒ 1400×1000 永不到 60，判据恒红 | `require_frames` 只判 `n` 在涨 |
+| ⑨ | `maxItv` 被一次性长任务污染（实测 503.6 ms） | 不参与判定，只作诊断 |
+| ⑩ | **探针自算坐标**：`getDrawableVertexPositions` 已是画布像素坐标，再套 `(Vx+cux/2)*ppu` 等于乘两遍 ⇒ 实测 `cx=152050px`（画布仅 1400 宽）点到屏幕外 | 一律改用页面出口 `__L2_SCREENOF` / `__costumeScreenOf`；⚠️ 阴性对照照样绿 ⇒ 看着像「产品点击无效」 |
+| ⑪ | `JSON.stringify` **丢弃值为 `undefined` 的键**：pins 为空时 `pin` 是 `undefined` ⇒ 行里没有该键 ⇒ `r['pin']` KeyError 崩掉 | 从页内取回的所有记录都要在**页内归一成 `null`**；Python 侧再用 `.get()` 兜底 |
+
+**现象二（真实产品缺陷，不是仪器）**：`aersasi_2` 的「墨镜关」那一次出现**视觉瞬跳**（无渐变）。
+
+**根因**：`toggleState` 的 tween 起点取 `core.getParameterValueById(id)`，它读的是
+**最后一次写入**；而 motion 的 `loadParameters` 每帧把参数拉回末态，`stateApply` 再在
+`beforeModelUpdate` 里覆盖成状态值 ⇒ 实测点击前 `raw(getParameterValueById)=0` 而
+`stateApply` 写入值 `=10`，于是关方向 tween 变成 **0→0**，看不出任何渐变。
+**渲染实际读到的值与 `getParameterValueById` 不是一回事**，这一点是本条的全部要害。
+
+**修法**：`stateApply` 每次写参数后同步记 `t._last = v`（tween 分支、重申分支、**让渡分支**
+三处都记）；`toggleState` 的 tween 起点改为**优先取 `t._last`**，取不到才退回
+`getParameterValueById`；复位循环里 `t._last=null`。
+
+**判据**：`scripts/diag/l2d_state_toggle_regress.py`（新建，专测**未让渡**条目）。
+五条判据 + 阴性对照，`aersasi_2/touch_drag1` 修前 FAIL（第 2 次点击 0 个中间值）、
+修后 PASS 且 3 连跑读数一致（30 个中间值，两端都收敛，`owned=false`）。
+
+**同轮修的两处历史接口失配**（`healthcheck_costume.py`，自 2845c68 起就没对上过，**从未跑通**）：
+`o.nDrawables` → `o.n`；`__costumeScreenOf` 返回的是**对象** `{n,cx,cy,box,edge}` 而非数组
+（旧版读 `pt[0]/pt[1]` 恒 `undefined` ⇒ `__costumeHit` 恒 null ⇒ R3 **恒 FAIL** 却没人发现）。
+修后 R1–R5 全 PASS。
+
+**通用教训**：
+1. **仪器失灵不许当结论**。报「0 差异 / 参数没变 / 点击无效」之前，先过 `require_frames()` 闸，
+   并证明仪器真的取到了数据（页内自带日志出口，如 `__costumeLog`，空了就是点击没进产品代码）。
+2. **探针不许自己复算几何**。页面已经有出口（`__L2_SCREENOF`/`__costumeScreenOf`/`__costumeHit`），
+   复算版与产品不一致就会**自证**，而且错法往往让阴性对照照样绿（第十条 bug 的特征）。
+3. **采样点要落在渲染入口**。判「参数值 vs 画面」必须挂在 `coreModel.update` **入口**，
+   不要用 `requestAnimationFrame`（①④ 会让它拿到 0–1 帧/秒）。
+
 ## §159. 无头浏览器泄漏：`atexit` / `finally` 在强杀下**全都不执行**，只能内核级兜底（2026-10-28）
 
 **问题**：诊断脚本跑完（或被中断）后，机器上累积 headless 浏览器孤儿进程，把 CPU 顶到 96%、

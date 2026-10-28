@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>glmin</title>
+<style>
+  html,body{margin:0;padding:0;overflow:hidden;background:#111}
+  canvas{position:fixed;left:0;top:0;display:block}
+</style>
+<canvas id="c"></canvas>
+<script>
+/* 极简 WebGL 页面：不含任何产品代码。
+   用途见 .diag/canvas_size_stall_ab.py —— 通过 URL 参数控制画布尺寸，
+   隔离「铺满窗口的超视口 WebGL 画布」是否会让 headless 合成器周期性卡死。
+
+   查询串：
+     ?w=800&h=600      固定尺寸（贴左上角，不铺满）
+     ?fit=1            画布尺寸 = 视口 × dpr（产品页里第二块 canvas 就是这种：2098×1558 > 1400×1000）
+     ?fit=2&ov=1.5     画布尺寸 = 视口 × dpr × 1.5（刻意超视口）
+*/
+(function () {
+  var q = {};
+  location.search.replace(/[?&]([^=&]+)=([^&]*)/g, function (_, k, v) { q[k] = v; });
+  var c = document.getElementById('c');
+  var dpr = window.devicePixelRatio || 1;
+  var w = q.w ? +q.w : 800;
+  var h = q.h ? +q.h : 600;
+  if (q.fit) {
+    var k = q.fit === '2' && q.ov ? +q.ov : 1;
+    w = Math.round(window.innerWidth * dpr * k);
+    h = Math.round(window.innerHeight * dpr * k);
+  }
+  c.width = w;
+  c.height = h;
+  c.style.width, c.style.height; // 不设 CSS 尺寸时按像素 1:1 显示
+  var gl = c.getContext('webgl2') || c.getContext('webgl');
+  window.__info = gl ? gl.getParameter(gl.VERSION) : 'NO_GL';
+  window.__size = { w: w, h: h, dpr: dpr, iw: window.innerWidth, ih: window.innerHeight };
+  window.__rafc = { n: 0, t0: performance.now(), gapMax: 0, prev: 0, stalls: 0 };
+  function loop() {
+    var now = performance.now();
+    if (window.__rafc.prev) {
+      var g = now - window.__rafc.prev;
+      if (g > window.__rafc.gapMax) window.__rafc.gapMax = g;
+      if (g > 200) window.__rafc.stalls++;
+    }
+    window.__rafc.prev = now;
+    window.__rafc.n++;
+    if (gl) {
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0.1, 0.1, 0.1, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>

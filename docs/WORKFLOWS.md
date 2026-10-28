@@ -3641,3 +3641,81 @@ py -3 scripts/diag/shot_budget.py --audit .diag --max-kb 200
 
 **涉及文件**：`scripts/diag/shot_budget.py`、`AGENTS.md`「看图预算」、
 `docs/TROUBLESHOOTING.md §160`、`.agents/skills/headless-chrome-cdp-batch-export`。
+
+## WF-51 headless/WebGL 逐帧探针的仪器体检前置（2026-10-28 实测，十一条 bug 收敛后的写法）
+
+**适用**：任何在无头浏览器里做**逐帧判据**、或断言「参数变了 / 画面没变 / 点击无效」的探针。
+本项目这类结论已被仪器 bug 骗过十余次（全表见 `docs/TROUBLESHOOTING.md §158 续六`）。
+
+### 判据（写探针前先逐条对齐，缺一条就别写判据）
+
+1. **浏览器只有一个启动出口**：`chrome_tree.launch(cmd, **popen_kw)`（WF-49）。
+2. **页面对象只用 `gallery_ui_shots.Page`**，不要 `cdp_helper.open_page`（它不透传 gpu，bug ③）。
+   对账「可见性/像素」必须 `gpu=True`；URL **必须含 `#gallery_v2`**。
+3. **先解耦帧源，再过闸**：
+   ```python
+   pg.detach_frames(60); time.sleep(3.0); pg.require_frames(2.0)
+   ```
+   `require_frames` **只抓停摆（`n` 不涨 / src=none|exc），不判快慢**。拿写死 fps 判红时，
+   红的是预热与硬件成本，不是仪器坏（bug ⑧⑨）。
+4. **采样点落在渲染入口**：判「参数值 vs 画面」挂在 `coreModel.update` **入口**，
+   不许用 `requestAnimationFrame`（bug ①④：headless 会降到 1 Hz 甚至停摆）。
+5. **模型引用只用页面出口** `window.__l2ModelRef()`，不许 monkey-patch `addChild` 抓实例（§158 续四）。
+6. **坐标只用页面出口**：`__L2_SCREENOF` / `__costumeScreenOf` / `__costumeHit`，
+   **探针不许自己复算几何**（bug ⑩：复算版会把像素坐标再乘一遍 `ppu`，实测点到 152050 px 处，
+   而阴性对照照样绿 ⇒ 结论「产品点击无效」完全是假的）。
+7. **页内归一 undefined**：所有从页内取回的记录，缺值一律在**页内**写成 `null`
+   （bug ⑪：`JSON.stringify` 丢弃 `undefined` 键，Python 侧 `r['pin']` 直接 KeyError）。
+   Python 侧仍要用 `.get()` 兜底。
+8. **必须有「仪器自证」出口**：判「点击没进产品代码」还是「产品没效果」，靠页面自己的日志
+   （如 `__costumeLog` / `__stateTogglesInfo`）——日志空 = 点击根本没进 `onUp`，
+   这不是产品缺陷。缺这个出口就无法区分两者。
+9. **阴性对照与阳性对照都要有**：阴性（点画面外应为 null）+ 阳性（已知生效的参数应产生变化）。
+   缺阳性对照时，「0 变化」无法与「快照函数坏了」区分。
+
+### 踩坑记录
+
+- **推错 ticker**：只推 `app.ticker` 时画面照常渲染、推帧计数照样报 59.9 fps（假绿灯），
+  但 `core.update` **一次都没被调用** ⇒ `render_entry_verify` 拿到「n=0 帧」，
+  被判成「产品不稳」。必须同时推 `PIXI.Ticker.shared`（bug ⑦）。
+- **用帧率阈值判仪器**：1400×1000 的 Live2D 页单帧 9–27 ms，本机物理上限 36–58 fps，
+  永不到 60 ⇒ 判据恒红。判据只能是「`n` 在涨」（bug ⑧）。
+- **`maxItv` 不可信**：会被页面加载 / 换肤这种一次性长任务污染（实测 503.6 ms），
+  拿它算可达上限会得出 2 fps 这种荒谬数字（bug ⑨）。
+- **只观测 10–12 秒的阴性对照作废**：出帧源衰减潜伏期是加载后 18–30 秒，
+  短窗口的「稳定 60 fps」结论全都不成立（§158 续六）。
+- **历史探针可能从来没跑通过**：`healthcheck_costume.py` 自 2845c68 起两处接口就对不上
+  （`o.nDrawables` vs `o.n`、`__costumeScreenOf` 返回对象却被当数组读）⇒ R3 **恒 FAIL**
+  而没人发现。**接手旧探针时先看它最近一次真实输出，不要看它是否存在。**
+
+### 涉及文件
+
+`scripts/diag/gallery_ui_shots.py`（`Page` / `detach_frames` / `require_frames` / `MIN_FPS`）、
+`scripts/diag/chrome_tree.py`、`scripts/diag/l2d_costume_hotzone_verify.py`、
+`scripts/diag/l2d_state_toggle_regress.py`、`scripts/diag/render_entry_verify.py`、
+`scripts/diag/probe_costume_click_frames.py`、`scripts/diag/healthcheck_costume.py`、
+`docs/TROUBLESHOOTING.md §158 续三~续六`。
+
+### 取证探针的落点（2026-10-28 清理后固化）
+
+本轮把 `.diag/` 顶层堆的 47 个散落探针一次清完，规则是**按"下次还要不要用"二分，不按新旧**：
+
+- **可复用的取证工具 → `scripts/diag/` 入库**（33 个，全部过了 `import` 烟测）。
+  典型：`visibility_keepalive_ab.py`（保活对照）、`frame_pump_acceptance_diag.py`（帧源三侧判据）、
+  `keepalive_acceptance_diag.py`、`throttle_rescue_matrix_diag.py`、`occlusion_throttle_diag.py`、
+  `stall_attribution_diag.py`、`gl_backend_switch_diag.py`、`headful_vs_headless_fps.py`、
+  `gpu_vs_swiftshader_ab.py`、`shoseoff_two_paths.py`、`tween_visible_at_update_diag.py`。
+- **一次性定性探针 → `check_diag_hygiene.py --archive` 打包后删**（14 个，md5 回读全过，
+  zip 在 `.diag/cleanup/orphans_<date>.zip`，unzip 回 `.diag/` 即复原）。
+- **极小对照页必须跟探针一起入库**：`glmin.html`、`glmin_size.html`、`gl_two_ctx.html`
+  现在在 `scripts/diag/`。**移动时必须同步改探针里的 URL**，本轮有 5 个探针写的是
+  `file:///D:/azur/.diag/glmin_size.html` —— 不跟着改，探针会静默地打开一个不存在的页面，
+  然后报「页面没渲染」，被误读成产品缺陷。
+- **移动后必须跑 `import` 烟测**：`sys.path.insert(0, os.path.dirname(__file__))` 在移动后
+  指的是新目录，`r'd:\azur\scripts\diag'` 那行反而稳定；用
+  `py -3 -c "import sys;sys.path.insert(0,'.');import importlib;importlib.import_module('<name>')"`
+  逐个过一遍，别只看 `ast.parse` 通过（那只验语法，不验 import 与 `__main__` 之外的模块级代码）。
+- **文档里的路径引用要一起改**：`l2d_costume_hotzone_verify.py` 的注释曾写
+  `.diag/ownership_entry_diag.py`，`cdp_helper.py` 的 docstring 引 `gpu_vs_swiftshader_ab.py`。
+  移动后不改 = 下一个会话按注释去找文件找不到。
+

@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
-description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.19
+description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**，**以及逐帧探针的仪器体检前置（§25：十一条仪器 bug、出帧源解耦、采样点挂 `coreModel.update` 入口、保活必须周期重发、坐标只许用页面出口、`stringify` 丢 undefined 键、pins 对比须先让渡）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见、逐帧探针、出帧源、1Hz 节流、fps 假绿、探针仪器坏了。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
+version: 1.10.20
 ---
 
 # Live2D 网页运行时集成
@@ -1085,3 +1085,69 @@ opacity 可能全程为 1。用顶点包围盒（`getDrawableVertexPositions` �
 
 ⚠️ headless SwiftShader 下动作时间轴可能慢于 wall-clock 回落定时器，曲线未到状态段就被抢先回落。
 探针可重播并打印 RETRY 做仪器稳定化，但不能据此断言真 GPU 用户环境也有同样低帧率缺陷。
+
+## 25. 逐帧探针的仪器体检前置：十一条仪器 bug 与六条闸门(2026-10-28，version 1.10.20）
+
+**背景**：同一轮里，逐帧验收读到"参数没到达渲染""中心点命中歪了""同一次点击一次命中一次不命中"，
+每条都被当成产品缺陷查了一遍。查完发现**其中九条是探针或帧源自己的问题**。这类错误的代价是
+"改产品越改越烂"——所以本节是**前置闸门**：判据出现红或飘，先过这一节，再怀疑产品。
+
+### 硬闸门(缺一即不可信)
+
+1. **先体检，再读结论**：任何"帧数/fps/衰减"读数前，先确认帧源当前状态
+   （是否已衰减到 1 Hz、rAF 是否还活着、`core.update` 是否真被调用）。
+   **"对照页稳定 60fps"这类断言必须写明观测时长**——本项目一轮里的十六条排除法全部建立在
+   只观测 10–12 秒的对照上，而衰减潜伏期就在那个窗口之后，整套推理的地基是错的。
+
+2. **帧源与 rAF 解耦，且速率用页内墙钟算**：不要靠 rAF 出帧。手动推帧时
+   `step=1000/fps`、`due=floor((now-t0)/step)`、掉队 >10 帧**重锚不补**、
+   `while(!(p.n>=due) && guard++<3)` 单次最多补 3 帧。
+   ⚠️ 三个必踩：① `acc+=step` 的写法会推出 430–2078 帧/秒；② 用 Python 侧墙钟算速率会把
+   CDP 往返时延算成帧率；③ **只推 `app.ticker` 会让画面正常但 `core.update` 零调用**
+   （`PIXI.Application` 默认 `sharedTicker:false`），同时推 `tk` 与 `PIXI.Ticker.shared`。
+
+3. **保活必须周期性重发**：`Emulation.setFocusEmulationEnabled` 只在一段时间内有效
+   （实测约 27–48 秒后仍掉回 1 Hz，期间 `hasFocus` 恒 true、`visibilityState` 恒 visible）。
+   要按周期重发 `Page.bringToFront`（本项目取 8 秒）。**只做一次等于没做**。
+
+4. **采样点挂在 `coreModel.update` 入口**，不要挂 `requestAnimationFrame`。
+   同一个采样器挂在 rAF 上时只拿到 0–1 帧/秒，而模型其实在正常渲染——因为出帧源已经不是 rAF 了。
+   入口打桩要带幂等保护（`if(core.__wrapped) return; core.__wrapped=1;`）。
+
+5. **模型引用必须走页面的只读出口，不要在 `PIXI.Container.prototype.addChild` 里快照**。
+   快照会指向**已销毁的旧对象**，之后所有读参数都读到冻结值，表现为"参数写不进去"。
+   正确做法是页面暴露一个每次返回当前活对象的出口（本项目 `__l2ModelRef()`）。
+
+6. **坐标只许用页面自己算出来的点，探针不许自算**：`getDrawableVertexPositions` 出来
+   已是画布像素坐标，再套一次"V→屏幕"换算等于乘两遍。实测一个自算点报 `cx=152050px`
+   （画布只有 1400 宽），而**阴性对照照样是绿的**——自算偏差不产生报错，只产生错结论。
+
+### 判据设计的三条
+
+7. **阳性与阴性必须成对**：凡"修好了"的判据，都要有一条**预期失败**的对照，
+   并验证那条对照**确实失败**。本项目每一轮"只验阳性侧"的结论后来都被推翻过。
+
+8. **`JSON.stringify` 会丢弃 `undefined` 键**：页内采集的字段在没有值时整键消失，
+   Python 侧 `row['pin']` 直接 `KeyError`。要么在页内归一成 `null`
+   （`(v===undefined?null:+v)`），要么 Python 侧一律 `.get()`。
+
+9. **判"参数写入有没有可见效果"必须在状态让渡之后比**：未让渡时状态机每帧无条件重写
+   `_on`，覆盖值到不了渲染，pins 前后必然零差异——这是**正常行为，不是缺陷**。
+   先确认 `owned=true`，再比。否则会得出"这个参数没有可见效果"的错误结论，
+   进而把装备功能当成坏的。
+
+### 一条真实产品缺陷(唯一一条真属于产品的)
+
+10. **tween 起点要取"渲染真正读到的值"，不是取参数面板读到的值**：
+    状态开关做 `0→1` / `1→0` 的过渡时，若起点读 `getParameterValueById`（最后一次写入），
+    会读到 motion 末态；而渲染实际读的是状态覆盖值。两者不一致时，关方向 tween 会
+    `0→0` 瞬间跳变。修法：维护每参数"最后写入值"记账（`t._last`），让 tween 从它起步，
+    复位循环时清空记账。**判据**：过渡窗口中采样必须出现**中间值**，
+    只看到 `{-1,0,1}` 这类端点值就说明 tween 没生效。
+
+### 诊断工具落点
+
+可复用探针放项目 `scripts/diag/`（必入库，`check_diag_hygiene.py` 会拦 `.diag/` 顶层散文件）；
+一次性取证跑完就归档清掉。极小对照页（`glmin.html` / `glmin_size.html` / `gl_two_ctx.html`）
+要跟着探针一起入库——探针以 `file:///.../scripts/diag/glmin_size.html` 引用它们，
+放 `.diag/` 会在清理时静默断链。

@@ -2,7 +2,7 @@
 """只读体检：参数型互动区 + 参数跨动作保留，当前到底能用到什么程度。
 
 用户问「分步重做如何了」，要求先别改任何文件，只报告状态。
-本脚本纯只读（只 hook addChild 拿模型引用，不改任何参数/不触发任何点击），
+本脚本纯只读（不注入任何 monkey-patch，模型引用只走页面自己的 `__l2ModelRef()`），
 逐项核对五件事，每项给 PASS/FAIL 与该看的具体数值：
 
   R1 数据层：costume_params.json / param_drawables.json 可加载，参数条数正确
@@ -27,32 +27,16 @@ sys.path.insert(0, os.path.join(ROOT, 'scripts', 'diag'))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 
 import ensure_servers  # noqa: E402
-from cdp_helper import open_page  # noqa: E402
+from gallery_ui_shots import Page  # noqa: E402
 
 KEY = 'ougen_8'
-URL = 'http://127.0.0.1:8778/gallery_v2/index.html'
+URL = 'http://127.0.0.1:8778/gallery_v2/index.html#gallery_v2'
 
-HOOK = r"""
-(function(){
-  var tries=0;
-  function boot(){
-    if(!(window.PIXI && window.PIXI.Container)){ if(tries++<1200) setTimeout(boot,20); return; }
-    var proto=window.PIXI.Container.prototype;
-    if(proto.__dshHookHC) return;
-    proto.__dshHookHC=true;
-    var orig=proto.addChild;
-    proto.addChild=function(){
-      for(var i=0;i<arguments.length;i++){
-        var c=arguments[i];
-        try{ if(c&&c.internalModel&&c.internalModel.coreModel){
-          if(c.destroyed!==true) window.__l2model=c; } }catch(e){}
-      }
-      return orig.apply(this,arguments);
-    };
-  }
-  boot();
-})();
-"""
+# 模型活引用：只认页面自己的 `__l2ModelRef()`。
+# ⚠️ 旧版用 HOOK 抓 `PIXI.Container.prototype.addChild` 存 `window.__l2model`（2026-10-28 弃用）：
+#   HOOK 只在创建时抓一次，换肤/重建模型后指向**已销毁对象**，同一份代码时红时绿
+#   （TROUBLESHOOTING §158 续四）。`__l2ModelRef()` 内部读当前 `l2State`，永远指活的。
+MREF = "(window.__l2ModelRef&&window.__l2ModelRef())||null"
 
 
 def main():
@@ -61,10 +45,8 @@ def main():
     if not ok:
         return 1
 
-    pg = open_page(URL, tag='hc')
+    pg = Page(9408, r'D:\azur\.diag\hc_prof', URL, (1400, 1000), gpu=True, keepalive=False)
     try:
-        pg.cmd('Page.addScriptToEvaluateOnNewDocument', {'source': HOOK})
-        pg.cmd('Page.navigate', {'url': URL})
         time.sleep(5)
         pg.ev("(function(){var b=document.querySelector('#gOpt button[data-k=login]');"
               "if(b&&(b.classList.contains('on')||b.dataset.on==='1')) b.click(); return 1;})()")
@@ -80,9 +62,12 @@ def main():
         time.sleep(1.3)
         pg.ev("""(function(){var t=[...document.querySelectorAll('#mTabs .tab')].find(function(e){
            return e.dataset.k==='live2d';}); if(t&&!t.classList.contains('dis')) t.click(); return 1;})()""")
-        time.sleep(15)
+        time.sleep(13)
+        print('解耦帧源:', pg.detach_frames(60))
+        time.sleep(3.0)
+        print('帧源闸: %.1f fps' % pg.require_frames(2.0))
 
-        if pg.ev("(typeof window.__l2play==='function'&&!!window.__l2model)?1:0") != 1:
+        if pg.ev("(typeof window.__l2play==='function'&&(window.__l2ModelRef&&window.__l2ModelRef()))?1:0") != 1:
             print('!! Live2D 未就绪')
             return 1
 
@@ -115,9 +100,15 @@ def main():
           try{
             var b = window.__costumeBoxes? window.__costumeBoxes() : null;
             if(!b) return JSON.stringify({hasFn:false});
+            /* ⚠️ 字段名是 `n`（驱动 drawable 数）与 `box`（V 空间包围盒），不是
+               `nDrawables`/`w`/`h`。旧版读 o.nDrawables / o.w / o.h 全是 undefined
+               ⇒ 每行打印 "=undefined"，且 R2 逐行取 row['nDrv'] 直接 KeyError 崩掉
+               （2026-10-28 修：这套字段名从 2845c68 起就没对上，一直没跑通过）。 */
             return JSON.stringify({hasFn:true, n:b.length,
-              rows: b.map(function(o){ return {id:o.id, nDrv:o.nDrawables,
-                          w:Math.round(o.w||0), h:Math.round(o.h||0)}; })});
+              rows: b.map(function(o){ var g=o.box||{};
+                          return {id:o.id, nDrv:o.n,
+                                  w:Math.round((g.x1||0)-(g.x0||0)),
+                                  h:Math.round((g.y1||0)-(g.y0||0))}; })});
           }catch(e){ return JSON.stringify({err:String(e)}); }
         })()""")
         d2 = json.loads(r2)
@@ -138,9 +129,13 @@ def main():
             var want = 'ShoseOff';
             var pt = window.__costumeScreenOf? window.__costumeScreenOf(want) : null;
             if(!pt) return JSON.stringify({ok:false, why:'__costumeScreenOf 返回空'});
-            var hit = window.__costumeHit? window.__costumeHit(pt[0], pt[1]) : null;
-            return JSON.stringify({ok:true, pt:pt, hitId: hit? hit.id : null,
-                                   hitDrv: hit? hit.nDrawables : null});
+            /* ⚠️ 返回值是**对象** {n,cx,cy,box,edge}，不是数组（旧版按 pt[0]/pt[1] 取点，
+               拿到 undefined ⇒ __costumeHit(undefined,undefined) 恒 null ⇒ R3 恒 FAIL，
+               同样是 2845c68 起就没对上的接口）。 */
+            var hit = window.__costumeHit? window.__costumeHit(pt.cx, pt.cy) : null;
+            return JSON.stringify({ok:true, pt:[pt.cx, pt.cy], edge:pt.edge, nPix:pt.n,
+                                   hitId: hit? hit.id : null,
+                                   hitDrv: hit? hit.n : null});
           }catch(e){ return JSON.stringify({ok:false, err:String(e)}); }
         })()""")
         d3 = json.loads(r3)
@@ -150,12 +145,14 @@ def main():
         print('\n' + '=' * 72)
         print('R4 写入效果（toggle 后读 coreModel）')
         print('=' * 72)
-        before = pg.ev("""(function(){var m=window.__l2model,cm=m.internalModel.coreModel;
-          try{return cm.getParameterValueById('ShoseOff');}catch(e){return 'ERR';}})()""")
+        before = pg.ev("""(function(){var m=%s; if(!m) return 'ERR';
+          var cm=m.internalModel.coreModel;
+          try{return cm.getParameterValueById('ShoseOff');}catch(e){return 'ERR';}})()""" % MREF)
         pg.ev("(function(){try{return window.__costumeToggle('ShoseOff');}catch(e){return 'E';}})()")
         time.sleep(1.2)
-        after = pg.ev("""(function(){var m=window.__l2model,cm=m.internalModel.coreModel;
-          try{return cm.getParameterValueById('ShoseOff');}catch(e){return 'ERR';}})()""")
+        after = pg.ev("""(function(){var m=%s; if(!m) return 'ERR';
+          var cm=m.internalModel.coreModel;
+          try{return cm.getParameterValueById('ShoseOff');}catch(e){return 'ERR';}})()""" % MREF)
         print('  toggle 前 ShoseOff =', before)
         print('  toggle 后 ShoseOff =', after)
         changed = (isinstance(before, (int, float)) and isinstance(after, (int, float))
@@ -170,8 +167,10 @@ def main():
         print('  当前 pins        :', pins)
         pg.ev("(function(){try{window.__l2play('touch_idle14',3);}catch(e){}return 1;})()")
         time.sleep(5.0)
-        mid = pg.ev("""(function(){var m=window.__l2model,cm=m.internalModel.coreModel;
-          try{return cm.getParameterValueById('ShoseOff');}catch(e){return 'ERR';}})()""")
+        pg.require_frames(1.0)
+        mid = pg.ev("""(function(){var m=%s; if(!m) return 'ERR';
+          var cm=m.internalModel.coreModel;
+          try{return cm.getParameterValueById('ShoseOff');}catch(e){return 'ERR';}})()""" % MREF)
         print('  播动作后 ShoseOff =', mid)
         pinv = json.loads(pins) if pins and pins != 'null' else {}
         kept = (isinstance(mid, (int, float)) and 'ShoseOff' in pinv

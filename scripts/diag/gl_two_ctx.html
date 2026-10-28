@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>gl2c</title>
+<style>html,body{margin:0;padding:0;overflow:hidden;background:#111}
+canvas{position:absolute;left:0;top:0}</style>
+<!-- 两块 WebGL 画布，尺寸刻意照抄产品页（986x627 与 2098x1492），
+     但**不含任何产品代码**。目的：验证「同页两个同时逐帧绘制的 WebGL 上下文」
+     是否会在 headless 下把帧率打到 1fps。
+     查询串：?c=1 只开第一块；?c=2 两块都开（默认）。 -->
+<canvas id="a" width="986" height="627"></canvas>
+<canvas id="b" width="2098" height="1492" style="opacity:.001"></canvas>
+<script>
+(function () {
+  var q = {};
+  location.search.replace(/[?&]([^=&]+)=([^&]*)/g, function (_, k, v) { q[k] = v; });
+  var n = q.c ? +q.c : 2;
+  var ctxs = [];
+  ['a', 'b'].forEach(function (id, i) {
+    if (i >= n) return;
+    var c = document.getElementById(id);
+    var gl = c.getContext('webgl2') || c.getContext('webgl');
+    if (gl) ctxs.push({ c: c, gl: gl });
+  });
+  window.__nCtx = ctxs.length;
+  window.__rafc = { n: 0, t0: performance.now(), gapMax: 0, prev: 0, stalls: 0 };
+  function loop() {
+    var now = performance.now();
+    if (window.__rafc.prev) {
+      var g = now - window.__rafc.prev;
+      if (g > window.__rafc.gapMax) window.__rafc.gapMax = g;
+      if (g > 200) window.__rafc.stalls++;
+    }
+    window.__rafc.prev = now;
+    window.__rafc.n++;
+    ctxs.forEach(function (o) {
+      var gl = o.gl;
+      gl.viewport(0, 0, o.c.width, o.c.height);
+      gl.clearColor(0.1, 0.1, 0.1, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    });
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
