@@ -8486,7 +8486,8 @@ pin 每帧写同值就不刷新」，并据此在产品 ticker 里补了一次 `
 - 经代理 7890 探测：`qoder.com` 200、`api2.qoder.sh` 404、`openapi.qoder.sh` 404 ⇒ **TLS 不再被掐**（此前全为 `000`）。
 - 中继 `qoder/dfmodel` 探针 **200**，返回 `"content": "ok"`。
 
-⚠️ **首包等待变长了：68.7 秒**。qoder 要先建连+排队+思考才吐第一个 token，
-而 `QoderAdapter` 的首包超时是 `DSH_QODER_SSE_FIRST_TOKEN_TIMEOUT_MS`，默认 **120 秒**。
-68.7 秒虽在阈值内，但余量只有 1.7 倍 —— 网络抖动或排队时可能撞 `TRANSPORT`/超时，
-读到「用几秒没反应就失败」的现象时先看这个阈值，而不是怀疑配置没生效。
+⚠️ **首包等待变长了：两次探针 68.7 秒 / 103.0 秒**（都成功）。qoder 要先建连+排队+思考
+才吐第一个 token，而 `QoderAdapter` 的首包超时是 `DSH_QODER_SSE_FIRST_TOKEN_TIMEOUT_MS`，
+默认 **120 秒** —— 103 秒那次余量只剩 1.17 倍，**极易在排队高峰撞超时**。
+⇒ 判据：看到「等了一两分钟没反应然后失败」，先查是不是这个阈值，而不是怀疑配置没生效；
+需要时可把 `DSH_QODER_SSE_FIRST_TOKEN_TIMEOUT_MS` 调大后重启 DSH。
