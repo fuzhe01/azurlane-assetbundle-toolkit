@@ -65,7 +65,7 @@ PROJECT_STATUS.md 各部分进度使用以下格式：
 - 大批量操作（>1000 文件）先小规模测试
 - **全量运行前必须确认**：修改脚本后，先用 1-3 个样本测试，将结果展示给用户确认正确后，再执行全量运行。未经用户确认不得全量运行。
 - 🔴 **任何启动无头/有头浏览器的脚本，启动必须走 `chrome_tree.launch(cmd, **popen_kw)`，不许自己写 `subprocess.Popen`。**
-  `finally` 和 `atexit` 在**强杀下都不执行**（实测：正常退出 / `sys.exit()` → atexit 跑；`Stop-Process -Force` / `taskkill /F` → atexit **不跑**，Chrome 整棵树 18 个进程全存活）。宿主超时强杀 python 的那一刻，脚本里写得再规范的 `finally: kill_tree()` 都等于没写。所以兜底必须是**进程外/内核级**的，`launch()` 一次做齐三层：
+  `finally` 和 `atexit` 在**强杀下都不执行**（实测：正常退出 / `sys.exit()` → atexit 跑；`Stop-Process -Force` / `taskkill /F` → atexit **不跑**，Chrome 整棵树 18 个进程全存活）。被强杀的那一刻，脚本里写得再规范的 `finally: kill_tree()` 都等于没写。⚠️ **强杀的来源不是宿主超时**（实测 `initial_wait` 到点只转后台、不杀进程，909 秒前台命令也能正常 exit 0），而是会话关闭时附着的后台命令被终止、或外部 `Stop-Process`。所以兜底必须是**进程外/内核级**的，`launch()` 一次做齐三层：
   - **A Job Object**：`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`，父进程一死内核自动杀光 job 内所有进程（含 Chromium 重新孵化的主进程，靠启动窗口内的 daemon 线程补 assign）。
   - **B 启动前清理**：按 `--user-data-dir` **精确**匹配清掉上一轮残留。除了防泄漏，还防「Chrome 复用旧实例并忽略你新传的 URL」这个假绿灯。
   - **C 收尾**：`atexit` 整树清理 + profile 回读确认（判据落回读，不落 `taskkill` 退出码——`taskkill /T` 在 Edge 上是假绿灯）。
