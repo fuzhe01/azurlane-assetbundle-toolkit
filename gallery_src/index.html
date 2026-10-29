@@ -1874,7 +1874,7 @@ async function renderLive2D(s, sk){
            cm.setParameterValueById('ParamEyeBallY', -eyeT.y); }catch(e){} },
       null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
     const bar=document.getElementById('l2bar');
-    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2SeqAll" title="从当前组开始逐个播完全部动作，每组约 6 秒（305 组约半小时一轮）；再点一次或手动选动作即停">▶ 全部</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
+    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2SeqAll" title="从当前组开始逐个播完全部动作，每组约 6 秒（305 组约半小时一轮）；再点一次或手动选动作即停">▶ 全部</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · 拖拽=拖动互动 · <b>Ctrl+拖拽</b>平移 · <b>Ctrl+滚轮</b>缩放 · 双击复位</span>`;
     const sel=document.getElementById('l2Motion');
     const fillSel=()=>{ const cur=sel.value;
       sel.innerHTML=groups.map(g=>`<option value="${g}">${g}${voice[g]?'（语音）':''}</option>`).join('');
@@ -2644,11 +2644,20 @@ async function renderLive2D(s, sk){
             if(ix<0) continue;
             const lo=core.getParameterMinimumValue(ix), hi=core.getParameterMaximumValue(ix);
             const dflt=core.getParameterDefaultValue(ix);
-            if(it.kind==='switch'){
-              const vals=(it.vals&&it.vals.length)?it.vals:[lo,hi];
+            /* 关端 = 默认档（三态参数的正确关端）——与 `stateCurOn` / `costumeTarget` 保持一致口径。 */
+            const domOff=(typeof dflt==='number'&&isFinite(dflt)&&dflt>lo&&dflt<hi)?dflt:lo;
+            /* 🔴 三态参数在面板里也必须按「开关」呈现（2026-10-29 用户实测：拖到 -1 就掉进残缺档）。
+               `ShoseOff` 表里登记的是 `kind:'slider', lo:-1`，于是面板给了一个能滑到 -1 的滑块，
+               用户一拖就落到素材里没人用的残缺档（可见鞋件 3/15，而 0/1 档是 7/15 与 5/15）。
+               判据：值域含中间档 ⇒ 它本来就是离散档位，不是连续量 ⇒ 一律按 switch 渲染，
+               两档取「默认档 ↔ 最大值」，与点击切换完全同一语义。 */
+            const isTristate=(typeof dflt==='number'&&isFinite(dflt)&&dflt>lo&&dflt<hi);
+            if(it.kind==='switch' || isTristate){
+              const vals=isTristate?[domOff,hi]:((it.vals&&it.vals.length)?it.vals:[lo,hi]);
               const r=document.createElement('div'); r.className='prow'; r.dataset.nm=it.id.toLowerCase();
               const n=document.createElement('span'); n.className='nm';
-              n.title=it.id+(it.label?'（'+it.label+'）':''); n.textContent=it.id;
+              n.title=it.id+(it.label?'（'+it.label+'）':'')+(isTristate?'　三态参数，只用默认档与最大档':'');
+              n.textContent=it.id;
               const b=document.createElement('button'); b.style.width='auto'; b.style.padding='0 6px';
               const cur=()=>{ try{ return +core.getParameterValueById(it.id); }catch(e){ return lo; } };
               const paint=()=>{ b.textContent=String(cur()); };
@@ -3010,7 +3019,9 @@ async function renderLive2D(s, sk){
       const pill=document.getElementById('l2Hit');
       if(pill) pill.textContent=(t.label||t.id)+' ▸ '+v.toFixed(1); };
     const sliderEnd=t=>{ if(t&&t._sl){ t._sl=null; } };
-    let dragging=false,px=0,py=0,moved=0,stateDown=null,cosDown=null;   // dragPart/dragReturn 已随 Ctrl+拖拽一并移除
+    /* `panMode`：本次拖动是「平移画面」还是「拖动互动」，在 pointerdown 那一刻由修饰键定死。
+       裸左键拖 = 拖动互动；Ctrl/⌘+左键拖 = 平移画面（与「裸滚轮滚页面 / Ctrl+滚轮缩放」对称）。 */
+    let dragging=false,px=0,py=0,moved=0,stateDown=null,cosDown=null,panMode=false;
     const localHit=(cx,cy)=>{ const r=wrap.getBoundingClientRect();
       const lp=mdl.toLocal(new PIXI.Point(cx-r.left, cy-r.top));
       const pv=P2V(lp.x/ppu, lp.y/ppu); return hitAt(pv.x, pv.y); };
@@ -3031,30 +3042,48 @@ async function renderLive2D(s, sk){
       if(!ds.length) return null;
       return ds[(k-1)%ds.length]; };
     const onDown=e=>{ if(e.button!==0) return; moved=0; px=e.clientX; py=e.clientY;
-      /* 普通左键拖拽 = 平移画布。
-         ⚠️ 2026-10-23：已按用户要求**移除「Ctrl+拖拽触发互动区」**这套设置
-         （原先 Ctrl/⌘+左键会播 touch_dragN 并强制 loop，松手回落）。
-         现在 Ctrl+左键与普通左键行为一致（都是平移），互动一律走**点击**；
-         Ctrl/⌘+滚轮缩放保留不动（见下方 onWheel）。
-         说明：拖拽类动作组（touch_drag*）仍可通过「动作」下拉或参数面板的互动区按钮触发。 */
+      /* ── 拖拽语义（2026-10-29 用户定案，推翻 2026-10-23 的旧决定）──
+         旧行为：裸左键拖 = 平移画面，Ctrl+左键也 = 平移画面，互动只能靠点击。
+         新行为（用户原文）：「鼠标拖动默认为移动画面，应该设置 ctrl+鼠标拖动来移动画面，
+         单独鼠标拖动为拖动互动」⇒
+             裸左键拖 → **拖动互动**（命中判定区/装扮热区就执行，见 onMove/onUp）
+             Ctrl/⌘+左键拖 → **平移画面**
+         与滚轮一致（裸滚轮留给页面滚动、Ctrl+滚轮才缩放），两种输入用同一套修饰键语义。
+         ⚠️ 因此 `panMode` 决定 onMove 是平移还是走互动，onUp 也据此分流。 */
+      panMode=!!(e.ctrlKey||e.metaKey);
       dragging=true;
       /* 装扮热区在**按下那一刻**定命中（2026-10-28）。
          为什么不能等 pointerup 再判：本页原来只在 onUp 里判，而 pointerdown→pointerup 实测
          相隔 80–160 ms，ougen_8 鞋的可见件 nVis=1、面积仅 6.47（V 空间），idle 的呼吸 + 物理
          足够把它挪出那个屏幕点 ⇒ 按下确实点在鞋上、抬起已经判不到（用户表现：点了没反应、
          时灵时不灵）。现在按下就用**当帧新鲜几何**算一次贴上，抬起按「位移 < 6 像素」直接用它,
-         与常规 UI「按下定目标、抬起执行」一致。代价：每次点击只重建一次几何（~1–2 ms）。 */
+         与常规 UI「按下定目标、抬起执行」一致。代价：每次点击只重建一次几何（~1–2 ms）。
+         ⚠️ 拖动互动同样在按下那一刻定目标：拖拽过程中几何一直在动，抬起时再判会点空。 */
       try{ cosDown=costumeHitAt(e.clientX,e.clientY,freshGeo()); }catch(err){ cosDown=null; } };
     const onMove=e=>{ if(stateDown && stateIsSlider(stateDown)){
         sliderMove(stateDown, e.clientX); moved+=Math.abs(e.clientX-px)+Math.abs(e.clientY-py);
         px=e.clientX; py=e.clientY; return; }
       if(!dragging)return; const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
-      ox+=dx; oy+=dy; px=e.clientX; py=e.clientY; clampPan(); apply(); };
-    const onUp=e=>{ const cd=cosDown; cosDown=null;
+      /* 只有 Ctrl/⌘ 按下时才平移画面；裸拖留给互动（体积参数走 slider；其它互动在 onUp 结算） */
+      if(panMode){ ox+=dx; oy+=dy; clampPan(); apply(); }
+      px=e.clientX; py=e.clientY; };
+    const onUp=e=>{ const cd=cosDown; cosDown=null; const wasPan=panMode; panMode=false;
       if(stateDown){ const st=stateDown; stateDown=null;
         if(stateIsSlider(st)){ sliderEnd(st); return; }
         toggleState(st,true); return; }
-      if(!dragging) return; dragging=false; if(moved>=6||e.button!==0){ vm.touch(); return; }
+      if(!dragging) return; dragging=false;
+      /* Ctrl 拖拽 = 平移画面，抬起时不做互动判定（位移阈值只对平移有意义） */
+      if(wasPan){ if(moved>=6) vm.touch(); return; }
+      if(e.button!==0) return;
+      /* ── 裸拖 = 拖动互动（2026-10-29）──
+         用户定案「单独鼠标拖动为拖动互动」。判据：
+           · 位移 < 6 px ⇒ 当作**点击**（沿用原有语义，不改变已验收的点击行为）
+           · 位移 ≥ 6 px ⇒ 当作**拖动**：命中动作判定区就播对应动作组；
+             命中参数热区就把该参数朝拖动方向推一档（与点击切换同一入口，避免两套状态）
+         为什么拖动不播 touch_drag* 的「按方向轮转」那套：`dragGroupOf` 只做「触控标记名→
+         同名动作组」的映射，方向信息在资产里并不存在（`TouchDragN` 只是标记，没有方向参数），
+         凭空按 dx/dy 选组只会制造用户看不懂的行为。这里只做「有同名组就播」。 */
+      const isDrag=moved>=6;
       const name=localHit(e.clientX,e.clientY);
       /* 状态切换区（§132）：点击=切状态，不播动作 */
       { const st=stateFind(name); if(st){ toggleState(st,false); return; } }
@@ -3088,9 +3117,11 @@ async function renderLive2D(s, sk){
       const g = name && (groups.includes(name) ? name
         : (groups.find(x=>x.toLowerCase()===name.toLowerCase()) || dragGroupOf(name))) || (name?null:fallbackG);
       if(!g) return;
+      /* 拖动（位移 ≥6px）与点击走同一条播放入口；`isDrag` 只用来区分文案，
+         让用户知道这次是拖出来的还是点出来的（两者都算"触发成功"）。 */
       if(play(g)){ sel.value=g; const pill=document.getElementById('l2Hit');
-        if(pill) pill.textContent=(name?'部位 '+name+' → ':'')+g; } };
-    const onCancel=()=>{ dragging=false; cosDown=null;
+        if(pill) pill.textContent=(name?'部位 '+name+' → ':'')+g+(isDrag?'（拖动）':''); } };
+    const onCancel=()=>{ dragging=false; cosDown=null; panMode=false;
       if(stateDown){ if(stateIsSlider(stateDown)) sliderEnd(stateDown); stateDown=null; } };
     /* 缩放必须按住 Ctrl(或 ⌘/Alt)：裸滚轮要留给页面滚动。
        之前裸滚轮被 preventDefault 劫持，用户浏览列表时鼠标经过模型就会一路放大到 12 倍并累积偏移，
