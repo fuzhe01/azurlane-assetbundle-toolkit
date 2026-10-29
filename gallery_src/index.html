@@ -1275,9 +1275,21 @@ const STATE_TOGGLES = {
        数据层无解（改 motion 文件会污染原素材）。
    ⚠️ 只在 pins 里**没有**该键时写入（`===undefined` 判断）：pins 挂在 window 上按模型隔离、
    会跨 renderLive2D 存活，用户手动关掉鞋再换皮肤回来应当保持关着，不能被默认档覆盖。 */
-const COSTUME_DEFAULT_ON = {
-  'ougen_8': { Param233: 1 }
-};
+/* ---------- 装扮参数「产品层默认档」（2026-10-29）----------
+   结构 {模型key: {参数id: 默认值}}。与 COSTUME 表里的 `def` **分工不同，不要合并**：
+     · `def` = moc3 自带的默认值**事实**（导出侧读出来的），面板「↺ 复位默认」用它，热区两态
+       起点也用它 ⇒ 改它等于篡改数据。
+     · 本表 = **产品决定**：只在「素材把某个部位做成缺省关闭，但游戏里玩家看得见」时才补一档。
+
+   🔴 2026-10-29 用户实测纠错：**这张表已清空**。
+   曾经写过 `{'ougen_8': {Param233: 1}}`（依据 §163 的"少一只鞋"定性），结果：
+     · idle 等动作的 `Param233` 曲线定值是 **0**，产品强行钉 1 ⇒ 与动作的默认姿态不符；
+     · 而"少一只鞋"的真根因其实是 `ShoseOff` 三态参数被钳到残缺档（见 §169），
+       与 `Param233` 无关。
+   ⇒ 装扮参数的初始态**一律以 moc3/动作为准**，不要用产品层硬钉。真要默认打开某个装扮，
+     必须先把该动作里这个参数的定值也改掉，否则就是"产品与数据互相打架"。
+   （`stateCurOn`/`costumeTarget` 已改成认默认档，三态参数不会再被钳到残缺档。） */
+const COSTUME_DEFAULT_ON = {};
 let l2State = null;
 function stopLive2D(){ if(l2State){ l2State.cancelled=true; if(l2State.off)try{l2State.off()}catch(e){}
   if(l2State.app)try{l2State.app.destroy(true,{children:true,baseTexture:true,texture:true})}catch(e){} l2State=null; } }
@@ -2599,6 +2611,13 @@ async function renderLive2D(s, sk){
         b.onclick=()=>{ s.value=def; set(+def); v.textContent=(+def).toFixed(2); };
         r.append(n,s,v,b); return r; };
       const gp=mkSec('参数 '+core.getParameterCount());
+      /* ⚠️ 这一区**全量**列出（582 条里有大量在当前姿态下不影响画面的参数）：
+         它们是模型的完整参数表，用于定位与调试。拖动大多数条目画面不会变，
+         因为该参数此刻没有驱动任何可见件（或被动作曲线每帧覆盖）。
+         真正"能看见效果"的调参入口是上面的「换装」区。标题里点明，免得用户以为坏了。
+         （实测判据：`ParamAngleX` 拖到 max，画面变化 27259 px ⇒ 参数通路本身完全正常。） */
+      { const h5=gp.previousElementSibling;
+        if(h5) h5.textContent='参数 '+core.getParameterCount()+'（调试用；多数条目在当前姿态下无可见效果）'; }
       for(let i=0;i<core.getParameterCount();i++){ const nm=idName(pids[i])||('Param'+i);
         gp.append(mkRow(nm, core.getParameterMinimumValue(i), core.getParameterMaximumValue(i), core.getParameterDefaultValue(i),
           ()=>core.getParameterValueByIndex(i), x=>core.setParameterValueByIndex(i,x))); }
@@ -2702,8 +2721,37 @@ async function renderLive2D(s, sk){
         }
       }catch(e){ /* 互动区清单失败不影响其它分区 */ }
       const gc=mkSec('部件 '+core.getPartCount());
-      for(let i=0;i<core.getPartCount();i++){ const nm=idName(cids[i])||('Part'+i);
-        gc.append(mkRow(nm, 0, 1, 1, ()=>core.getPartOpacityByIndex(i), x=>core.setPartOpacityByIndex(i,x))); }
+      /* 🔴 只列**真的挂了 drawable 的部件**（2026-10-29 用户实测反馈：拖部件没反应）。
+         原因不是渲染通路坏了（实测把 `Part34` 的 opacity 调到 0.05，画面变化 520470 px，
+         通路完全正常），而是面板把 310 个部件**全部**列了出来，其中大多数是空的：
+         实测 `ougen_8` 的 `Part406` 名下挂 **0 个** drawable —— 拖它当然毫无变化，
+         用户看到的就是"部件可调但调了没反应"。
+         ⇒ 用 `parentPartIndices` 统计每个部件实际挂了多少 drawable，只列 >0 的。
+           标题里同时给出"有内容的部件 / 全部部件"，让人一眼看出被折叠掉多少空部件。 */
+      let _partLive=0;
+      try{
+        const dis=core._model&&core._model.drawables;
+        const par=dis&&dis.parentPartIndices;
+        const pc=core.getPartCount();
+        const cnt=new Array(pc).fill(0);
+        if(par) for(let k=0;k<par.length;k++){ const p=par[k]; if(p>=0&&p<pc) cnt[p]++; }
+        for(let i=0;i<pc;i++){
+          if(!cnt[i]) continue;            /* 空部件不列 */
+          _partLive++;
+          const nm=idName(cids[i])||('Part'+i);
+          gc.append(mkRow(nm, 0, 1, 1, ()=>core.getPartOpacityByIndex(i),
+                          x=>core.setPartOpacityByIndex(i,x)));
+        }
+        gc.parentElement; /* 无操作，仅保持结构 */
+        const h5=gc.previousElementSibling;
+        if(h5) h5.textContent='部件 '+_partLive+'（有内容 / 全部 '+pc+'）';
+      }catch(e){
+        /* 拿不到 parentPartIndices 时退回原行为（全列），并显式说明，不静默降级 */
+        for(let i=0;i<core.getPartCount();i++){ const nm=idName(cids[i])||('Part'+i);
+          gc.append(mkRow(nm, 0, 1, 1, ()=>core.getPartOpacityByIndex(i), x=>core.setPartOpacityByIndex(i,x))); }
+        const h5=gc.previousElementSibling;
+        if(h5) h5.textContent='部件 '+core.getPartCount()+'（无法过滤空部件）';
+      }
       filter.oninput=()=>{ const q=filter.value.trim().toLowerCase();
         pn.querySelectorAll('.prow').forEach(r=>{ r.style.display=(!q||r.dataset.nm.includes(q))?'':'none'; }); };
     };

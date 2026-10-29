@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-29（**需求① 真根因已定位并修复**：`ShoseOff` 是三态参数（-1/0/1）被两态逻辑钳到残缺档 `-1`（0=穿鞋 7 件 / 1=脱鞋 5 件 / -1=残缺 3 件）；`stateCurOn` 因 0 到两端等距改写启动态、`costumeTarget` 用 min 当关端导致点击循环回不到 0。修后连点 4 次渲染值 `0,1,0,1`、可见鞋件 `7,5,7,7`，见 §169 / WF-57 追补二；此前：**需求② 可点击性已清点**：新增 `l2d_hotzone_clickable.py`，以屏幕像素为判据，`ougen_8` 12 条参数 10 条 ≥8px 可点，`BondEyes`/`HeartEyes` 驱动件为空按设计走面板控件，见 §168 / WF-57 追补；此前：**③④ 两条互动区需求本轮收口**：③ 定位并修掉两个真缺陷 —— 参数热区盒被 `Touch*` 点击标记撑爆（`Stock1` 85994→30.5）、参数热区无条件抢占动作判定区（改成「更具体者胜」，A/B 下 HIT 19→26 / WIRING 4→0 / 判定区中心 31/31 不变），见 §167 / WF-57 / SKILL §30；④ 逐动作验完（渲染有效值为判据，55 动作 × 12 参数 0 偏差），见 `l2d_param_retain_verify.py`；同批修掉 3 个探针假红（`plainWheelNoop` 的 `ResizeObserver→refit` 竞态、重试漏捕 WebSocket 超时、`WIRING` 未算拖拽编号轮转），**WF-16 六件套现全绿**（第 6 项环境跳过）；此前：**参数效果测量的五个仪器缺陷已逐个证死并修掉**（眨眼污染 / 绝对阈值 / 仅 ro / 基线只取一次 / 值写≠几何重算），`ougen_8` 全 12 条参数的可信映射已产出、`ParamEyeSmile` 由 0 改判 14 件，见 §166 / WF-56；**`l2d_costume_hotzone_verify.py` 最后一处红已查明是探针自身两处缺陷并已修**：取点落进 trigger 判定区 + CDP 两段式派发间隔 4.6–29.9 s，见 §164 / WF-54；修后 `ougen_8/ShoseOff` 7 PASS / 0 FAIL，`aersasi_2` 墨镜 5/5 零回归，可达率基线重标；`ougen_8` 少一只鞋定性为素材侧缺省关闭**：那 16 件由 `Param233` 统一控制、`def=0`、idle/idle9 各 220 帧全 0，仅 `touch_idle2/4/10/18` 里推到 1，见 §163 / WF-53；**热区判定改真实三角形 + 渲染序裁决 + 幽灵区第二遍**，八热区基线五满三欠、点击时序两处真实缺陷已修，见 §162 / WF-52；**逐帧探针仪器体检前置**见 WF-51 + §158 续六十一条 bug 全表；`toggleState` tween 起点取错源已修，守 `l2d_state_toggle_regress.py`；**看图预算**：截图不得直接进上下文，先 `shot_budget.py` 读指标/压缩，见 §160 / WF-50；无头浏览器生命周期改内核级兜底：Job Object + 启动前清理 + 回读确认，见 §159 / WF-49）
+> **生成时间**: 2026-10-29（**用户实测纠错两处产品层干预**：① 撤销 `COSTUME_DEFAULT_ON` 对 `Param233` 的强钉（`idle` 定值是 0，硬钉 1 与动作打架）；② 面板部件区只列有内容的 226/310，参数区标题标注调试用途 —— 通路实测正常（520470 px / 27259 px），真因是列了 84 个空部件。见 §171 / WF-57 追补四；此前：**需求② 收口：换装表现在覆盖全部 5 个模型**。旧扫描判据方向是反的（把「动作间恒定」当成无不调空间 ⇒ 装扮参数全被剔），改用运行时反查绑定后 `costume_params.json` 从 1 个模型扩到 5 个、`ougen_8` 12→13 条，5 个模型全部通过可点击性验收，见 §170 / WF-57 追补三；此前：**需求① 真根因已定位并修复**：`ShoseOff` 是三态参数（-1/0/1）被两态逻辑钳到残缺档 `-1`（0=穿鞋 7 件 / 1=脱鞋 5 件 / -1=残缺 3 件）；`stateCurOn` 因 0 到两端等距改写启动态、`costumeTarget` 用 min 当关端导致点击循环回不到 0。修后连点 4 次渲染值 `0,1,0,1`、可见鞋件 `7,5,7,7`，见 §169 / WF-57 追补二；此前：**需求② 可点击性已清点**：新增 `l2d_hotzone_clickable.py`，以屏幕像素为判据，`ougen_8` 12 条参数 10 条 ≥8px 可点，`BondEyes`/`HeartEyes` 驱动件为空按设计走面板控件，见 §168 / WF-57 追补；此前：**③④ 两条互动区需求本轮收口**：③ 定位并修掉两个真缺陷 —— 参数热区盒被 `Touch*` 点击标记撑爆（`Stock1` 85994→30.5）、参数热区无条件抢占动作判定区（改成「更具体者胜」，A/B 下 HIT 19→26 / WIRING 4→0 / 判定区中心 31/31 不变），见 §167 / WF-57 / SKILL §30；④ 逐动作验完（渲染有效值为判据，55 动作 × 12 参数 0 偏差），见 `l2d_param_retain_verify.py`；同批修掉 3 个探针假红（`plainWheelNoop` 的 `ResizeObserver→refit` 竞态、重试漏捕 WebSocket 超时、`WIRING` 未算拖拽编号轮转），**WF-16 六件套现全绿**（第 6 项环境跳过）；此前：**参数效果测量的五个仪器缺陷已逐个证死并修掉**（眨眼污染 / 绝对阈值 / 仅 ro / 基线只取一次 / 值写≠几何重算），`ougen_8` 全 12 条参数的可信映射已产出、`ParamEyeSmile` 由 0 改判 14 件，见 §166 / WF-56；**`l2d_costume_hotzone_verify.py` 最后一处红已查明是探针自身两处缺陷并已修**：取点落进 trigger 判定区 + CDP 两段式派发间隔 4.6–29.9 s，见 §164 / WF-54；修后 `ougen_8/ShoseOff` 7 PASS / 0 FAIL，`aersasi_2` 墨镜 5/5 零回归，可达率基线重标；`ougen_8` 少一只鞋定性为素材侧缺省关闭**：那 16 件由 `Param233` 统一控制、`def=0`、idle/idle9 各 220 帧全 0，仅 `touch_idle2/4/10/18` 里推到 1，见 §163 / WF-53；**热区判定改真实三角形 + 渲染序裁决 + 幽灵区第二遍**，八热区基线五满三欠、点击时序两处真实缺陷已修，见 §162 / WF-52；**逐帧探针仪器体检前置**见 WF-51 + §158 续六十一条 bug 全表；`toggleState` tween 起点取错源已修，守 `l2d_state_toggle_regress.py`；**看图预算**：截图不得直接进上下文，先 `shot_budget.py` 读指标/压缩，见 §160 / WF-50；无头浏览器生命周期改内核级兜底：Job Object + 启动前清理 + 回读确认，见 §159 / WF-49）
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python **3.15**（2026-10-23 起本机约定；UnityPy 1.25.4 无 cp315 预编译轮子，需源码编译，见 §2 Python 行）。⚠️ 本机同时装着 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（现固定 3.15），**跑之前先 `py -3 scripts/diag/check_env.py`** 确认实际解释器与依赖
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`（3.15 上必须走阿里云/腾讯云源，清华源连 sdist 都没有；需 MSVC BuildTools 编译 UnityPy + lz4）
@@ -63,7 +63,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 
 ### 2.5 Live2D 模型还原 ✅（2026-09-21 动作层重建；2026-09-22 补齐 9 个 bundle → 269 模型；2026-09-26 修 5 个贴图索引错绑）
 269/269 还原、纹理拼接正确、HitAreas 已全库补登真判定区。输出 `Output/Live2D/{舰名}/`，**4.7GB**（2026-09-24 实测，曲线补齐后从 ~3.9GB 涨上来）。脚本 `reconstruct_live2d.py` / `fix_model3.py` / `extract_motions.py`。
-> **本机重建（2026-10-20，5 样本预览线）**：新机 clone 后 Output 为空，先重建 5 个验收样本（ougen_8 / antu_2 / aersasi_2 / aersasi_3 / qiershazhi_2）——贴图/motion/HitAreas 全部重跑，`tex_completeness` 5/5 全绿、`texorder` 5/5、motion 全非空曲线。⚠️ 贴图提取曾被 archspec `..` 路径间歇 PermissionError 静默跳过（`extract_textures` 异常 continue 无日志），修复两件套：`scripts/astc_import_patch.py`（import astc_encoder 前预填 archspec 懒加载数据，避开带 `..` 的路径）+ 失败写 ERRORS.log（不再静默）。取证见 `docs/TROUBLESHOOTING.md` §131。全库 269 重跑时**必须**先接 astc_import_patch。
+> ▸ **新机 clone 后重建 5 个验收样本的步骤**已外迁：`docs/archive/PROJECT_STATUS_local-rebuild_2026-10-20.md`（原第 66 行）。
 | 指标 | 数值 |
 |---|---|
 | motion 文件 | **8154** 条（0 未引用 / 0 悬空引用；shell 仅剩 7 条资产层真为空，见下） |
@@ -83,21 +83,9 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
  > ▸ **动作完整性与目视（2026-10-20）**：5 样本动作**全量**对账通过（源 clip=磁盘=model3 引用=空曲线 0：ougen_8 55 / antu_2 104 / aersasi_2 28 / aersasi_3 82 / qiershazhi_2 36，共 305 组）。Live2D 面板新增**「▶ 全部」顺序播放按钮**（从当前组逐个播完，每组 6s，pill 显示 `组名 [i/N]`；再点/手动选/切皮肤即停）——目视验收入口。
 > ▸ **热区判定三段式（§162）、回落姿势保持（§145）** 已修，取证已外迁 `docs/archive/`。
 > ▸ **参数型互动区验收、回落双路径竞争、方案B 数据侧**三条已闭环取证已外迁：`docs/archive/PROJECT_STATUS_costume-fallback_2026-10.md`（原第 86、88、103 行）。
-> ▸ **`ougen_8` 「少一只红底高跟鞋」的 2026-10-28 定性已被 §169 推翻**（真根因是三态参数 `ShoseOff` 被两态逻辑钳到残缺档 `-1`，不是素材缺省关闭）。原文逐字保留：`docs/archive/PROJECT_STATUS_ougen8-shoe-163_2026-10-28.md`（原第 90 行）。
+> ▸ **`ougen_8` 鞋的旧定性（§163）已被 §169 推翻**（真根因是三态参数被两态逻辑钳到残缺档 `-1`，不是素材缺省关闭）；原文见 `docs/archive/`。
 > ⚠️ **动效验证必须在播放窗口内高频采样**：运行时把每条 idle 解析成 `isLoop:false`（全 269 模型一致的既有特性），idle 只播一次即回静；等 ~12s 后两次快照比对会因短 idle(5~8s) 已播完而假报 `moved=0`。
-> ✅ **动作保真裁决定稿：E 组为终态（2026-10-27，§147~§150）**。上一轮「F 更忠实 / E 过度插值」的裁决**已被推翻**，根因是当时把**官方参考导出当 `--gt` 真值**，而官方导出器本身就是「smoothstep → Linear」的有损降级版（它与我方 F 组偏差 0.289905 vs 0.294278，几乎同质）。改用 **Unity `m_StreamedClip` 每键三次多项式**作真值（`v(τ)=Aτ³+Bτ²+Cτ+D`，`τ=t−起点键`）后：
-> | 组 | 采样点 | 平均偏差 | 最大偏差 | 超 0.5 曲线 |
-> |---|---|---|---|---|
-> | **E（终态）** | 181961 | **2.68786e-07** | 3.67162e-05 | **0** |
-> | F（零切线贝塞尔→Linear） | 181961 | 0.294278 | 8.65986 | 1359 |
-> | 官方参考导出 | 181961 | 0.289905 | 8.65985 | 1353 |
-> 抽样口径：5 模型（aersasi_2/aersasi_3/antu_2/benningdun_2/ougen_8）× 25 clip × 12 曲线 × 51 点。**E 平均偏差比 F/官方小 109 万倍、0 条曲线超阈。**
-> **2026-10-27 独立复核（换 seed / 183383 采样点）**：E `3.04924e-07 / 最大 2.89303e-05 / 超阈 0`；F `0.332025 / 8.65998 / 1569`；official `0.326594 / 8.65984 / 1564` ⇒ **裁定不变，E 为终态**；F 与官方仍同质（平均偏差同量级、最大偏差差 1e-4）。命令：`py -3 scripts/diag/l2d_poly_truth_verdict.py --sample --bases=Output/_ab/E,Output/_ab/F,Output/_ab/official --models=<5 模型> --clips-per-model=25 --curves-per-clip=12`。
-> ✅ **换入状态事实更正（2026-10-27）**：`Output/Live2D/` 与 `Output/_ab/E/` **367/367 个 `motion3.json` md5 逐字节相同**（`scripts/diag/l2d_group_cmp.py --files`）⇒ **E 组早已换入生产，不需要再跑 `apply_live2d_motions.py`**。此前记录「E 组尚未换入生产 / 生产仍是旧版」是错的（`Output/Live2D/ougen_8/motion/home.motion3.json` 的 mtime 10-25 10:41 是 E 组自己的生成时间，换入是后来的硬链）。
-> **E 配方（已 367/367 `motion3.json` sha256 逐字节复现）**：`L2D_MOTION_SEGTYPE=1 L2D_MOTION_BEZIER=1 L2D_MOTION_LINEAR=0 L2D_MOTION_EMIT_CONST=1`。裁决器 `scripts/diag/l2d_poly_truth_verdict.py`；段类型混淆矩阵 `scripts/diag/l2d_segtype_confusion.py`（**它的 62.98% / 99.75% 结论作废**，同理因 `--gt` 选错）。
-> ⚠️ **判据元教训**：① 判据给出近 100% 一致率先查是否退化成恒等（段中点偏离对对称 smoothstep **恒为 0**）；② 单向判据只证明一个方向（`l2d_bezier_quantization_audit.py` 只看 L→B）；③ **基准本身也要被怀疑**——「官方参考」可能比自己的产物差 109 万倍。
-> ⚠️ **aersasi_2/ougen_8 肢体抖动（§116，进行中）**：重建版 .moc3/.physics3 与 AS 版逐字节/逐字段一致已**否证**「提取/物理数值」两条；`L2D_MOTION_EMIT_CONST=1` 换入 A/B 实测 **idle 内波形不变** ⇒ **否证**「真抖动=constant 曲线缺失」（常量曲线只在**切动作复位**轴上生效，idle 循环内部无复位）。待办：真抖动按「切换轴」CDP 目视、动作复位按「切段复位」另测；改用 `scripts/diag/l2d_jitter_probe.py`（读参数名走 `_parameterIds`）。
-> **2026-10-19 复核（审计轮）**：idle3 的肩部曲线本身就是 `-24 ↔ -0.25` 每 0.667s 交替（10 个来回），`DenseClip.curveCount=0`、meta 总段数 1611 / 257 曲线 ⇒ 是**稀疏作者关键帧**，且与 AS 版逐字段相同 ⇒ 不是提取/接线造成的。运行时 `physics=true`、`breath` 参数数 0（呼吸层已关）。无头只有 ~2fps，测不出高频观感，需游戏内同 clip 对照。
+> ✅ **动作保真定稿 = E 组**（2026-10-27，§147~§150）：平均偏差 2.68786e-07、367/367 `motion3.json` sha256 逐字节可复现。完整裁决表与独立复核已外迁：`docs/archive/PROJECT_STATUS_motion-fidelity-E_2026-10-27.md`（原第 88-100 行）。
 
 ### 2.6 Spine 动态立绘 ✅（v2 提取 + 全屏 CG 导出 + viewer 修复，2026-09-19）
 > ✅ **2026-09-29 分层改认权威清单**：每个 `Output/Spine_v2/<目录>/parts.json` 由 prefab 的
@@ -162,7 +150,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 
 **核心脚本**：`scan_assets.py`、`export_assets.py`、`export_cue_audio.py`、`reconstruct_live2d.py`/`fix_model3.py`/`extract_motions.py`(★2026-09-21 权威映射重写)/`apply_live2d_motions.py`(★临时目录→备份换入)、`compose_paintings_v2.py`(★v2)、`extract_spine_v2.py`(★v2)、`export_dependency_manifest.py`、`build_gallery_index.py`、`make_thumbs.py`、`deploy_gallery.py`(gallery_src↔Output 硬链/漂移检查)、`fetch_gallery_vendor.py`(★2026-10-18 补 spine-all.js 官方上游源; 按 vendor 台账 sha256 补齐第三方库)、`mumu_sync.py`(★2026-10-18 同步范围放开为整棵 `files/`，`ONLY_TOP=[]`，`il2cpp` 等缺了可 sync 补，见 WF-35)、`ship_name_map.py`、`scrape_wiki_fast.py`、**`run_v2_full.py`**(两阶段全量驱动)、**`update_pipeline.py`**(★2026-09-29 新增：WF-15 那条 runbook 的阶段机，一条命令跑到待确认、第二条命令签字换入，见 **WF-23**)。
 
-**可复用诊断/验证工具 `scripts/diag/`**（68 个脚本，下面只列承重的；"18 件"是长期未更新的旧计数）：`scan_faces.py`(脸洞扫描)、`make_face_cmp.py`/`make_review_sheet.py`(改前后对比图/复核总表)、`l2d_motion_audit.py`(★全量动作健康审计：空壳/错位/PartOpacity/时长，`L2D_OUT_DIR` 可审任意产物目录)、`l2d_ab.py`(★同一模型新旧 motion 的渲染级 A/B，**只在换入前构成对照**)、`l2d_diff_dirs.py`(★两个产物目录逐 clip gained/changed/lost)、`l2d_sweep.py`(★全量加载+动作内容判据扫描；**2026-09-22 重写为 Python 侧逐条 evaluate + 每 N 模型重载页面**，修掉旧版「单次 evaluate 卡第一条不返回」与「单 Chrome ~110 后 WebGL 断连」，全库 269/269 一次跑通)、`l2d_verify.py`/`l2d_click.py`(抽样与真实点击路径无头校验)、`hit_verify.py`(按部位点击触发断言，支持 `--only`；2026-09-23 起合成点击经 V2P 走**真实路径**)、`interact_verify.py`(滚轮/拖拽/兜底/空白/部位五项交互断言)、`l2d_coord_forensics.py`(★**2026-09-23 新增**：坐标系取证——可见头/胸/髋三点反查应落 Head/Special/Body，专治「张冠李戴」且不构成自洽闭环)、`l2d_inspector_verify.py`(★**2026-09-23 新增**：判定区可视化+参数·部件面板+滑杆往返+过滤器四项验收)、`run_cg_export.py`(Spine CG 批量导出驱动)、`dedup_plan.py`/`dedup_apply.py`/`dedup_httpverify.py`(硬链去重三件套)、`gen_story_md.py`(复核清单生成)、`pipeline_panel.py` + 根目录 `启动资产更新控制台.bat`(★**2026-09-29 新增**：**资产更新控制台**——本地网页仪表盘，按钮驱动 `update_pipeline.py` 子进程；**一次只暴露下一步**（主屏=一句现状+一个行动+一行后果；13 张卡的写到/判据/上次、日志、对照表全在 `D` 抽屉）、状态色唯一、常驻「怎么用」抽屉；背景 = **显影式星野**（静止全黑、划过才亮、淡净回同一帧），控件 = **「指针携光」动效层**（边框光束/柔光/磁吸/点击把涟漪打进星野，`S` 关背景 `M` 关光效 `V` 新旧配色 `D` 开证据抽屉）；**常驻界面只留数据，为设计决定辩护的文案全部搬进抽屉**；版面 token 抄自公开设计系统的**禁止清单**（零投影 / 不拿薰衣草当卡片底 / 单一强调色 / 小标签不全大写），星体是预渲染精灵（高斯核 + 锥形衍射芒 + 幂律亮度 + 色温），主屏大字的可读性靠**星野避让矩形**而不是半透明纱，见 WF-23 三条追加与 §68~§71)、`peak_mem.py`(★**2026-10-01 新增**：给一条命令量**进程树峰值内存**——CreateToolhelp32Snapshot 走子进程 + psapi 采 WorkingSet，先拿已知 400MB 分配自测准头；回答"跑一次要多少 G"不再靠猜)、`test_pipeline_gating.py`(★**2026-10-01 新增 / 52 条**：控制台执行侧的闸门自测——**不看文案看行动**，只断言"未签字/缺范围时有没有 spawn 那个会覆写 `Output/` 的子进程"，含签字后的反向对照；它当场抓出 `_bj1` 躲过后缀表的映射洞，`[7]` 管住"0 变更被误判红 / 真清单被冲空"、`[8]` 管住依赖表闸门必须按**消费域**分级)、`panel_ui_probe.py`(★**2026-09-29 新增 / 09-30 三轮扩到 76 条**：该控制台的界面判据——结构计数 / 档位徽标不得借用状态色 / **静止不闪 3 条：带着 8 秒轮询跨一次 tick 整屏逐像素相同 + 节点未被重建 + `getAnimations()==0`** / 星野静止两帧逐像素相同、**划过才显影、只划一侧时另一侧必须 0 颗**、淡净回同一静止态 / **光效 10 条：边框光束真的在走、离开即收净回到同一张帧、柔光不进日志、M 键从简、指示条落位** / 数据面 alpha=1 且每个数据元素整张落在不透明面板内 / 键盘与日志筛选等 5 条交互 / "轮询不许把子进程杀掉"，见 §66~§70、`check_diag_hygiene.py`(★**2026-09-29 新增**：`.diag/` 顶层散落代码检查，退出码即结论，`--archive` 打包归档)、`shot_budget.py`(★**2026-10-28 新增**：**截图预算**——`--text-only` 出分块平均色/alpha 覆盖率/包围盒替代看图、`--diff` 出变化像素占比与包围盒替代并排比对、`--crop` 按相对比例裁关键区域、默认压到 ≤200 KB/最长边 1024、`--audit` 收尾体检；因「一张 1.7 MB PNG 占 76% 上下文导致会话中断」而设，见 §160 / WF-50)、`server_wedge_probe.py`(★**2026-09-29 新增**：本地服务器"取消下载 ⇒ 泄漏 handler 线程"的剂量学探针，含真异常仍留痕的对照组，见 §63)、`precheck_red_test.py`(★**2026-09-29 新增**：给 WF-16 预检做红路径测试——用"照收连接、回 200 但 0 字节"的桩验闸门真的会红)。**游戏版本更新怎么跑 → WF-15**；**Live2D 动作重建怎么跑 → WF-7**；**Live2D 网页交互改动/回归怎么跑 → WF-16**。
+**可复用诊断/验证工具 `scripts/diag/`**：承重工具清单已逐字外迁至 `docs/archive/PROJECT_STATUS_diag-tools_2026-10-29.md`（原第 165 行）；具体清单以目录为准（该清单的计数已过期）。
 
 **文档**（导航见根目录 `README.md`，写入路由见 `AGENTS.md`）：
 - `docs/DEV_LOG.md` 操作手册 · `docs/WORKFLOWS.md` 可复用工作流 · `docs/TROUBLESHOOTING.md` 踩坑 · `docs/ERRORS.log` 错误流水
@@ -222,11 +210,24 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
   ② `costumeTarget` 用 `min` 当关端 ⇒ 点击循环 `0→1→-1→1→-1…` 永远回不到 0。
   修法 = 默认值严格落在 `(min,max)` 之间时，关端取默认值。
   验证（走产品 `__costumeToggle` 连点 4 次）：渲染有效值 `0,1,0,1`、可见鞋件 `7,5,7,7`，全程未落 `-1`。
-  ~~落地方式 = `Param233` 双写 pin~~ 该条仍生效但**与本 bug 无关**（`Param233` 只管右侧那 16 件）。
+  ~~落地方式 = `Param233` 双写 pin~~ **该 pin 已于 2026-10-29 撤销**（§171）：`idle` 等动作里 `Param233` 的定值是 0，产品硬钉 1 与动作默认值打架，用户实测报「idle 的 Param233 默认被改错了」。现 `COSTUME_DEFAULT_ON` 已清空，装扮参数初始态一律以 moc3/动作为准（实测加载后 `Param233` 从 1 变回 0）。
   ⚠️ **两次翻盘留痕**：首版写「素材侧缺省关闭」→ 被"打开就有双脚鞋"推翻；
   二版写「`ShoseOff`/`Param233` 各管一只脚应联动」→ 被**逐件镜像配对 0 命中**推翻，联动代码已全删。
-- **② 全部换装/可调参数的互动区**：`Cloth1/2/3`、`Stock1/2`、`ShoseOff`、`Paramring` 之外还有眼型、渐变类；~~`BondEyes/HeartEyes/ParamEyeSmile` 三条 `n_drawables=0` ⇒ **目前无热区**~~（**此判已被 §166 / WF-56 推翻，保留以免重犯**：`ParamEyeSmile` 真有效 **14 件**、像素 89 px ⇒ 要做热区；`BondEyes`/`HeartEyes` 冻眨眼后 **0 px 可信** ⇒ 降级面板控件）；~~`NeckMoney` 需核实（moc3 名表里没有这个名字）~~（**前提作废**：实测驱动 **1 件**，旧登记正确）。同批修掉的假读数 `ShoseOff 842→20` / `NeckMoney 14→1` / `Param233 29→16` 与外迁逐字原文见 `docs/archive/PROJECT_STATUS_0c-eye-reclass_2026-10-29.md`（B1 段）。渐变类（`ShoseOff` 已证实是**交叉淡化**）必须给 `mode:'slider'` 可拖。
-  - **可点击性清单（2026-10-29）**：新增 `scripts/diag/l2d_hotzone_clickable.py`，以**屏幕像素**为判据（V 空间面积会误判小件）。`ougen_8` 12 条参数里 **10 条屏幕尺寸 ≥ 8px 可点**（最小 `Paramring` 15×15 px）；`BondEyes`/`HeartEyes` 驱动件为空（`n_drawables=0`）⇒ 按设计无热区，走面板控件。写该工具连撞四次换算错（漏 `ppu` / 没走页面打开流程 / 固定 sleep 预算不足 / 把覆盖率当硬判据），见 §168 + WF-57 追补。
+- **② 全部换装/可调参数的互动区** —— **✅ 已覆盖全部 5 个模型（2026-10-29，§170）**。
+  旧扫描判据方向是反的（「动作间锁成不同档」⇒ 把装扮参数全剔掉，`ougen_8` 只报 4 条），
+  改用**运行时反查绑定**（min/max 两态比 opacity+visible+顶点包围盒，任一变化即算控制画面）。
+  `costume_params.json` 从 1 个模型扩到 **5 个**：`ougen_8` 12→13 条（新增 `ChestMoney`）、
+  `benningdun_2` +3（`GloveTransparency_L/R`、`Paramring`）、`aersasi_2/3`、`antu_2` 各 +1（`Paramring`）。
+  5 个模型全部通过可点击性验收（屏幕 ≥8px，最小 `aersasi_3` 14.7×14.7 px）。
+  仍无热区的只剩 `BondEyes`/`HeartEyes`（`n_drawables=0`，按设计走面板控件）。
+  ⚠️ 反查的仪器自噪声已修：复用全局基准会把 `benningdun_2/Paramring` 从 2 件虚报成 71 件，
+  必须逐参数重取基准（见 §170）。
+  **面板可读性（2026-10-29 用户反馈后修，§171）**：用户报「参数/部件拖了没反应、只有换装有效」。
+  实测**通路本身是好的**（`Part34` opacity→0.05 画面变化 520470 px、`ParamAngleX` 变化 27259 px），
+  真因是**列了空条目**：310 个部件里有 84 个挂 0 个 drawable（`Part406` 就是），拖它必然零变化。
+  ⇒ 部件区只列有内容的（`部件 226（有内容 / 全部 310）`），参数区标题标注「调试用；
+  多数条目在当前姿态下无可见效果」。参数/部件区**保留**（是定位参数控制什么的唯一入口，
+  本项目多次排查靠它），没有按用户建议改名成「换装参数」并删掉 —— 问题在标签没说清用途，不在功能多余。
 - **③ 互动区系统性排查**：可达率基线**已重标（`l2d_hotzone_reachability.py`，盒哈希 `-937102468`，GATE PASS）**：`Cloth1/Cloth2/Cloth3/Param233 100%`、`ShoseOff 97.8%`、`NeckMoney 82.4%(own=0 全靠幽灵区)`、`Stock1 78.9%(主要被 Stock2×279 抢)`、`Stock2 74.1%(被 Stock1×402+ShoseOff×167+Cloth1×38 抢)`、**`Paramring 0.0%（面积仅 0.25，结构性不可点）`**；⑥ 反解点 9/9 全部命中自己（exit 0，`reachability_ougen_8.json`）。~~另需用 `l2d_param_effect_scan.py` 对 12 条参数批量重扫并与 `param_drawables.json` 比对（`Param233` 漏 16、`ShoseOff` 漏 3）~~（**已做完**：改用修好仪器的 `l2d_param_map_batch.py`，12 条可信映射已产出并将逐字原文/逐条比对表外迁同目录 **B2 段**）；`param_drawables.json` 仍未替换（旧表 24 处漏项仍在）。
 - **④ 切动作时参数合理保留** —— **✅ 已完成并逐动作验证**（见上「本轮 ③④」块）。数据层结论不变（换装参数在各动作里全是定值 0 ⇒ pin 接管是唯一路径，§162 / WF-47）；本轮补齐的是**验收**：`l2d_param_retain_verify.py` 覆盖全部 55 个动作 × 12 条参数，0 偏差。⚠️ 验收判据必须是**渲染有效值**，不能是参数回读值（后者 51/55 个动作会假红）。
 - **影响面（用户问「其它角色还有没有部位消失」）**：对每个 skin 跑「几何镜像配对 + 不透明度绑定搜寻（带阳性对照）」。⚠️ **绝不许复用 292/45 或 9412 轮的任何区域框**，每 skin 重新取 canvas rect。优先筛「某 `ParamN` 只在少数动作被推到 1、其余恒 0、且控制 ≥5 件」——`Param233` 正是这个模式。
