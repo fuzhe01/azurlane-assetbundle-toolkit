@@ -164,6 +164,103 @@ READ = r"""
 })()
 """ % ('%s', '%s')
 
+# 🔴 页内**同步**派发 down+up（2026-10-29 新增，本探针此前一直用 CDP 派发）
+# ------------------------------------------------------------------------------
+# `onDown` 用**按下那一刻**的新鲜几何定 `cosDown`，`onUp` 再补算一次 —— 两个时刻两套几何。
+# CDP 派发 `Input.dispatchMouseEvent` 在本机 headless 上实测间隔 **4.6–29.9 秒**
+# （`scripts/diag/cdp_cmd_latency.py` 六阶段实测，见 TROUBLESHOOTING），于是：
+#   · 两次几何必然不同 ⇒ `costumeHitAt` 在 up 那一刻可能已经不认这个点 ⇒ pin 恒 null（假红）
+#   · 而且「等 tween 走完」的 sleep 全落在这段时间里，读到的 after 是**还没执行**的状态
+# 正确做法：把 down/up 放进**同一个 JS 任务**，间隔 0 ms，用产品自己监听的同一对节点
+# （`#l2wrap` 的 pointerdown / window 的 pointerup）—— 不绕过任何产品入口。
+SYNC_CLICK = r"""(function(cx,cy){
+  var wrap=document.getElementById('l2wrap');
+  var out={cx:cx,cy:cy,invalid:[]};
+  if(!wrap){ out.invalid.push('NO_WRAP'); return JSON.stringify(out); }
+  out.log0=(window.__costumeLog||[]).length;
+  var base={bubbles:false,cancelable:true,composed:true,clientX:cx,clientY:cy,
+            button:0,buttons:1,pointerId:77,pointerType:'mouse',isPrimary:true,view:window};
+  var dn={}, up={};
+  for(var a in base){ dn[a]=base[a]; up[a]=base[a]; }
+  up.buttons=0;
+  try{ wrap.dispatchEvent(new PointerEvent('pointerdown',dn)); }
+  catch(e){ out.invalid.push('down:'+e); }
+  try{ window.dispatchEvent(new PointerEvent('pointerup',up)); }
+  catch(e){ out.invalid.push('up:'+e); }
+  out.log1=(window.__costumeLog||[]).length;
+  out.dlog=out.log1-out.log0;
+  /* 分支定性：**只看产品自己的 pill 文本**，不看副作用差分。
+     ① toggleState   写 `<label> ▸ on/off`
+     ② costumeToggle 写 `<label> · <id> → <to>`
+     ⚠️ 不能用「pins 差分」判 ② —— 修复后 ① 会主动 `delete pins[id]`（收回让渡）。 */
+  out.pill=((document.getElementById('l2Hit')||{}).textContent||'');
+  return JSON.stringify(out);
+})"""
+
+# `__costumeScreenOf` 只保证「离参数热区边缘最远」，**不保证避开 STATE_TOGGLES 的 trigger 区**。
+# 而 `onUp` 是 ① `stateFind`(localHit) 优先、② `costumeHitAt`、③ `play` 的固定顺序
+# （`gallery_src/index.html:2942-2953`）。`ougen_8` 的 `touchdrag17` 判定区屏幕盒
+# `[542,348,614,432]` 与鞋参数热区盒 `[476,287,608,449]` **相交**，于是 `__costumeScreenOf`
+# 给出的 (566,359) 落在判定区内 ⇒ 走 ①、`__costumeLog` 不新增 ⇒ 被误判成「② 分支没进」。
+# 本探针专门验 ②，所以必须在参数热区内再筛一个**不在 trigger 包围盒 ±2px 内**的点。
+FIND2 = r"""(function(pid, tbox){
+  var cb=null;
+  try{ cb=window.__costumeScreenOf(pid); }catch(e){ return JSON.stringify({err:'EXC '+e}); }
+  if(!cb||!cb.box) return JSON.stringify({err:'NO_BOX'});
+  var b=cb.box;
+  var ok=function(x,y){
+    if(!(x>=b[0]&&x<=b[2]&&y>=b[1]&&y<=b[3])) return false;
+    var c=null; try{ c=window.__costumeHit(x,y); }catch(e){ return false; }
+    if(!c||c.id!==pid) return false;
+    if(tbox){
+      var m=2;
+      if(x>=tbox[0]-m&&x<=tbox[2]+m&&y>=tbox[1]-m&&y<=tbox[3]+m) return false;
+    }
+    return true; };
+  var tried=0;
+  for(var fy=0.12;fy<=0.881;fy+=0.19){
+    for(var fx=0.12;fx<=0.881;fx+=0.19){
+      var x=Math.round(b[0]+(b[2]-b[0])*fx), y=Math.round(b[1]+(b[3]-b[1])*fy);
+      tried++;
+      if(ok(x,y)) return JSON.stringify({cx:x,cy:y,tried:tried});
+    } }
+  return JSON.stringify({err:'ALL_IN_TRIGGER',tried:tried,box:b,tbox:tbox||null});
+})(%s, %s)"""
+
+
+def jget(pg, expr):
+    """页面内层自己 `JSON.stringify` 过，外面再包一层就可能拿到「字符串的字符串」。"""
+    raw = pg.ev(expr)
+    if not isinstance(raw, str):
+        return raw
+    try:
+        v = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return None
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except Exception:  # noqa: BLE001
+            return None
+    return v
+
+
+def synclick(pg, cx, cy):
+    """页内同步实现一次「按下→抬起」，间隔 0 ms（CDP 派发在 headless 上要几秒，见 SYNC_CLICK 注释）。"""
+    return jget(pg, SYNC_CLICK + '(%d,%d)' % (cx, cy))
+
+
+def pick_safe_point(pg, pid, tbox, tag=''):
+    """避开 trigger 区的参数热区点；取不到就返回 None（调用方必须报 INVALID 而不是硬用落区的点）。"""
+    r = jget(pg, FIND2 % (json.dumps(pid), json.dumps(tbox)))
+    if isinstance(r, dict) and 'cx' in r:
+        print('   %s避开判定区的参数热区点 (%d,%d)（试了 %s 个候选）'
+              % (tag, r['cx'], r['cy'], r.get('tried')))
+        return r
+    print('   %s%s 找不到避开 trigger 区的点: %s' % (tag, pid, r))
+    return None
+
+
 
 def preflight(url):
     try:
@@ -258,6 +355,30 @@ def main():
             print('[FAIL] 该热区在视口内点不到（出画/被遮挡）'); return 1
         cx, cy = sc['cx'], sc['cy']
 
+        # 🔴 这个参数有没有同名状态机条目（STATE_TOGGLES）。有 ⇒ 它的 trigger 判定区会
+        #    抢在 ② 之前命中（`onUp` ① 优先），必须把点击点挪出 trigger 包围盒。
+        trigs = jget(pg, "(function(){var st=(window.__stateTogglesInfo?__stateTogglesInfo():[]),o=[];"
+                         " for(var i=0;i<st.length;i++) if(st[i].id===%s) o.push(st[i].trigger);"
+                         " return JSON.stringify(o);})()" % json.dumps(PID))
+        trig = (trigs or [None])[0] if trigs else None
+        tbox = None
+        if trig:
+            pt = jget(pg, "JSON.stringify(window.__L2_SCREENOF(%s))" % json.dumps(trig))
+            if isinstance(pt, dict):
+                tbox = pt.get('box')
+            print('   STATE_TOGGLES[%s].trigger = %r，判定区盒 = %s' % (PID, trig, tbox))
+            if tbox:
+                inter = not (sc['box'][2] < tbox[0] or tbox[2] < sc['box'][0]
+                             or sc['box'][3] < tbox[1] or tbox[3] < sc['box'][1])
+                print('   参数热区盒 %s vs 判定区盒 %s ⇒ %s'
+                      % (sc['box'], tbox, '相交（必须错开取点）' if inter else '不相交'))
+        safe = pick_safe_point(pg, PID, tbox)
+        if safe is None:
+            print('[INVALID] 参数热区内找不到不在 trigger 判定区的点 ⇒ 本几何下 ② 分支不可达，'
+                  '这条判据作废（不是产品缺陷）')
+            return 2
+        cx, cy = safe['cx'], safe['cy']
+
         read_expr = READ % (json.dumps(PID), json.dumps(KEY))
         before = json.loads(pg.ev(read_expr))
         print('   点击前参数:', before)
@@ -310,14 +431,10 @@ def main():
                 break
             print('   [retry %d] 取到的点命中 %s，重新取点' % (attempt + 1, (hn or {}).get('id')))
             time.sleep(0.7)
-            scr = pg.ev("JSON.stringify(window.__costumeScreenOf(%s))" % json.dumps(PID))
-            try:
-                sc = json.loads(scr)
-            except Exception:  # noqa: BLE001
-                sc = None
-            if not sc:
+            sc2 = pick_safe_point(pg, PID, tbox, tag='[retry] ')
+            if sc2 is None:
                 break
-            cx, cy = sc['cx'], sc['cy']
+            cx, cy = sc2['cx'], sc2['cy']
         print('   该点命中:', json.dumps(hn, ensure_ascii=False))
         if not hn or hn.get('id') != PID:
             print('[FAIL] 屏幕点没落到目标热区（命中 %s）' % (hn or {}).get('id')); return 1
@@ -338,21 +455,40 @@ def main():
                 break
             print('   [retry %d] 派发前复核命中 %s，重新取点' % (attempt + 1, (hn2 or {}).get('id')))
             time.sleep(0.5)
-            sc = json.loads(pg.ev("JSON.stringify(window.__costumeScreenOf(%s))"
-                                 % json.dumps(PID)) or 'null')
-            if not sc:
+            sc2 = pick_safe_point(pg, PID, tbox, tag='[retry] ')
+            if sc2 is None:
                 break
-            cx, cy = sc['cx'], sc['cy']
+            cx, cy = sc2['cx'], sc2['cy']
             snapA = pg.ev(SNAP)
+            # ⚠️ 换点之后**必须**再复核一次命中，不能直接出循环去派发（2026-10-29 修）：
+            #    旧写法换完点就 `continue` 到下一轮顶部，看似会再验 —— 实际 `break` 只由
+            #    顶部那次 `__costumeHit` 触发，而新点在**换完之后**才被派发使用，
+            #    若循环最后一次恰好因 attempt 耗尽退出，`hn2` 是**旧点**的读数，
+            #    于是带着「旧点命中」的证据去点新点 ⇒ 派发落空、pin 恒 null，
+            #    表现为「点了没效果」的假红。这里把复核紧贴在换点之后。
+            hn2 = json.loads(pg.ev("JSON.stringify(window.__costumeHit(%d,%d))" % (cx, cy))
+                             or 'null')
+            if hn2 and hn2.get('id') == PID:
+                break
         if not hn2 or hn2.get('id') != PID:
             print('[FAIL] 派发前复核未命中目标热区（命中 %s）' % (hn2 or {}).get('id')); return 1
 
         # 真实输入派发（pointerdown + pointerup，位移 0 才算点击；onUp 里 moved>=6 会当成拖拽）
-        for typ in ('mousePressed', 'mouseReleased'):
-            pg.cmd('Input.dispatchMouseEvent', {'type': typ, 'x': cx, 'y': cy,
-                                               'button': 'left', 'clickCount': 1})
-            time.sleep(0.08)
-        print('   已派发 pointerdown/up @ (%d,%d)' % (cx, cy))
+        # 记下 `__costumeLog` 长度：判定阶段要靠它区分「点击根本没走到 costumeToggle」
+        # 与「走到了但参数值恰好没变」（后者是数据特性，前者是真缺陷）。
+        log0 = pg.ev("(window.__costumeLog||[]).length")
+        clk = synclick(pg, cx, cy)
+        print('   已页内同步派发 pointerdown/up @ (%d,%d)' % (cx, cy))
+        if not isinstance(clk, dict) or clk.get('invalid'):
+            print('[INVALID] 合成事件未被页面接纳: %s' % (clk,)); return 2
+        print('   派发即读数: dlog=%s  pill=%r' % (clk.get('dlog'), clk.get('pill')))
+        # 🔴 分支定性（2026-10-29）：本探针验的是 ② `costumeToggle`。若这次点击落到 ①
+        #    `toggleState`（pill 出现 `▸`），说明点又被 trigger 判定区抢走了 ⇒ **判据作废**（INVALID），
+        #    不能报成产品缺陷。旧版就是在这里把 (566,359) 落区读成「② 分支没进」的假红。
+        pill_now = clk.get('pill') or ''
+        if '\u25b8' in pill_now and not clk.get('dlog'):
+            print('[INVALID] 这次点击走的是 ① toggleState（pill=%r）⇒ 取点仍落在 trigger 判定区，'
+                  '本探针这条判据作废' % pill_now); return 2
 
         # 等 tween 走完（dur 450ms）。⚠️ 不能固定 sleep：headless 下 rAF 被节流到 ~1fps，
         # tween 是按 performance.now() 算的但**只在 tick 时推进**，所以实际要 2~3s 才到终点。
@@ -474,15 +610,24 @@ def main():
         #    它做的真实点击会让 `_costumeOwned=true`，而 ④ 的 pins 对比只在让渡后才对得上渲染。
         #    未让渡态下 pins 被 `stateApply` 的 `_on` 覆盖，④ 恒得 0 交集（假红）。
         lo_click = {'ran': False, 'v_lo': None, 'v_after': None, 'changed': 0, 'hit': None}
+        # ⚠️ ④b 之前**必须先删掉上一次遗留的 pin**（2026-10-29 修）：`pin_and_wait` 是把 pin
+        #    写成 base_lo，但若 pin 里本来就有值（上一阶段的实证/让渡已建过），
+        #    `pin_and_wait` 只会把它「改成 lo」，后续真实点击时 `costumeToggle` 取 `from=pins[id]`，
+        #    起点就不是渲染真正读到的值，渐变区间可能整段落在同一端 ⇒ 画面变化 0。
+        #    旧版没这一步，实测偶发「lo 端点击后画面没动」的假红。
+        pg.ev("""(function(){var pm=(window.__costumePinsByModel||{})[%s];
+          if(pm) delete pm[%s];
+          var tw=(window.__costumeTweens||{})[%s]; if(tw) delete tw[%s];
+          return 1;})()""" % (json.dumps(KEY), json.dumps(PID),
+                              json.dumps(KEY), json.dumps(PID)))
+        time.sleep(0.4)
         ok_lo2, lo_click['v_lo'], _, _tr2 = pin_and_wait(base_lo)
         lo_click['ran'] = ok_lo2
         ok_hit = False
         scr2 = None
         for _ in range(4):
-            scr2 = json.loads(pg.ev("JSON.stringify(window.__costumeScreenOf(%s))"
-                                    % json.dumps(PID)) or 'null')
-            scr2 = scr2 or None
-            if not scr2:
+            scr2 = pick_safe_point(pg, PID, tbox, tag='[④b] ')
+            if scr2 is None:
                 break
             hn2 = json.loads(pg.ev("JSON.stringify(window.__costumeHit(%d,%d))"
                                    % (scr2['cx'], scr2['cy'])) or 'null')
@@ -493,11 +638,7 @@ def main():
             time.sleep(0.7)
         if ok_hit:
             snapL0 = pg.ev(SNAP)
-            for typ in ('mousePressed', 'mouseReleased'):
-                pg.cmd('Input.dispatchMouseEvent', {'type': typ, 'x': scr2['cx'], 'y': scr2['cy'],
-                                                   'button': 'left', 'clickCount': 1})
-                time.sleep(0.08)
-            time.sleep(1.4)
+            synclick(pg, scr2['cx'], scr2['cy'])
             lo_click['v_after'] = read_until_stable()['v']
             snapL1 = pg.ev(SNAP)
             lo_click['changed'] = json.loads(pg.ev(
@@ -584,8 +725,33 @@ def main():
         # ---------- 判定 ----------
         print('\n' + '=' * 62)
         fails = []
-        if before['v'] == after['v']:
-            fails.append('参数值没变(%s→%s)' % (before['v'], after['v']))
+        # 判据「参数真的变了」必须能区分三种情况，不能一刀切红（2026-10-29 修）：
+        #   ① 点击**根本没走到** `costumeToggle`（onUp 没进 ② 分支）      → 真缺陷
+        #   ② 走到了，但产品自己算出的 `from` 与 `to` **相同**            → 数据特性（值域退化）
+        #   ③ 走到了、`from != to`，但最终读回值仍是 `from`               → 真缺陷（tween 没到渲染）
+        # 判别依据用**产品自己的记录** `__costumeLog`（`costumeToggle` 每次追加
+        # `[id, from, to, Date.now()]`），不靠探针复算——复算会与产品逻辑漂移。
+        # 旧版是无条件 `if before['v']==after['v'] → FAIL`，把 ② 也算成失败，
+        # 于是「数据里不存在的那一端」时红时绿，且看不出到底哪一环坏了。
+        log1 = pg.ev("(window.__costumeLog||[]).length")
+        dlog_v = (log1 or 0) - (log0 or 0)
+        last_log = None
+        if dlog_v > 0:
+            last_log = json.loads(pg.ev(
+                "(function(){var L=window.__costumeLog||[];"
+                " return JSON.stringify(L.length?L[L.length-1]:null);})()") or 'null')
+        print('   本次点击 __costumeLog 新增 %d 条，最后一条: %s' % (dlog_v, last_log))
+        if dlog_v <= 0:
+            fails.append('点击没走到 costumeToggle（__costumeLog 没新增）⇒ onUp 的 ② 分支没进；'
+                         '这不是参数没效果，是热区/分支问题')
+        elif last_log and isinstance(last_log, list) and len(last_log) >= 3:
+            lf, lt = last_log[1], last_log[2]
+            if not (abs((lt or 0) - (lf or 0)) > 1e-6):
+                print('   → 产品自己判定 from=%s to=%s 相同（值域退化/已在该端）⇒ 数据特性，'
+                      '本参数在本模型上没有可切换的两态' % (lf, lt))
+            elif before['v'] == after['v']:
+                fails.append('产品已切 %s→%s（log 有记录），但最终读回值仍是 %s ⇒ '
+                             'tween 值没到达渲染（真缺陷）' % (lf, lt, after['v']))
         if di.get('changed', 0) <= 0:
             fails.append('画面差异 changed=0（参数变了但渲染没变？）')
         if not all(abs(v - after['v']) < 1e-3 for v in stable):

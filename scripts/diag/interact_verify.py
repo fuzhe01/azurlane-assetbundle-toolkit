@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # 本目录：c
 import cdp_slot            # 端口 / profile 不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
 import cdp_wait            # 就绪门槛不能用 document.readyState（about:blank 天生 complete）
 import probe_exit
+import chrome_tree         # ⚠️ 必须在 launch() 之前导入（2026-10-29 修：原写法 import 在 launch 之后 ⇒ NameError）
 CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT, PROFILE = cdp_slot.slot(ROOT, 'intv')
 # INTV_URL / INTV_MODELS 可覆盖默认的旧画廊(8777)与固定 4 模型清单：
@@ -21,7 +22,7 @@ proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
   '--use-angle=swiftshader', '--window-size=1280,900',
   GALLERY_URL], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-import chrome_tree; chrome_tree.install(proc)   # 异常退出也要收整棵树，见该模块 docstring
+chrome_tree.install(proc)   # 异常退出也要收整棵树，见该模块 docstring
 w = None
 for _ in range(90):
     try:

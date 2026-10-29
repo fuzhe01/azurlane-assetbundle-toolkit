@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**，**以及逐帧探针的仪器体检前置（§25：十一条仪器 bug、出帧源解耦、采样点挂 `coreModel.update` 入口、保活必须周期重发、坐标只许用页面出口、`stringify` 丢 undefined 键、pins 对比须先让渡）**，**以及「模型少了一个部件」的定性流程（§27：不透明度绑定反查必须带阳性对照、几何镜像配对区分「有件但关着」与「真的缺件」、真实播放态不冻结审计回答观感、像素差分不能当缺件证据、canvas rect 只许问页面、`getParameterId` 不存在、`getParameterIndex` 越界返回 count）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全/少一只鞋少一条腿/某个部位消失"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见、逐帧探针、出帧源、1Hz 节流、fps 假绿、探针仪器坏了、部位消失、少一只鞋、少一条腿、部件是不是丢了、参数反查、不透明度绑定、镜像配对。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.22
+version: 1.10.23
 ---
 
 # Live2D 网页运行时集成
@@ -1319,3 +1319,97 @@ ShoseOff 盒 2.5×2.7 但鞋形斜置 ⇒ 兜底把 287 个边角点判给它，
 `scripts/diag/l2d_param233_live_audit.py`（真实播放态逐帧审计）、
 `scripts/diag/shot_regions.py`（像素模块 + 自写 BFS）。
 离线省事：`.diag/all_draw.json`（842 件 `[i,name,op,vis,box]` 快照）能免开浏览器做全部几何分析。
+
+## 28. 点击类探针：页内同步派发 + 取点必须避开 trigger 判定区（2026-10-29，version 1.10.23）
+
+用户报「互动区点了没反应 / 被另一个互动区覆盖」时，**先证明探针自己没撒谎**。
+本轮同一个脚本连翻两次，两次都是探针缺陷，产品在那一刻是正常的。
+
+### 28.1 派发：down/up 必须在页内同一个 JS 任务里
+
+`onDown` 用**按下那一刻**的新鲜几何定 `cosDown`，`onUp` 再算一次 —— 两个时刻两套几何。
+CDP 拆成 `mousePressed` / `mouseReleased` 两条时实测间隔 **4.6–29.9 秒**（headless 上往返会逐条恶化）：
+
+- up 那一刻命中判定可能已不认这个点 ⇒ `pin` 恒 `null`、参数 `0→0` ⇒「点了没效果」的假红；
+- 「等 tween 走完」的 `sleep` 全落在这段延迟里 ⇒ 读到的 `after` 是**还没执行**的状态。
+
+```js
+var base={bubbles:false,cancelable:true,composed:true,clientX:cx,clientY:cy,
+          button:0,buttons:1,pointerId:77,pointerType:'mouse',isPrimary:true,view:window};
+var up={}; for(var a in base) up[a]=base[a]; up.buttons=0;
+wrap.dispatchEvent(new PointerEvent('pointerdown', dn));  // #l2wrap —— 产品自己绑的 down 节点
+window.dispatchEvent(new PointerEvent('pointerup', up));   // window  —— 产品自己绑的 up 节点
+```
+
+节点必须是**产品自己监听的那两个**，不许造中间层（否则验的是探针不是产品）。
+一次调用顺带拿到同一时刻的 `__costumeLog` 增量与 pill 文本 —— 这是 CDP 两段式做不到的。
+⚠️ 推帧泵（`setInterval(fn,4)` + 每 tick 3 次 `ticker.update()`）开着时主线程饱和，
+点击前必须先 `detach_frames`。
+
+### 28.2 取点：反解出的「离边缘最远」点**不保证避开 trigger 区**
+
+`onUp` 顺序固定：① `stateFind(localHit)` 优先 → ② `costumeHitAt` → ③ `play`。
+`__costumeScreenOf` 优化的是**几何抖动鲁棒性**，与「会不会被 trigger 抢走」正交。
+实测 `ougen_8`：判定区 `touchdrag17` 盒 `[542,342,620,420]` 与鞋参数热区盒 `[482,287,608,449]`
+**相交**，反解点 `(566,359)` 落在判定区内 ⇒ 走 ①、`__costumeLog` 不新增
+⇒ 探针报「② 分支没进」，而产品④b 的 lo 端真实点击 pin `-1→1`、画面变 31 件（正常）。
+
+**正解 `find2`**：在参数热区自盒内 5×5 网格（0.12…0.88）筛点，要求 ① `__costumeHit(x,y).id===目标`；
+② 不在 trigger 盒 ±2 px 内。筛不到必须报 INVALID（「本几何下 ② 不可达」），
+**不许硬用落区的点**。trigger 盒用 `__stateTogglesInfo()[id].trigger` → `__L2_SCREENOF(trigger).box`
+（两者都是**屏幕坐标**，口径一致）。
+
+### 28.3 判「参数没变」要分三类，不能一刀切红
+
+读产品自己的 `__costumeLog`（`costumeToggle` 每次追加 `[id,from,to,Date.now()]`）：
+
+| `dlog` / log 内容 | 定性 |
+|---|---|
+| `dlog<=0` | 点击没进 ② ⇒ **真缺陷**（但先排除 28.2 的取点问题） |
+| `from==to` | **数据特性**（值域退化/已在该端），不判红 |
+| `from!=to` 但读回仍是 `from` | tween 没到渲染 ⇒ **真缺陷** |
+
+### 28.4 分支定性只能看产品 pill 文本
+
+| pill | 分支 |
+|---|---|
+| `<label> ▸ on/off` | ① `toggleState` |
+| `<label> · <id> → <to>` | ② `costumeToggle` |
+
+⚠️ **不能用 pins 差分判 ②**：① 修复后会主动 `delete pins[id]`（收回让渡）⇒ `dpin=true`，
+本轮实测这个写法把 ① 误判成 ②，直接毁掉 M2 判据。
+
+### 28.5 真 bug M2：`toggleState` 收回让渡时没清 `pins`/`tweens`
+
+`stateApply` 末尾**无条件**重放 pins，跑在 `_tw`/`_on` 写入之后、同一 `beforeModelUpdate` 内。
+只要 `pins[id]` 存在（② 走过一次就建），之后 ① 的写入**当帧即被抹掉** ——
+pill 报 `▸ off`（**谎报**）、像素 0 变化。**修法在 `toggleState`（连 pins/tweens 一起清），
+不是改 `stateApply`**（那段重放对已让渡条目是承重的）。
+
+**精确判据**：把 `pins[id]` 钉成**模型当前显示值**（`__stateTogglesInfo()` 的 `on`）**再点** ——
+未修则画面恒不变、已修必变，与 `_on` 奇偶无关；并配正向对照（建 pin 立刻删，**必变**）。
+⚠️ 不许用「随便什么旧 pin 值」：① 切到「当前值的反面」，旧 pin 恰好等于那个反面时画面本来就一样。
+
+### 28.6 已否证的假设（别再重跑）
+
+- **M1「`hitAt` 的 A3 随机抽取让同一点随机走 ①/②」不成立**：两类代表点各连点 5 轮，
+  参数热区 5/5 全落 ②、判定区 5/5 全落 ①。旧结论真因是**反解点漂移**。
+- **帧源闸门恒红 ≠ 渲染卡死**：产品里没有 `__rafc` 这个导出（应挂 ticker 活对象计数器）。
+- **`lastTime` 不能当帧率**：节流到 1 Hz 时采样窗口里照样涨满 ⇒ 假绿灯。
+- **停心跳不会让 CDP 变快**：反而 10.5–11.9 s 且逐条递增。
+
+### 28.7 判据
+
+`l2d_costume_hotzone_verify.py ougen_8 ShoseOff` ⇒ **7 PASS / 0 FAIL / exit 0**，
+日志须含 `派发即读数: dlog=1  pill='鞋 · ShoseOff → 1'`；
+`l2d_click_insync_diag.py ougen_8 ShoseOff 5` ⇒ 六阶段全绿。
+
+### 工具
+
+`scripts/diag/l2d_costume_hotzone_verify.py`（`SYNC_CLICK` / `FIND2` / `pick_safe_point`）、
+`scripts/diag/l2d_click_insync_diag.py`（M2 精确判据 `SETPIN`/`SETPIN_DROP` + 六阶段）、
+`scripts/diag/cdp_cmd_latency.py`（**先跑它再怀疑产品**）、
+`scripts/diag/frame_gate_selftest.py`（帧源闸门四判据 + 阴性对照）、
+`scripts/diag/ownership_entry_diag.py`（让渡态 `core.update` 入口采样）。
+
+**项目侧对应**：`docs/WORKFLOWS.md` WF-54、`docs/TROUBLESHOOTING.md` §164。

@@ -1,6 +1,6 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-28（**`ougen_8` 少一只鞋定性为素材侧缺省关闭**：那 16 件由 `Param233` 统一控制、`def=0`、idle/idle9 各 220 帧全 0，仅 `touch_idle2/4/10/18` 里推到 1，见 §163 / WF-53；**热区判定改真实三角形 + 渲染序裁决 + 幽灵区第二遍**，八热区基线五满三欠、点击时序两处真实缺陷已修，见 §162 / WF-52；**逐帧探针仪器体检前置**见 WF-51 + §158 续六十一条 bug 全表；`toggleState` tween 起点取错源已修，守 `l2d_state_toggle_regress.py`；**看图预算**：截图不得直接进上下文，先 `shot_budget.py` 读指标/压缩，见 §160 / WF-50；无头浏览器生命周期改内核级兜底：Job Object + 启动前清理 + 回读确认，见 §159 / WF-49）
+> **生成时间**: 2026-10-29（**`l2d_costume_hotzone_verify.py` 最后一处红已查明是探针自身两处缺陷并已修**：取点落进 trigger 判定区 + CDP 两段式派发间隔 4.6–29.9 s，见 §164 / WF-54；修后 `ougen_8/ShoseOff` 7 PASS / 0 FAIL，`aersasi_2` 墨镜 5/5 零回归，可达率基线重标；`ougen_8` 少一只鞋定性为素材侧缺省关闭**：那 16 件由 `Param233` 统一控制、`def=0`、idle/idle9 各 220 帧全 0，仅 `touch_idle2/4/10/18` 里推到 1，见 §163 / WF-53；**热区判定改真实三角形 + 渲染序裁决 + 幽灵区第二遍**，八热区基线五满三欠、点击时序两处真实缺陷已修，见 §162 / WF-52；**逐帧探针仪器体检前置**见 WF-51 + §158 续六十一条 bug 全表；`toggleState` tween 起点取错源已修，守 `l2d_state_toggle_regress.py`；**看图预算**：截图不得直接进上下文，先 `shot_budget.py` 读指标/压缩，见 §160 / WF-50；无头浏览器生命周期改内核级兜底：Job Object + 启动前清理 + 回读确认，见 §159 / WF-49）
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python **3.15**（2026-10-23 起本机约定；UnityPy 1.25.4 无 cp315 预编译轮子，需源码编译，见 §2 Python 行）。⚠️ 本机同时装着 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（现固定 3.15），**跑之前先 `py -3 scripts/diag/check_env.py`** 确认实际解释器与依赖
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`（3.15 上必须走阿里云/腾讯云源，清华源连 sdist 都没有；需 MSVC BuildTools 编译 UnityPy + lz4）
@@ -205,12 +205,12 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 ### 既有待办
 
 **✅ 0 / 0b. 2026-10-27 收官轮改动已全部提交 + 探针清单体检三处「尺子坏了」已修** —— 逐字外迁 `docs/archive/PROJECT_STATUS_待办0-0b_逐字外迁_2026-10-28.md`（A31 段）。
-⚠️ 其中两条仍是活口：① `.diag` 78 个 chrome profile / 6.83 GiB 未删（`clean_diag_profiles.py --yes` 未执行）；② **24 个探针把 `CHROME` 写死成本机不存在的 `Google/Chrome`**（本机只有 Edge）⇒ 起不来，正解是 `scripts/paths.py` 的 `CHROME`（含 Edge 兜底）。
+⚠️ 其中两条仍是活口：① `.diag` 78 个 chrome profile / 6.83 GiB 未删（`clean_diag_profiles.py --yes` 未执行）；② **24 个探针把 `CHROME` 写死成本机不存在的 `Google/Chrome`**（本机只有 Edge）⇒ 起不来，正解是 `scripts/paths.py` 的 `CHROME`（含 Edge 兜底）。**新增（2026-10-29）**：`f2811cb` 的批量迁移把 6 个探针改成「`chrome_tree.launch(...)` 跑在 `import chrome_tree` 之前」⇒ 运行时 `NameError`（`py_compile` 看不出来），已全修并给 `migrate_chrome_launch.py` 加了 AST 版 `--audit` 护栏（见 §165 / WF-55）。
 
-**⏳ 0c. 用户四条互动区需求（2026-10-28 提出，需求①已定性、修复方案待拍板；②③④未开始）**
-- **① `ougen_8` 少一只鞋 / 左脚左腿消失** —— **已定性完（§163 / WF-53）**：素材侧缺省关闭（16 件由 `Param233` 控制、`def=0`、idle/idle9 各 220 帧全 0），**不是渲染丢件**。修复三选待用户拍板：(a) `Param233` 加进 `costume_params.json` + `param_drawables.json`（16 件）让面板可控；(b) 加载 ougen_8 时默认 pin `Param233=1`；(c) `ShoseOff` 的 `costumeToggle` 联动 `Param233`。⚠️ 两者是**独立**参数（`ShoseOff +1` 走交叉淡化、不碰 `Param233`），语义边界须先定。
+**⚠️ 0c. 用户四条互动区需求（2026-10-28 提出；①已修并跑绿、②③④未开始）**
+- **① `ougen_8` 少一只鞋 / 左脚左腿消失** —— **已定性（§163 / WF-53）且已修**：素材侧缺省关闭（16 件由 `Param233` 控制、`def=0`、idle/idle9 各 220 帧全 0），**不是渲染丢件**。落地方式 = `Param233` 双写 pin（面板可控 + 加载即 `on`）；`ShoseOff` 与 `Param233` 是**独立**参数（前者走交叉淡化、不碰后者），语义边界未联动。
 - **② 全部换装/可调参数的互动区**：`Cloth1/2/3`、`Stock1/2`、`ShoseOff`、`Paramring` 之外还有眼型、渐变类；`costume_params.json` 里 `BondEyes/HeartEyes/ParamEyeSmile` 三条 `n_drawables=0` ⇒ **目前无热区**，需换判定法或降级为面板控件；`NeckMoney` 需核实（moc3 名表里**没有**这个名字，但 `param_drawables` 登记了 drawable 502）。渐变类（`ShoseOff` 已证实是**交叉淡化**）必须给 `mode:'slider'` 可拖。
-- **③ 互动区系统性排查**：用升级后的 `l2d_param_effect_scan.py` 对 8 条参数批量重扫，产出实测映射并与 `param_drawables.json` 比对。**已证两条漏项**（`Param233` 漏 16、`ShoseOff` 漏 3）⇒ 其它参数很可能同样漏，这是「效果不对」类问题的根因入口。「被另一个互动区覆盖」那条已在 §162 第三层（渲染序裁决）修过，需用可达率基线复验。
+- **③ 互动区系统性排查**：可达率基线**已重标（`l2d_hotzone_reachability.py`，盒哈希 `-937102468`，GATE PASS）**：`Cloth1/Cloth2/Cloth3/Param233 100%`、`ShoseOff 97.8%`、`NeckMoney 82.4%(own=0 全靠幽灵区)`、`Stock1 78.9%(主要被 Stock2×279 抢)`、`Stock2 74.1%(被 Stock1×402+ShoseOff×167+Cloth1×38 抢)`、**`Paramring 0.0%（面积仅 0.25，结构性不可点）`**；⑥ 反解点 9/9 全部命中自己（exit 0，`reachability_ougen_8.json`）。另需用 `l2d_param_effect_scan.py` 对 12 条参数批量重扫并与 `param_drawables.json` 比对（**已证漏项**：`Param233` 漏 16、`ShoseOff` 漏 3 ⇒ 这是「效果不对」的根因入口）。
 - **④ 切动作时参数合理保留**：数据层已证换装参数在各动作里全是定值 0 ⇒ **pin 接管是唯一路径**（§162 / WF-47 既有结论）。待做：`healthcheck_costume.py` R5 只验了一个动作，需**逐动作**验证（含 `Param233`）。
 - **影响面（用户问「其它角色还有没有部位消失」）**：对每个 skin 跑「几何镜像配对 + 不透明度绑定搜寻（带阳性对照）」。⚠️ **绝不许复用 292/45 或 9412 轮的任何区域框**，每 skin 重新取 canvas rect。优先筛「某 `ParamN` 只在少数动作被推到 1、其余恒 0、且控制 ≥5 件」——`Param233` 正是这个模式。
 

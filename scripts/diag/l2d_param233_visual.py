@@ -48,11 +48,36 @@ RECT = """(function(){var c=document.querySelector('#l2wrap canvas');
   if(!c) return 'null'; var r=c.getBoundingClientRect();
   return JSON.stringify({left:r.left, top:r.top, w:r.width, h:r.height});})()"""
 
-SETP = """(function(){var c=window.__l2ModelRef().internalModel.coreModel;
+SETP = """(function(){var m=window.__l2ModelRef(); if(!m) return 'NO_MODEL';
+  var c=m.internalModel.coreModel;
   var i=c.getParameterIndex(%s); if(i>=c.getParameterCount()) return 'NO_PARAM';
+  /* 2026-10-28：必须连产品层的 pin 一起改。
+     产品层现在每帧在 beforeModelUpdate 与 LOW 两处写 pin，手动 setParameterValueByIndex
+     会被下一帧立刻覆盖 ⇒ 只改参数值得到的是「两张都是开」的假对照（实测变化像素 0）。
+     这里把 pin 键设成同一个值，再补一次参数写入，两边保持一致。 */
+  var pm=window.__costumePinsByModel||{}, hit=0;
+  for(var k in pm){ if(pm[k] && (pm[k][%s]!==undefined)){ pm[k][%s]=%s; hit++; } }
   c.setParameterValueByIndex(i, %s); c.update();
-  return JSON.stringify({idx:i, v:c.getParameterValueByIndex(i),
-    min:c.getParameterMinimumValue(i), max:c.getParameterMaximumValue(i)});})()"""
+  return JSON.stringify({idx:i, v:c.getParameterValueByIndex(i), pinKeys:hit,
+    min:c.getParameterMinimumValue(i), max:c.getParameterMaximumValue(i)});})()""" % (
+    json.dumps(PARAM), json.dumps(PARAM), json.dumps(PARAM), '%s', '%s')
+
+PIN_OFF = """(function(){var pm=window.__costumePinsByModel||{}, hit=[];
+  for(var k in pm){ if(pm[k] && (pm[k][%s]!==undefined)){ delete pm[k][%s]; hit.push(k); } }
+  var m=window.__l2ModelRef(); if(m){ var c=m.internalModel.coreModel;
+    var i=c.getParameterIndex(%s); if(i<c.getParameterCount()){
+      c.setParameterValueByIndex(i, c.getParameterMinimumValue(i)); c.update(); } }
+  window.__p233Saved=hit;
+  return 'pin-cleared:'+(hit.length?hit.join(','):'none');})()""" % (
+    json.dumps(PARAM), json.dumps(PARAM), json.dumps(PARAM))
+
+PIN_ON = """(function(){var pm=window.__costumePinsByModel||{}, hit=[];
+  for(var k in pm){ if(pm[k]){ pm[k][%s]=1; hit.push(k); } }
+  var m=window.__l2ModelRef(); if(m){ var c=m.internalModel.coreModel;
+    var i=c.getParameterIndex(%s); if(i<c.getParameterCount()){
+      c.setParameterValueByIndex(i, 1); c.update(); } }
+  return 'pin-restored:'+(hit.length?hit.join(','):'none');})()""" % (
+    json.dumps(PARAM), json.dumps(PARAM))
 
 
 def open_model(pg):
@@ -98,8 +123,11 @@ def main():
 
         a = os.path.join(OUT, 'p233_off.png')
         b = os.path.join(OUT, 'p233_on.png')
+        print('\n关 pin →', pg.ev(PIN_OFF))
+        time.sleep(0.6)
+        pg.require_frames(1.0)
         pg.shot(a)
-        print('\n设定 %s=1 →' % PARAM, pg.ev(SETP % (json.dumps(PARAM), '1')))
+        print('开 pin →', pg.ev(PIN_ON))
         time.sleep(0.6)
         pg.require_frames(1.0)
         pg.shot(b)

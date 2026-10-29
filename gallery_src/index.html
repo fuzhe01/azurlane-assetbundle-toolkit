@@ -1262,6 +1262,22 @@ const STATE_TOGGLES = {
     { trigger:'touchdrag1', id:'touch_drag1', dur:0.5, label:'墨镜' }
   ]
 };
+/* ---------- 装扮参数「产品层默认档」（2026-10-29，需求①：ougen_8 左脚/第二套鞋件消失）----------
+   结构 {模型key: {参数id: 默认值}}。与 COSTUME 表里的 `def` **分工不同，不要合并**：
+     · `def` = moc3 自带的默认值**事实**（导出侧读出来的），面板「↺ 复位默认」用它，热区两态
+       起点也用它 ⇒ 改它等于篡改数据、并且会把「点击切换的起手值」一起带偏。
+     · 本表 = **产品决定**：素材把某个部位做成缺省关闭，但游戏里玩家看得见，我们补一档打开。
+   ougen_8 / Param233 的取证链（docs/TROUBLESHOOTING.md §163）：
+     · `Param233` 是 16 个图元的**唯一总开关**，moc3 里 `def=0`；idle / idle9 真实播放 220 帧
+       全程 0，16 件 vis=0 ⇒ 第二套鞋件（角色自身左脚那只，含鞋底与高跟）默认不显示。
+     · 55 个 motion 里 46 个有它的曲线，其中 **42 个恒 0**；只剩 touch_idle2/4/10/18 是
+       「1 秒渐入 → 停 3 秒 → 瞬间归 0」的短暂穿上 ⇒ 想让它默认就在，只能由产品层每帧钉值，
+       数据层无解（改 motion 文件会污染原素材）。
+   ⚠️ 只在 pins 里**没有**该键时写入（`===undefined` 判断）：pins 挂在 window 上按模型隔离、
+   会跨 renderLive2D 存活，用户手动关掉鞋再换皮肤回来应当保持关着，不能被默认档覆盖。 */
+const COSTUME_DEFAULT_ON = {
+  'ougen_8': { Param233: 1 }
+};
 let l2State = null;
 function stopLive2D(){ if(l2State){ l2State.cancelled=true; if(l2State.off)try{l2State.off()}catch(e){}
   if(l2State.app)try{l2State.app.destroy(true,{children:true,baseTexture:true,texture:true})}catch(e){} l2State=null; } }
@@ -1745,8 +1761,17 @@ async function renderLive2D(s, sk){
        · action-state pins：动作明确写出的**非零**独立状态（吻痕/口红印），普通 0 曲线不清；
        · pose_keep：只服务回落姿势，不在这里混进状态表。
 
-       时机：internalModel.update() 末尾会 `loadParameters()`，所以 beforeModelUpdate 里写会被
-       立刻覆盖；必须挂在 app.ticker LOW（模型 update 之后、render 之前）。
+       时机（2026-10-28 A/B/C/D 四组对照后修正，原注释「只挂 LOW 就够」已被推翻）：
+       一次 `internalModel.update()` 的固定顺序是
+         motionManager.update（动作曲线写值）→ saveParameters（存档）
+         → beforeModelUpdate（本文件的 stateApply 在这里写 pin）
+         → core.update()（按当前参数算 drawable 不透明度/可见性）→ loadParameters（把参数复原成存档值）。
+       ⇒ **画什么由 beforeModelUpdate 决定**（core.update 之前那一刻的值），
+         **读回什么由 LOW 决定**（loadParameters 之后重申）。
+       只挂 LOW 的后果是「参数读回正确、画面仍按动作曲线算」（实测 Param233 读回 1、16 件 0/220 帧可见）；
+       两处都写才两边都对（`l2d_pin_timing_ab.py` D 组 450/450 可见且读回 1）。
+       LOW 这一份仍有必要：它保证 loadParameters 之后参数值是真值，供其它探针/交互读取，
+       并且 tween 渐变、面板显示都依赖读回值。
        这里曾逐字重复注册了两份 costume ticker，面板构建又注册第三份，每帧写 3 遍。
        现在全模型唯一出口是 app.__statePinTick；同一参数若两边都有，先写 action state、
        后写 costume，保证用户刚做的互动操作高于动作状态。 */
@@ -1755,12 +1780,14 @@ async function renderLive2D(s, sk){
          一度以为「Cubism 只在参数变化时重算 keyform，pin 每帧写同值就不刷新」，
          于是补了一次 `c2.update()`；但对照实验显示：
            · 旧行为（只写、不 update）在动作停稳后同样能让 Paramring 的 drawable 796 不透明度 0→1；
-           · 之前读到的「恒为 0」是在 login 动作**仍在播放**时取的——那是动作曲线在覆盖参数，
-             loadParameters 每帧把它拉回 0，与 keyform 刷新时机无关。
-         ⇒ 补 update() 不但无益，还多算一次骨架（全体 drawable 重算），并在部分模型上
-           与动作驱动的 update 抢时序。保持「只写参数、交给库自己的 update」。
+           · 之前读到的「恒为 0」是在 login 动作**仍在播放**时取的。
+         **本段前半解释已被同日后续取证改写**（保留原文以免重犯）：真正原因不是「动作曲线覆盖
+         参数」也不是 keyform 刷新，而是**写在 core.update() 之后** —— 动作曲线在帧初写 0，
+         core.update 用 0 算完不透明度，LOW 才把参数改成 1，于是读回 1、画面仍是隐藏。
+         证据：B 组只把写入挪到 beforeModelUpdate，同一参数同一动作就从 0 帧可见变 450/450。
+         ⇒ 结论不变（仍不需要手动 update），但改由「两处都写」解决，见上方 stateApply 的注释。
          「参数对了但画面没变」的正确排查顺序：先确认动作是否还在跑（currentGroup / 曲线是否
-         驱动该参数），再怀疑 keyform；否则很容易把动作覆盖误判成刷新问题。 */
+         驱动该参数）→ 再确认**写入是否发生在 core.update() 之前** → 最后才怀疑 keyform。 */
       const stateTick=()=>{
         try{
           const m2=l2State&&l2State.app&&l2State.app.stage.children[0];
@@ -2047,6 +2074,21 @@ async function renderLive2D(s, sk){
        只写 pins + tween 渐变，局部过渡由 moc3 keyform 随参数渐变自然产生。 */
     const costumePins=()=>{ const pm=(window.__costumePinsByModel=window.__costumePinsByModel||Object.create(null));
       return pm[sk.key]||(pm[sk.key]=Object.create(null)); };
+    /* ---------- 装扮参数「产品层默认档」落地（见表定义处 COSTUME_DEFAULT_ON 的取证注释）----------
+       只在 pins 里**尚无该键**时写一次，之后由 app.__statePinTick 每帧重申。
+       为什么不写进 COSTUME 的 `def`：`def` 同时是热区两态起点与面板「复位默认」的目标值，
+       改它会让「点一下切到另一端」的语义错位（ougen_8 的 ShoseOff 就吃过这种亏）。
+       明确不做的两件事：
+         · 不在这里写 coreModel —— 此刻动作/物理还没跑过一帧，写了也会被下一次
+           loadParameters 覆盖；重申出口只有一个（__statePinTick）。
+         · 不做「当前动作有没有曲线驱动它」的条件判断：BASE_PINS 那套条件是给
+           **姿势**用的；装扮参数要的是「无论播什么动作都保持用户选的那一档」（需求④），
+           动作曲线若短暂写它（touch_idle2 等 4 条的 3 秒穿鞋），pin 会在同一帧末尾夺回。 */
+    { const dflt=COSTUME_DEFAULT_ON[sk.key];
+      if(dflt){ const pins=costumePins();
+        for(const id in dflt){
+          try{ if(pins[id]===undefined) pins[id]=dflt[id]; }catch(e){}
+        } } }
     /* 参数驱动的 drawable 必须落在当前模型的编号范围内（表是按模型导出的，换模型/换数据版本会错位） */
     const _cosNd=(()=>{ try{ return core.getDrawableCount(); }catch(e){ return 0; } })();
     /* ---------------- 热区几何：多边形命中（2026-10-28 重做） ----------------
@@ -2692,9 +2734,23 @@ async function renderLive2D(s, sk){
           t._last=t._on;
         }
       }catch(e){} }
-      /* 装扮参数跨动作保留**不在这里做**：本事件在 loadParameters 之前触发，
-         写进去会被紧接着的 loadParameters 覆盖（实测写 1 读回 0）。
-         真正的写入点在下方 restTick 同级的 LOW ticker（模型 update 之后）。 */
+      /* 装扮参数跨动作保留**在这里也要写一次**（2026-10-28 修正错误结论，见下）。
+         旧结论（本轮推翻）：「本事件在 loadParameters 之前触发，写进去会被覆盖，所以只挂 LOW」。
+         那句只验证了**读回值**，没验证**渲染**。A/B/C/D 四组对照（`l2d_pin_timing_ab.py`，
+         动作 idle / Param233 / 目标件 405,413,665 / 150 帧）实测：
+           C 谁都不写            → 参数[0,0]   可见帧 0
+           A 只写 LOW（旧产品行为） → 参数[1,1]   可见帧 0     ← 读回对、画面错
+           B 只写 beforeModelUpdate → 参数[0,0]   可见帧 450/450
+           D 两处都写            → 参数[1,1]   可见帧 450/450
+         逐帧原因（vendor 顺序固定）：
+           motionManager.update 把曲线值写下 → saveParameters 存档 → 本事件（写 pin=1）
+           → core.update() 用 pin=1 算出 drawable 不透明度=可见 → loadParameters 把参数复原成存档值。
+         ⇒ 本事件决定**这一帧画什么**，LOW 决定**下一轮读回看到什么**，两者缺一不可。 */
+      { const as=(window.__actionStatePinsByModel||{})[sk.key];
+        if(as) for(const k in as){ try{ core.setParameterValueById(k, as[k]); }catch(e){} }
+        const cs=(window.__costumePinsByModel||{})[sk.key];
+        if(cs) for(const k in cs){ const v=cs[k];
+          if(typeof v==='number'&&isFinite(v)) try{ core.setParameterValueById(k, v); }catch(e){} } }
     };
     mdl.internalModel.on('beforeModelUpdate', stateApply);
     /* 姿势基线钉值落地：只钉「当前动作组没有曲线驱动」的参数，避免盖掉动作曲线。
@@ -2799,8 +2855,23 @@ async function renderLive2D(s, sk){
     const toggleState=(t,via)=>{ if(!t) return false;
       try{
         /* 手动切状态（点 trigger 区）→ 收回装扮让渡，状态机重新接管该参数。
-           否则「先点装扮热区 → 状态区从此永久写不动」这种跨入口污染会很难查。 */
+           否则「先点装扮热区 → 状态区从此永久写不动」这种跨入口污染会很难查。
+           ⚠️ 收回必须**连 pins 一起清掉**（2026-10-29 实测，判据脚本 l2d_click_insync_diag.py）：
+           `stateApply` 末尾有一段**无条件**的 pins 重放（那是给「装扮参数跨动作保留」用的），
+           它跑在本函数 `_tw` 写入**之后**、同一个 beforeModelUpdate 内 ⇒ 只要 pins 里还留着
+           ② 写下的旧值，本函数的渐变写入**当帧即被抹掉**：pill 照报 `▸ on/off`（谎报），
+           画面纹丝不动。这正是用户报的「互动区被另一个互动区覆盖、点了没反应」。
+           实测（ougen_8/ShoseOff，pins 里留着上一段的 -1）：
+             点 touchdrag17 判定区 3/3 轮全部进 ①、`_on` 每轮都翻转、像素变化 **0/3**；
+             同一坐标先 `delete pins[ShoseOff]` 再点 → 画面立刻恢复 6–9 个部件变化（2/2 轮）。
+           ⇒ 收回 = `_costumeOwned` 归 false **且** pins/tween 归零，两者缺一就不算真收回。 */
         t._costumeOwned=false;
+        { const pm=(window.__costumePinsByModel||{})[sk.key]; if(pm) delete pm[t.id];
+          const tw=(window.__costumeTweens||{})[sk.key]; if(tw) delete tw[t.id];
+          /* 若这个参数另有「产品层默认档」，收回后要回到默认档而不是裸删（否则点击第一下
+             会先掉到 moc3 缺省、第二下才回到默认值）。OUGEN 现无此情形，但表是可扩的。 */
+          const dflt=COSTUME_DEFAULT_ON[sk.key];
+          if(pm&&dflt&&dflt[t.id]!==undefined) pm[t.id]=dflt[t.id]; }
         if(t._on===undefined||t._on===null) t._on=stateCurOn(t);
         /* tween 起点必须取**渲染真正读到的值** `t._last`，不能取 getParameterValueById：
            后者是「最后一次写入」，而 motion 的 loadParameters 每帧会把参数拉回末态，

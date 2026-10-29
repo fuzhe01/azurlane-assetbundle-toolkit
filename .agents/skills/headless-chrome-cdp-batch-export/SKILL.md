@@ -1,7 +1,7 @@
 ---
 name: headless-chrome-cdp-batch-export
 description: 无头 Chrome + CDP 批量驱动本地网页完成渲染/截图/资产导出。当任务需要用浏览器前端运行时（如 Spine/WebGL/Canvas/JS 库）批量产出图片或数据文件时使用——触发词：无头浏览器批量导出、CDP 驱动网页、headless chrome 批量截图、浏览器渲染落盘、autostart 参数自动化。不适用于单次网页截图和 QwenWork 内置媒体生成工具。
-version: 1.8.7
+version: 1.8.8
 ---
 
 # 无头 Chrome + CDP 批量导出
@@ -33,7 +33,7 @@ version: 1.8.7
    - 抽查 1-3 张落盘产物（尺寸、内容非黑图）确认正确
    - 正确后再放量跑全量；跑完确认 Chrome 进程已退出（独立 user-data-dir 的进程可直接按 profile 识别）
 
-## 关键坑位（五坑，缺一即翻车）
+## 关键坑位（六坑，缺一即翻车）
 
 1. **`--remote-allow-origins=*` 必须加**：CDP 新版安全策略下，websocket 握手带 Origin 头会被 403 拒绝，表现为 `/json` 能列出 tab 但 `create_connection` 失败。
 2. **独立 `--user-data-dir` + 清残留 chrome**：必须用独立 profile 目录，且启动前杀掉使用同一目录的残留 chrome 进程，否则调试端口被旧进程占用，`/json` 返回的是旧会话的 tab。
@@ -53,6 +53,30 @@ version: 1.8.7
    页面级就绪 ≠ 模型级就绪——重运行时页面（本项目 263KB html + vendor 需 41~43 秒才 complete）complete 之后
    模型还要若干秒才进舞台，得另有一个业务级超时。
    实现见本项目 `scripts/diag/cdp_wait.py` 的 `wait_ready()`。
+
+6. **批量迁移启动点时，`import` 位置必须一起审计**（2026-10-29 事故，6 个脚本中招）：
+   把全库 `subprocess.Popen(...)` 批量换成 `chrome_tree.launch(...)`（单出口三层兜底）
+   时，容易只换「调用点」不动「import 行」。原本常见的写法是「先起浏览器，再
+   `import chrome_tree; chrome_tree.install(proc)`」——当时 `chrome_tree` 只在那行才用到，
+   延迟导入无害；迁移后同一个模块名出现在**更早的行**，于是
+   `NameError: name 'chrome_tree' is not defined` 在 `launch(...)` 那一行炸掉。
+   ⚠️ **`py_compile` 抓不到**：`import` 缺失只在执行到那行时才炸，语法层面完全合法。
+   实测 6 个脚本中招，其中 5 个是回归六件套成员 ⇒ 整条验证链断在第 3、4 件，
+   而报出来的样子很像"环境故障"，白查一轮。
+   判据用 **AST** 而不是正则（正则会把注释/docstring 里提到 `chrome_tree.launch()`
+   的文件误判成坏的 —— 实测 3 个假红 —— 且认不出 `import websocket, chrome_tree, cdp_wait`
+   这种逗号式导入）：
+   ```python
+   imp = min(n.lineno for n in ast.walk(tree)
+             if isinstance(n,(ast.Import,ast.ImportFrom))
+             and any(a.name=='chrome_tree' for a in n.names))
+   first = min(n.lineno for n in ast.walk(tree)
+               if isinstance(n,ast.Name) and n.id=='chrome_tree')
+   assert imp <= first
+   ```
+   必须配阴性对照（造一个「使用在导入之前」的文件，检查必须报红），
+   否则全库全绿没有区分力。本项目固化入口：
+   `py -3 scripts/diag/migrate_chrome_launch.py --audit`（退出码 0 = 干净）。
 
 ## 验证类任务的额外坑（做"批量断言"而非"批量导出"时）
 

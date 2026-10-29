@@ -186,11 +186,19 @@ class Page:
       if(sh&&sh!==tk){ sh.autoStart=true; sh.start(); }
       return 'ok';})()"""
 
-    # 帧源存活采样：优先读推帧器**自己**算的速率，退到 ticker.lastTime，再退到 rAF 计数。
+    # 帧源存活采样：优先读推帧器**自己**算的速率；未推帧时读探针侧挂在 ticker 上的计数器。
     # ⚠️ 为什么速率要在页内算：探针 `ev()` 一次往返可能 1–2 ms，也可能 40 ms；用 Python
     # 侧时间基准算「每秒增量」会把往返抖动直接算进帧率（实测同一页给出 546–700 帧/秒，
     # 且 pump 与 raf 读数完全相等 ⇒ 那是往返时延，不是帧率）。页内 `performance.now()`
     # 是单调时钟，不受宿主影响。
+    #
+    # ⚠️⚠️ `__rafc` 在产品里**不存在**（2026-10-29 核实：产品只导出 `__l2TickerState`
+    # 与 `__l2Ticker`），旧写法退到 `src:'raf'` 那支永远进不去，落到 `src:'ticker'` 且
+    # `n:0` ⇒ `frames_alive` 的 `(b.n-a.n)/dm` 恒为 0 ⇒ **`frames_alive` 永远判红**。
+    # 而且 `lastTime` 也不能拿来判帧率：它随真实时间推进，被节流到 1 Hz 时一个采样窗口
+    # 里照样涨满 `dm`，与满帧无法区分（这正是「假绿灯」的形状）。
+    # 正确做法 = 在**ticker 活对象**上挂一个探针自己的计数器（`__l2Ticker()` 是只读出口，
+    # 返回活对象，加 listener 不影响产品逻辑；PIXI 每帧都会调用它）。
     FRAME_SAMPLE = r"""(function(){try{
       // ⚠️ 判 pump 是否**还挂着**要看 `__framePump`（interval id），不能看 `__framePumpStat`
       // ——`reattach_frames()` 只清 id、留着 stat 对象，先前的写法会在重挂之后继续
@@ -201,11 +209,18 @@ class Page:
           fps:+(p.n-el*p.fps>0?p.fps:p.n/el).toFixed(1),
           t:p.last,err:p.err,cost:p.cost,ntk:p.ntk,
           ticks:p.ticks,maxItv:p.maxItv}); }
-      var t=window.__l2TickerState&&window.__l2TickerState();
-      if(t) return JSON.stringify({src:'ticker',n:0,fps:0,t:t.lastTime,err:null});
-      var r=window.__rafc;
-      if(r) return JSON.stringify({src:'raf',n:r.n,fps:r.fps||0,
-                                   t:performance.now(),err:null});
+      var tk=window.__l2Ticker&&window.__l2Ticker();
+      if(tk){
+        var c=window.__probeFrameCounter;
+        if(!c || c.tk!==tk){
+          c=window.__probeFrameCounter={tk:tk,n:0};
+          try{ tk.add(function(){ c.n++; }); }catch(e){ return JSON.stringify(
+            {src:'exc',err:'add:'+e}); }
+        }
+        var st=window.__l2TickerState&&window.__l2TickerState();
+        return JSON.stringify({src:'ticker',n:c.n,fps:(st?st.fps:0),
+          t:(st?st.lastTime:0),err:null,started:(st?!!st.started:null)});
+      }
       return JSON.stringify({src:'none',n:0,fps:0});
     }catch(e){ return JSON.stringify({src:'exc',err:''+e}); }})()"""
 
@@ -223,8 +238,10 @@ class Page:
         让探针红掉，而不是带着假读数继续跑。
 
         三种帧源统一用「n 的每秒增量」算，`t` 只作单调性旁证 —— 早先按 `t` 差值算
-        在 src='raf'（`t` 每次读的是当下 performance.now()）上会恒得 0，
-        那会让闸门永远判红（仪器自己的 bug，本轮踩过）。
+        在「`t` 每次读的是当下 `performance.now()`」的源上会恒得 0，那会让闸门永远判红
+        （仪器自己的 bug，本轮踩过）。`ticker` 那支的 `n` 来自探针自己挂在活 ticker 上的
+        计数器：`lastTime` 只随真实时间走，被节流到 1 Hz 时一个采样窗口里照样涨满，
+        与满帧无法区分 —— 拿它当帧率就是假绿灯。
         """
         a = json.loads(self.ev(self.FRAME_SAMPLE))
         if a['src'] in ('none', 'exc'):

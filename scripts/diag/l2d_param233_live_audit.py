@@ -183,13 +183,18 @@ def main():
         d2 = run_action(pg, ACT2)
         if d1 and d2:
             print('\n=== 判据 ===')
-            allvis = sum(1 for f in d1['s'] + d2['s']
-                         for d, (op, v) in f['op'].items() if v or op > 0)
-            print('  两个动作合计 %d 帧，16 件全部 vis=0 且 op=0 的帧数 = %d'
-                  % (len(d1['s']) + len(d2['s']), len(d1['s']) + len(d2['s'])))
+            tot = len(d1['s']) + len(d2['s'])
+            # 逐帧数：本帧里 16 件**至少一件**可见/有不透明度，就算"这一帧用户看得见"
+            vis_frames = 0
+            for f in d1['s'] + d2['s']:
+                if any(v or op > 0 for op, v in f['op'].values()):
+                    vis_frames += 1
+            print('  两个动作合计 %d 帧，其中「16 件里至少一件可见」的帧数 = %d'
+                  % (tot, vis_frames))
             print('  结论: %s' % ('素材侧缺省关闭（观感"少一只鞋"与模型数据一致）'
-                                 if not allvis else
-                                 '有帧真的显示了这些件 ⇒ 问题在默认姿态而非渲染'))
+                                 if vis_frames == 0 else
+                                 '画面确实显示了这些件 ⇒ 缺件不是渲染丢帧，'
+                                 '而是当前动作/低优先级写入没让它们出现在画面上'))
         return 0
     finally:
         pg.close()

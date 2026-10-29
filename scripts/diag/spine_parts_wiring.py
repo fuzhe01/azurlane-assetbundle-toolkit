@@ -30,13 +30,13 @@ CASES = ['huajia_2', 'huajia_2_hx', 'buleisite', 'duyisibao_2', 'bailong', 'puli
 
 sys.path.insert(0, os.path.join(ROOT, 'scripts', 'diag'))
 import websocket  # noqa: E402
+import chrome_tree  # noqa: E402  ⚠️ 必须在 launch() 之前导入（2026-10-29 修：原写法 import 在 launch 之后 ⇒ NameError）
 
 proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling',
   '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--window-size=1280,900', URL],
   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-import chrome_tree
 chrome_tree.install(proc)
 
 ws = None

@@ -16,6 +16,7 @@ r"""把 `subprocess.Popen([... '--headless' ...])` 批量换成 `chrome_tree.lau
 
 ⚠️ 只改**参数区里真的出现 `--headless`** 的 Popen；同一个文件里起 http.server 的 Popen 不动。
 """
+import ast
 import os
 import re
 import sys
@@ -111,6 +112,47 @@ def plan(path):
     return text, out
 
 
+USE_RE = re.compile(r'\bchrome_tree\.(?:launch|install|kill_tree)\b')
+IMPORT_RE = re.compile(r'^\s*(?:import\s+chrome_tree\b|from\s+chrome_tree\s+import\b)', re.M)
+
+
+def import_order_problem(path):
+    """`chrome_tree` 被用了却还没导入 → 返回一行说明，正常返回 None。
+
+    ⚠️ 这条检查是 2026-10-29 事故的护栏：`rewrite()` 只换了调用点，**没动 import 行**。
+    原来那批脚本写的是「先 `Popen`/`launch` 再 `import chrome_tree`」（延迟导入图省事），
+    迁移后就变成「`chrome_tree.launch(...)` 跑在一个还没定义的模块名上」——
+    `NameError` 直到运行时才炸，`py_compile` 完全看不出来。实测 6 个脚本中招，
+    其中 5 个是 WF-16 回归六件套的成员 ⇒ 整条验证链在第 3、4 件直接崩。
+
+    实现必须走 AST：早先用正则扫源码，会把**注释和 docstring 里**提到 `chrome_tree.launch()`
+    的文件误判成坏的（实测 3 个假红），而且认不出 `import websocket, chrome_tree, cdp_wait` 这种逗号式导入。
+    """
+    try:
+        src = open(path, encoding='utf-8').read()
+        tree = ast.parse(src)
+    except SyntaxError as e:
+        return '%s: 语法错误 %s' % (os.path.basename(path), e)
+    imp = None
+    for node in ast.walk(tree):
+        names = []
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = [a.name for a in node.names]
+        if any(n == 'chrome_tree' for n in names):
+            imp = node.lineno if imp is None else min(imp, node.lineno)
+    uses = [n.lineno for n in ast.walk(tree)
+            if isinstance(n, ast.Name) and n.id == 'chrome_tree']
+    if not uses:
+        return None
+    first = min(uses)
+    if imp is not None and imp <= first:
+        return None
+    return ('%s:%d 用了 `chrome_tree` 但导入在它之后（或无导入）⇒ NameError；'
+            '把 import 挪到第一次使用之前' % (os.path.basename(path), first))
+
+
 def rewrite(text, sites):
     """把每个 headless Popen 调用点换成 `chrome_tree.launch(...)`。
 
@@ -144,18 +186,23 @@ def rewrite(text, sites):
 
 def main():
     dry = '--dryrun' in sys.argv
+    audit = '--audit' in sys.argv
     only = None
     if '--only' in sys.argv:
         only = set(sys.argv[sys.argv.index('--only') + 1].split(','))
     total_sites = 0
     touched = []
     problems = []
+    order_bad = []
     for name in sorted(os.listdir(DIAG)):
         if not name.endswith('.py') or name in SKIP_FILES:
             continue
         if only and name not in only:
             continue
         path = os.path.join(DIAG, name)
+        bad = import_order_problem(path)
+        if bad:
+            order_bad.append(bad)
         try:
             text, sites = plan(path)
         except Exception as e:
@@ -167,7 +214,7 @@ def main():
             problems.append('%s: 用了 headless Popen 但没 import chrome_tree' % name)
         total_sites += len(sites)
         touched.append((name, len(sites)))
-        if dry:
+        if dry or audit:
             continue
         new = rewrite(text, sites)
         # 只校验语法，不当成"语义已对"的证据（WF-46：py_compile 只证语法）
@@ -178,6 +225,17 @@ def main():
             continue
         with open(path, 'w', encoding='utf-8', newline='') as f:
             f.write(new)
+
+    if audit:
+        print('迁移现状：headless Popen 调用点 %d 个（应为 0）' % total_sites)
+        if order_bad:
+            print('\n[FAIL] %d 个脚本「用了 chrome_tree 但导入在使用之后」：' % len(order_bad))
+            for p in order_bad:
+                print('   ' + p)
+        else:
+            print('[PASS] 全部 %d 个脚本的 `chrome_tree` 导入都在首次使用之前' % (
+                len([n for n in os.listdir(DIAG) if n.endswith('.py') and n not in SKIP_FILES])))
+        return 1 if (order_bad or total_sites) else 0
 
     print('将迁移的 headless Popen 调用点: %d 个，分布在 %d 个文件' % (total_sites, len(touched)))
     for name, n in touched:

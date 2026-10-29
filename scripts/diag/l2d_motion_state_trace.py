@@ -22,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 sys.path.insert(0, os.path.join(ROOT, 'scripts', 'diag'))
 import cdp_slot
+import chrome_tree         # ⚠️ 必须在 launch() 之前导入（2026-10-29 修：原写法 import 在 launch 之后 ⇒ NameError）
 CHROME = r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 PORT, PROFILE = cdp_slot.slot(ROOT, 'statetrace')
 try:
@@ -35,7 +36,7 @@ proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
   '--use-angle=swiftshader', '--window-size=1280,900',
   'http://127.0.0.1:8777/gallery_v2/index.html'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-import chrome_tree; chrome_tree.install(proc)
+chrome_tree.install(proc)
 w = None
 for _ in range(90):
     try:

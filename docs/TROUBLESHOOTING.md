@@ -8619,3 +8619,150 @@ changed 3146 px（0.353%），`left 3146 / right 0`。
 **涉及文件**：`scripts/diag/l2d_opacity_binding_hunt.py`、`scripts/diag/l2d_param_effect_scan.py`、
 `scripts/diag/l2d_param233_visual.py`、`scripts/diag/l2d_param233_live_audit.py`、
 `scripts/diag/shot_regions.py`、`.diag/all_draw.json`、`docs/WORKFLOWS.md` WF-53。
+
+---
+
+## §164. 「互动区点了没效果」两次翻盘：真 bug 是 M2，而「第 8 处红」是探针自己（2026-10-29）
+
+用户报的第 ③ 类问题是「互动区无法触发 / 被另一个互动区覆盖 / 效果不对」。
+本轮在同一组探针上**连翻两次**，结论必须按下面这个顺序读，否则会重犯同一类错误。
+
+### 结论一（真 bug，已修）：`toggleState` 收回让渡时没清 `pins`/`tweens`（记作 M2）
+
+`stateApply` 末尾有一段**无条件**的 pins 重放：
+
+```js
+{ const cs=(window.__costumePinsByModel||{})[sk.key];
+  if(cs) for(const k in cs) core.setParameterValueById(k, cs[k]); }
+```
+
+它跑在 `_tw`/`_on` 写入**之后**、同一个 `beforeModelUpdate` 内。于是只要
+`pins['ShoseOff']` 存在（② 走过一次就会建），之后任何 ① 的写入**当帧即被抹掉**：
+
+- pill 照样报 `▸ off` —— **谎报**；
+- 像素 0 变化 —— 用户看到的「点了没反应」。
+
+**修法**：`toggleState` 在收回让渡时连 pins/tweens 一起清（`delete pins[t.id]` /
+`delete tweens[t.id]`），并回填 `COSTUME_DEFAULT_ON`。**不要改 `stateApply`** ——
+那段重放对「已让渡」的条目是承重的（`ownership_entry_diag.py` 用 `core.update` 入口采样
+各 200+ 帧证明：未让渡态下 pin 写了也不进渲染，必须靠 `_on` 让渡后才生效）。
+
+**M2 的精确判据（定型，务必照抄）**：把 `pins[id]` 显式钉成**模型当前显示值**
+（`__stateTogglesInfo()` 的 `on`）**再点**：
+
+| 状态 | 现象 |
+|---|---|
+| 未修 | pins 重放赢 ⇒ 画面恒不变 |
+| 已修 | ① 真生效 ⇒ 画面必变 |
+
+⇒ 与 `_on` 奇偶、点击次数**完全无关**。另外必须配正向对照 `SETPIN_DROP`
+（建 pin 后立刻删，**必变**）；若它不变则该读数**作废**。
+
+⚠️ **不许用「随便什么旧 pin 值」当判据**：① 把值切到「当前值的反面」，
+旧 pin 恰好等于那个反面时画面本来就一样 ⇒ 误读成「M2 仍在」（本轮白红过一次）。
+
+### 结论二（否证）：M1「`hitAt` 的 A3 随机抽取让同一点随机走 ①/②」**不成立**
+
+`hitAt()`（`:1985`）确有一处随机挑候选（A3 规则），本轮一度把它当作「同一点时红时绿」的根因。
+两次独立复现把它否掉了：
+
+- 参数热区代表点（`__costumeScreenOf`）连点 ⇒ **5/5 全落 ②**；
+- 判定区代表点（`__L2_SCREENOF(trigger)`）连点 ⇒ **5/5 全落 ①**。
+
+⇒ 旧结论的真实来源是**反解点漂移**（两次运行 `__costumeScreenOf` 给出的点不同），
+不是随机抽取。**注意这是「否证」，不是「没找到证据」**：两次各 5 轮、分支全一致。
+
+### 结论三（探针缺陷，不是产品）：那第 8 处红是「取点落进了 trigger 区」
+
+`__costumeScreenOf` 只保证「离参数热区边缘最远」，**与 trigger 判定区完全无关**。
+而 `onUp` 是 ① `stateFind` 优先（`:2942-2953`）。`ougen_8` 实测：
+
+| 区域 | 屏幕包围盒 |
+|---|---|
+| `touchdrag17` 判定区 | `[542,342,620,420]` |
+| `ShoseOff` 参数热区 | `[482,287,608,449]` |
+
+两盒**相交**，`__costumeScreenOf('ShoseOff')` 返回 `(566,359)` 落在判定区内
+⇒ `onUp` 走 ①、`__costumeLog` 不新增 ⇒ 探针报「② 分支没进」。
+**产品在这一步是正常的**（④b 的 lo 端真实点击 pin `-1→1`、画面 31 个 drawable 变化）。
+修法 = `find2`（详见 WF-54 规矩二）。
+
+### 结论四（仪器，不是产品）：CDP 两段式派发本身会让点击落空
+
+`Input.dispatchMouseEvent` 拆成 pressed/released 两条，实测间隔 **4.6–29.9 秒**；
+`onDown` 与 `onUp` 是两个时刻两套几何。这和上面「落进 trigger 区」是**两个独立**的
+假红来源，先修哪个都不够 —— 本轮先把派发改成页内同步（WF-54 规矩一），
+再把取点改成 `find2`，8 项判据才一起转绿。
+
+### 已排除的假设（下个会话别再重跑）
+
+| 假设 | 否证方式 | 结论 |
+|---|---|---|
+| M1 `hitAt` 随机抽取导致同一点时红时绿 | 两类代表点各连点 5 轮，分支 100% 一致 | 不成立 |
+| 是 `stateApply` 的无条件重放本身写错了 | `ownership_entry_diag.py` 采样证明它对已让渡条目是承重的 | 不是，要改 `toggleState` |
+| `frames_alive` 恒红说明渲染真的卡了 | 产品里根本没有 `__rafc` 这个导出 | 仪器 bug（见 §158 续六） |
+| 用 `lastTime` 当帧率 | 被节流到 1 Hz 时采样窗口里 `lastTime` 照样涨满 | 假绿灯，禁用 |
+| 停心跳能让 CDP 变快 | 置 `_hb_stop` 后往返反而 10.5–11.9 s 且逐条递增 | 反了 |
+| `dpin` 能判「走的是 ②」 | ① 修复后会主动 `delete pins[id]` | 不能，只读 pill 文本 |
+
+### 「参数值没变」必须分三类（这是一条判据，不是一句注释）
+
+读产品自己的 `__costumeLog`（`costumeToggle` 每次追加 `[id,from,to,Date.now()]`，`:2382`）：
+
+1. `dlog<=0` ⇒ 点击没进 ② 分支 ⇒ **真缺陷**（本轮命中的正是这一类，但真因是取点）；
+2. log 里 `from==to` ⇒ **数据特性**（值域退化 / 已在该端），**不判红**；
+3. `from!=to` 但读回值仍是 `from` ⇒ tween 没到渲染 ⇒ **真缺陷**。
+
+旧版是无条件 `before['v']==after['v'] → FAIL`，把第 2 类也算红 ⇒ 同一功能时红时绿，
+且说不出坏在哪一环。
+
+**涉及文件**：`gallery_src/index.html`（`:2855` `toggleState` 已修；`:2689-2755`
+`STOGS`/`stateApply`；`:2362` `costumeToggle`；`:2942-2953` `onUp`）、
+`scripts/diag/l2d_click_insync_diag.py`（M2 精确判据 + 分支定性 + 六阶段对照）、
+`scripts/diag/l2d_costume_hotzone_verify.py`（五层判据 + `SYNC_CLICK`/`FIND2`）、
+`scripts/diag/ownership_entry_diag.py`（让渡态 `core.update` 入口采样）、
+`scripts/diag/cdp_cmd_latency.py`（延迟体检）、`docs/WORKFLOWS.md` WF-54。
+
+## §165. 批量迁移把调用点换了、却把 `import` 留在原地 ⇒ 六个脚本运行时 `NameError`（2026-10-29 发现并修）
+
+**现象**：WF-16 回归六件套的第 3 件 `l2d_inspector_verify.py`、第 4 件 `interact_verify.py`
+一启动就崩，`py_compile` 却全绿：
+
+```
+NameError: name 'chrome_tree' is not defined
+  File "...\l2d_inspector_verify.py", line 26, in <module>
+    proc = chrome_tree.launch([...])
+```
+
+**根因**：上一轮 `f2811cb`（headless Chrome 泄漏治理）用 `migrate_chrome_launch.py` 把全库
+58 个 `subprocess.Popen(...)` 调用点批量换成 `chrome_tree.launch(...)`，**但一行 `import` 都没动**。
+原本那批脚本的写法是「先起浏览器，再 `import chrome_tree; chrome_tree.install(proc)`」——
+延迟导入图省事，因为当时 `chrome_tree` 只在 `install()` 那一行才用到。迁移后同一个模块名
+出现在**更早的行**（`launch`），于是 `import` 就永远来不及了。
+
+**为什么 `py_compile` 抓不到**：`import` 只是延迟执行时的一句 `NameError` 潜在点，
+语法层面完全合法。这正是本项目反复记的一条：**语法通过不等于语义正确**（WF-46）。
+更糟的是这批文件里有 5 个属于 WF-16 六件套 ⇒ 整条验证链在第 3、4 件就断了，
+而崩溃信息看着像"环境问题"。
+
+**修法**：把 `import chrome_tree` 挪到第一次使用之前。6 个文件：
+`hit_verify.py`、`interact_verify.py`、`l2d_inspector_verify.py`、`l2d_const_pose_verify.py`、
+`l2d_motion_state_trace.py`、`spine_parts_wiring.py`（后三个当时没人跑，一并修）。
+
+**护栏（本条的真正资产）**：`migrate_chrome_launch.py --audit` 现在会做这项检查，
+判据用 **AST** 而不是正则：
+
+- 取 `ast.Import` / `ast.ImportFrom` 里 `chrome_tree` 的最小行号，与
+  `ast.Name(id='chrome_tree')` 的最小行号比，`import` 行号必须 ≤ 使用行号；
+- **必须用 AST**：第一版用正则扫源码，把**注释与 docstring 里**提到
+  `chrome_tree.launch()` 的文件误判成坏的（实测 3 个假红），而且认不出
+  `import websocket, chrome_tree, cdp_wait` 这种逗号式导入。
+- 阴性对照（必须报坏）：造一个 `launch` 在 `import` 之前的文件 ⇒ 检查吐
+  `bad.py:3 用了 chrome_tree 但导入在它之后`；正常文件吐 `None`。没有这条对照，
+  全库 373 个文件的绿就没有区分力。
+
+跑法：`py -3 scripts/diag/migrate_chrome_launch.py --audit`（退出码 0 = 现状干净；
+非 0 = 还有 headless Popen 残留或导入顺序错）。
+
+**涉及文件**：`scripts/diag/migrate_chrome_launch.py`（新增 `--audit` 模式 +
+`import_order_problem()`）、上述 6 个探针、`docs/WORKFLOWS.md` WF-49。

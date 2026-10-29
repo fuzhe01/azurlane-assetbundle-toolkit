@@ -3917,3 +3917,133 @@ py -3 scripts/diag/shot_budget.py --audit .diag --max-kb 200
 `scripts/diag/shot_regions.py`（像素模块：`diff_stats` / `RED_TIERS` / `region_stats` / 自写 BFS 连通域）、
 `.diag/all_draw.json`（842 件离线快照，可免开浏览器做全部几何分析）、
 `Output/Live2D/<模型>/motion/*.motion3.json`、`Output/gallery_v2/param_drawables.json`。
+
+---
+
+## WF-54 「点击类探针」的派发与取点两条硬规矩（2026-10-29 收敛）
+
+**适用**：任何要验证「用户点这里会发生什么」的探针（热区验收、状态开关回归、互动区可达率复验）。
+违反任一规矩，得到的是**探针自己的假红**，不是产品缺陷。本轮为此在同一个脚本上连翻两次。
+
+### 规矩一：down/up 必须在**页内同一个 JS 任务**里同步派发
+
+`onDown`（`gallery_src/index.html:2937`）用**按下那一刻**的新鲜几何定 `cosDown`，
+`onUp`（`:2942`）再补算一次 —— 这是两个时刻、两套几何。用 CDP 拆成两条
+`Input.dispatchMouseEvent` 时，实测间隔 **4.6–29.9 秒**（`scripts/diag/cdp_cmd_latency.py` 六阶段），
+后果是：
+
+- up 那一刻 `costumeHitAt` 可能已经不认这个点 ⇒ `pin` 恒 `null`、参数 `0→0` ⇒ 被读成「点了没效果」；
+- 「等 tween 走完」的 `sleep` 全落在这段延迟里，读到的 `after` 是**还没执行**的状态。
+
+正解（`l2d_costume_hotzone_verify.py` 的 `SYNC_CLICK`）：
+
+```js
+var base={bubbles:false,cancelable:true,composed:true,clientX:cx,clientY:cy,
+          button:0,buttons:1,pointerId:77,pointerType:'mouse',isPrimary:true,view:window};
+var up={}; for(var a in base) up[a]=base[a]; up.buttons=0;
+wrap.dispatchEvent(new PointerEvent('pointerdown', dn));   // wrap = #l2wrap（产品自己绑的节点）
+window.dispatchEvent(new PointerEvent('pointerup', up));   // window（产品自己绑的节点）
+```
+
+- 节点必须是产品**自己监听**的那两个（`#l2wrap` 的 `pointerdown` / `window` 的 `pointerup`，见 `:2997-3006`），
+  不许自己造一个中间层，否则绕过了产品入口，验的是探针。
+- 间隔 0 ms ⇒ `moved=0 < 6` ⇒ 必进点击分支（`onUp` 里 `moved>=6` 会当拖拽）。
+- 一次调用就能拿到**同一时刻**的副作用读数（`dlog`、pill 文本），这是 CDP 两段式永远做不到的。
+
+### 规矩二：`__costumeScreenOf` 反解出的点**不保证避开 trigger 判定区**
+
+`onUp` 三支顺序是固定的：
+
+```js
+const name=localHit(e.clientX,e.clientY);
+{ const st=stateFind(name); if(st){ toggleState(st,false); return; } }     // ① 优先
+{ const cb=cd || costumeHitAt(e.clientX,e.clientY,freshGeo());
+  if(cb){ costumeToggle(cb); return; } }                                   // ② 只有 ① 没命中才走
+const g=...; if(!g) return; if(play(g)){...}                               // ③
+```
+
+`__costumeScreenOf`（`:2428`）的语义只是「该参数**自己的地盘内、离边缘最远**的点」——
+它优化的是**几何抖动鲁棒性**，与「会不会被 trigger 抢走」正交。
+实测 `ougen_8`：判定区 `touchdrag17` 屏幕盒 `[542,342,620,420]`、鞋参数热区盒 `[482,287,608,449]`
+两个盒**相交**，`__costumeScreenOf('ShoseOff')` 返回 `(566,359)` 正好落在判定区内
+⇒ `onUp` 走 ①、`__costumeLog` 不新增 ⇒ 被误判成「② 分支没进」。
+
+**正解 = `find2`**：在参数热区自己的包围盒内按 5×5 网格（0.12/0.31/0.50/0.69/0.88）筛点，
+要求 ① `__costumeHit(x,y).id === 目标参数`；② 不在已知 trigger 盒 **±2 px** 内。
+筛不到就**报 INVALID**（「本几何下 ② 不可达」），不许硬用落区的点。
+
+```js
+for(var fy=0.12;fy<=0.881;fy+=0.19) for(var fx=0.12;fx<=0.881;fx+=0.19){
+  var x=Math.round(b[0]+(b[2]-b[0])*fx), y=Math.round(b[1]+(b[3]-b[1])*fy);
+  if(ok(x,y)) return JSON.stringify({cx:x,cy:y}); }
+return JSON.stringify({err:'ALL_IN_TRIGGER'});
+```
+
+trigger 盒用产品自己的出口取：`__stateTogglesInfo()` 里该 `id` 的 `trigger`，
+再喂给 `__L2_SCREENOF(trigger)` 拿 `box`（**两者都是屏幕坐标，口径一致**）。
+参数不在 `STATE_TOGGLES` 里 ⇒ 无 trigger ⇒ `find2` 退化为普通取点。
+
+### 判据（改完必须重跑这两条）
+
+- `l2d_costume_hotzone_verify.py ougen_8 ShoseOff` ⇒ **7 PASS / 0 FAIL / exit 0**，
+  且日志里必须有 `派发即读数: dlog=1  pill='鞋 · ShoseOff → 1'`。
+- `l2d_click_insync_diag.py ougen_8 ShoseOff 5` ⇒ 六阶段全绿。
+
+### 踩坑记录
+
+| 坑 | 症状 | 修法 |
+|---|---|---|
+| CDP 两段式派发 | `pin` 恒 `null`、参数 `0→0`、画面却有几十个 drawable 变化（那是 idle 本底） | 页内同步派发，间隔 0 ms |
+| `__costumeScreenOf` 当代表点验 ② | `__costumeLog` 不新增，被读成「`costumeToggle` 没被调用」 | 先用 `find2` 错开 trigger 盒 |
+| 用 `dpin` 判分支 | ① 也会 `delete pins[id]`（收回让渡）⇒ `dpin=true` ⇒ 把 ① 误判成 ② | **只读产品 pill 文本**：`▸`⇒①、`→`/`·`⇒② |
+| 「参数值没变」一刀切红 | 值域退化（`from==to`）被当缺陷，同一功能时红时绿 | 读产品自己的 `__costumeLog` 分三类（见 WF-55） |
+| 换点后不当场复核命中 | 循环耗尽退出时 `hn2` 是**旧点**读数 ⇒ 带旧证据点新点 ⇒ 假红 | 换点后**立刻**再 `__costumeHit` 一次 |
+
+**涉及文件**：`scripts/diag/l2d_costume_hotzone_verify.py`（`SYNC_CLICK` / `FIND2` / `pick_safe_point`）、
+`scripts/diag/l2d_click_insync_diag.py`（`find2` 出处，六阶段对照）、
+`scripts/diag/cdp_cmd_latency.py`（延迟体检，先跑它再怀疑产品）、
+`gallery_src/index.html`（`:2937` onDown / `:2942-2953` onUp / `:2428` `__costumeScreenOf` / `:2997-3006` 绑定）。
+## WF-55 批量「调用点迁移」必须配一条导入顺序审计（2026-10-29 收敛）
+
+**什么时候用**：任何用脚本批量替换调用点的工作（`Popen`→`launch`、`os.path.join`→`Path`、
+旧 API→新 API…）。批量替换只动「用法」，不动「声明」，而声明的位置恰恰决定它能不能跑。
+
+**判据（三步，缺一步都不算迁完）**
+
+1. **调用点数守恒**：迁移前后的调用点数逐个对账，残留必须为 0。
+   `py -3 scripts/diag/migrate_chrome_launch.py --audit` ⇒ `headless Popen 调用点 0 个`。
+2. **导入位置审计（本条是新增的那一步）**：被迁到前移到更早行的模块名，其 `import`
+   **行号必须 ≤ 首次使用行号**。判据必须走 **AST**：
+   ```python
+   imp = min(n.lineno for n in ast.walk(tree)
+             if isinstance(n,(ast.Import,ast.ImportFrom))
+             and any(a.name=='chrome_tree' for a in n.names))
+   first = min(n.lineno for n in ast.walk(tree)
+               if isinstance(n,ast.Name) and n.id=='chrome_tree')
+   assert imp <= first
+   ```
+3. **阴性对照**：手工造一个「使用在导入之前」的文件，检查必须报红。没有这条，
+   全库 373 个文件的绿没有区分力。实测两侧都对：坏样本吐
+   `bad.py:3 用了 chrome_tree 但导入在它之后`，正常样本吐 `None`。
+
+**为什么不能用正则**：第一版这条检查是正则扫源码，出现两类假红 ——
+① 注释 / docstring 里提到 `chrome_tree.launch()` 的文件被误判（实测 3 个）；
+② 认不出逗号式导入 `import websocket, chrome_tree, cdp_wait`（`gallery_ui_shots.py` 就是这种）。
+正则匹配「源码文本」，判据需要的是「名字绑定在哪个语句里」，两者不是一回事。
+
+**为什么 `py_compile` 顶不住**：`import` 缺失只会在**执行到那一行**时炸 `NameError`，
+语法层面完全合法。上一轮的迁移提交 `f2811cb` 全库 `py_compile` 通过、却被 6 个脚本
+在运行时炸掉，其中 5 个是 WF-16 回归六件套的成员 ⇒ 整条验证链在第 3、4 件断掉，
+而报出来的样子很像"环境故障"。**任何"批量替换后跑一遍 py_compile 就算验完"的流程都要补这一步。**
+
+**踩坑记录**
+
+| 坑 | 表现 | 处置 |
+|---|---|---|
+| 迁移后 import 在更晚的行 | `NameError: name 'chrome_tree' is not defined`，py_compile 绿 | 挪 import 到使用之前；`--audit` 常态化 |
+| 用正则做导入顺序判据 | 3 个假红（注释/文档字符串命中） | 改 AST |
+| 只看 `--audit` 退出码不看输出 | 无法区分「0 调用点残留」与「导入顺序错」两类红 | 输出两段分开打印 |
+| 只在「有人跑到」的脚本上修 | 3 个漏网脚本（`l2d_const_pose_verify`/`l2d_motion_state_trace`/`spine_parts_wiring`） | 按全库审计结果一次修完 |
+
+**涉及文件**：`scripts/diag/migrate_chrome_launch.py`（`--audit` + `import_order_problem()`）、
+`docs/TROUBLESHOOTING.md` §165、`scripts/diag/chrome_lifecycle_selftest.py`（同批事故的生命周期判据）。
