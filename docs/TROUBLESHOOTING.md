@@ -8926,3 +8926,71 @@ drawable 顶点/opacity 要等 `core.update()` 才重算。刚 `settle` 完立�
 `localHitAll`、`onUp` 的裁决）、`scripts/diag/hit_verify.py`（期望集合 + 映射）、
 `scripts/diag/interact_verify.py`（refit 竞态 + 超时重连 + 收尾截图不再当判据）、
 `docs/WORKFLOWS.md` WF-57。
+
+## §168. 参数热区「可点击性」：三次读数互相矛盾，全是仪器换算错（2026-10-29 收敛）
+
+**背景**：需求②要求「所有换装/眼睛/渐变参数都该有互动区」。但"有热区"不等于"点得到"，
+需要一个**屏幕像素口径**的清单。写这个清单的过程本身就是三次假读数。
+
+### 假读数一：V 空间面积当屏幕尺寸
+
+`Paramring` 的 V 盒只有 0.50×0.50。若直接拿它比阈值，结论必然是"点不到"。
+实际换算后是 **15.4×15.4 屏幕像素** —— 在小画布上依然点得中。
+⇒ 判据必须乘 `pixelsPerUnit`，不能停在 V 空间。
+
+### 假读数二（最坑）：V→屏幕换算漏了 `pixelsPerUnit`
+
+只乘 stage scale 得到 `0.000118`，于是每条参数的"屏幕尺寸"都是 `0.0×0.0 px`，
+**整张表 12/12 全红**，看上去像"所有互动区都失效了"。
+
+产品自己的 `__costumeScreenOf` 用的是 `(vx+cux/2)*ppu*s`；探针必须与之对齐。
+补上 `ppu=280` 后换算变成 **30.84 屏幕px/V**，同一份几何立刻恢复正常。
+
+### 假读数三：没走页面自己的打开流程 ⇒ 取景没做
+
+第二次读到 `scale=1e-4 / x=-0.47`，换算出每条参数 0.0~0.3 px。
+原因：只调了 `stopLive2D(); renderLive2D(...)`，而 `#l2wrap` 还没布局（live2d 面板没显示），
+`refit()` 拿到的视口尺寸是退化的。
+
+**必须走完整流程**：`openShip → setSkin → buildSkinList → 点 #mTabs 的 live2d 页`
+（`hit_verify` / `interact_verify` 都是这么做的）。走完之后 `scale≈0.11`，与其它工具一致。
+
+### 假读数四：数据到达预算不足，被读成"几何没建出来"
+
+实测时间线（`ougen_8`，单线程服务器 + 大贴图）：
+
+| 时刻 | 发生了什么 |
+|---|---|
+| 0.4 s | 模型已进 stage，`drawableCount=842` |
+| 3.2 s | `COSTUME` / `PARAM_DRAWABLES` 才加载完（rows 0→12，mapKeys 0→10）|
+| 4.0 s | ticker 建出几何（`geoLen` 0→10）|
+
+旧的 7 s 预算在数据更慢那一轮就空手，报「几何一直没建出来」——是预算不足，不是缺陷。
+现在轮询到齐（上限 22.5 s）。
+
+### 判据修正：自身覆盖率只做提示，不做硬判据
+
+曾用「自身覆盖 ≥ 30%」当硬判据，把 `Cloth2`(19.8%)、`ShoseOff`(17.3%) 判成不可点。
+但那两个在 `hit_verify` 里是能点中的：面积大的热区（`ShoseOff` 243×321 px）天然包含
+大片"多边形根本没有的边角"，`own` 低是几何形状所致。
+
+⇒ 硬判据只留**屏幕像素 ≥ 8px**；`own` 低在表里单独标注，供人判断。
+
+### 结论（ougen_8，2026-10-29）
+
+| 参数 | 屏幕像素 | 结论 |
+|---|---|---|
+| Stock1 | 204×141 | OK |
+| Stock2 | 248×288 | OK |
+| Paramring | 15×15 | OK（全项目最小的热区） |
+| ParamEyeSmile | 86×21 | OK |
+| Cloth1 / Cloth3 | 48×36 / 43×50 | OK |
+| Cloth2 | 128×146 | OK |
+| ShoseOff | 243×321 | OK |
+| Param233 | 147×143 | OK |
+| NeckMoney | 33×61 | OK |
+| **BondEyes / HeartEyes** | — | **驱动件为空（`n_drawables=0`）⇒ 按设计无热区，走面板控件** |
+
+**涉及文件**：`scripts/diag/l2d_hotzone_clickable.py`（本工具）、
+`gallery_src/index.html`（`__costumeGeoByModel` / `__costumeHitV` 出口）、
+`docs/WORKFLOWS.md` WF-57（判据口径的通用教训）。

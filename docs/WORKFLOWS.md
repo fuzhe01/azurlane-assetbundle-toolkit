@@ -4164,3 +4164,27 @@ trigger 盒用产品自己的出口取：`__stateTogglesInfo()` 里该 `id` 的 
 - `scripts/diag/l2d_hotzone_reachability.py`（跨轮对照口径）
 - `.diag/probe_overlap_area.py`-类一次性探针（量化重叠；用完即走，
   常驻版本见 `scripts/diag/l2d_param_retain_verify.py` 的同类写法）
+
+### 追补（2026-10-29）：可点击性判据的四条换算纪律
+
+本条上面记的是「重叠抢占地盘」。追补的是**另一个问题：尺寸口径**。
+一个热区可以完全不重叠、逻辑全对，但换算错了就会被判成"点不到"。
+写 `l2d_hotzone_clickable.py` 时连撞四次，每次都"跑通但结论错"：
+
+1. **判据落在屏幕像素，不是 V 空间面积**。`Paramring` 的 V 盒 0.50×0.50 看着不可点，
+   换算后是 15.4×15.4 px，实际能点。
+2. **V→屏幕必须乘 `pixelsPerUnit`**。只乘 stage scale 得到 1e-4 量级 ⇒ 每条参数都变
+   `0.0×0.0 px` ⇒ 整张表 12/12 全红，看起来像"所有互动区都废了"。
+   产品侧 `__costumeScreenOf` 用的就是 `(vx+cux/2)*ppu*s`，探针必须对齐它。
+3. **必须走页面自己的打开流程**：`openShip → setSkin → buildSkinList → 点 live2d 页`。
+   只调 `stopLive2D()+renderLive2D()` 时 `#l2wrap` 未布局，`refit()` 拿到退化视口，
+   模型 `scale` 停在 1e-4、位置 -0.47，同样让全表变 0 px。
+4. **数据到达要轮询，别用固定 sleep**。实测模型 0.4 s 就在 stage 上，但
+   `COSTUME`/`PARAM_DRAWABLES` 到 3.2 s、几何到 4.0 s。7 s 预算会在慢的那轮空手，
+   然后报"几何没建出来"。
+
+**覆盖率不能当硬判据**：大热区（`ShoseOff` 243×321 px）天然含大片多边形没有的边角，
+`own` 低是形状所致；硬卡 30% 会把 `Cloth2`/`ShoseOff` 误判成不可点，而它们在
+`hit_verify` 里能点中。硬判据只留「屏幕像素 ≥ 8px」，`own` 低单独标注。
+
+**工具**：`scripts/diag/l2d_hotzone_clickable.py`（`--json` 可导出）。

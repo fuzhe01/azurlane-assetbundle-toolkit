@@ -1,0 +1,3 @@
+<!-- 归档 | 原第 393 行 | 2026-10-29 外迁（PROJECT_STATUS 超 400 行红线） | 内容=5 样本预览线的手写最小索引来历，逐字未改 -->
+
+- **5 样本 Live2D 预览线（2026-10-20）**：元数据输入（inputs/azdata + inputs/gamecfg 共 11 项）缺失 ⇒ `build_gallery_index.py` 完整链跑不通 ⇒ **手写最小 `Output/gallery_v2/index.js`**（5 船纯 Live2d 皮肤，`live2d`+`live2dBase` 字段齐；`hasCn:false` 无中文名映射）。vendor 4/4 就位（哈希全对上：live2d 三件 + spine 官方构建；本机沙箱/直连均不可达，副本取自旧机 `D:\Azur Lane Assets\Output\gallery_v2\vendor\`，`fetch --check` 4/4 绿）。`motion_chain.json` 已生成（5 模型 / 226 动作）。8777 服务器资源全 200（含 5 模型 model3/moc3/贴图/motion）。**待用户浏览器验收 drag 拖鞋**（ougen_8 Ctrl/⌘+左键拖鞋子区）。⚠️ MANIFEST 曾因 f2ef0c0 改 patched.js 未回写 sha 而漂移，已修（bytes/sha 换成实测）。
