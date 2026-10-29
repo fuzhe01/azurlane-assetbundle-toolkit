@@ -2363,12 +2363,23 @@ async function renderLive2D(s, sk){
         if(ix>=0){ const mn=core.getParameterMinimumValue(ix), mx=core.getParameterMaximumValue(ix);
           lo=Math.max(mn,Math.min(lo,mx)); hi=Math.max(mn,Math.min(hi,mx)); } }catch(e){}
       if(!(hi>lo)) return hi;
+      /* 🔴 三态参数的两端必须用「默认档 ↔ 最大档」，不能用 min（2026-10-29）。
+         `ShoseOff` 值域 -1/0/1，三档语义实测各不相同：
+             0  = 穿鞋（`#194/195/466/841` 可见）
+             1  = 脱鞋 / 黑丝光脚（换 `#468/840` 可见）
+            -1  = 残缺档（该批件全隐 → 用户看到"左脚鞋不见"）
+         旧写法 `lo=-1` 会让切换走 0 → 1 → **-1** → 1…：点第二下"穿鞋"落到残缺档。
+         判据：默认值严格落在 (min,max) 之间 ⇒ 视为三态，关端取默认值。 */
+      let offV=lo;
+      try{ const ix2=core.getParameterIndex(it.id);
+        if(ix2>=0){ const dv=core.getParameterDefaultValue(ix2);
+          if(typeof dv==='number'&&isFinite(dv)&&dv>lo&&dv<hi) offV=dv; } }catch(e){}
       const pins=costumePins();
       let cur=pins[it.id];
       if(cur===undefined) try{ cur=core.getParameterValueById(it.id); }catch(e){ cur=it.def; }
       if(typeof cur!=='number'||!isFinite(cur)) cur=it.def;
-      /* 等距（如 ShoseOff 的 0 落在 -1..1 正中）时取 hi，与需求「0 变 1」一致 */
-      return (Math.abs(cur-hi)<Math.abs(cur-lo)) ? lo : hi;
+      /* 等距时取 hi（三态 0 到 0/1 两端等距的情形已由 offV=默认档消解） */
+      return (Math.abs(cur-hi)<Math.abs(cur-offV)) ? offV : hi;
     };
     const costumeToggle=(it)=>{
       try{
@@ -2729,10 +2740,32 @@ async function renderLive2D(s, sk){
       try{ const ix=core.getParameterIndex(t.id);
         t._onV = (t.on!==undefined)?t.on:core.getParameterMaximumValue(ix);
         t._offV = (t.off!==undefined)?t.off:core.getParameterMinimumValue(ix);
-      }catch(e){ t._onV=(t.on!==undefined)?t.on:1; t._offV=(t.off!==undefined)?t.off:0; } }
+        /* 中间档：数值严格落在 (off,on) 之间**且**等于 moc3 默认值时才认（2026-10-29）。
+           `ougen_8/ShoseOff` 就是这种三态参数（-1 / 0 / 1），三档语义各不相同（实测可见鞋件）：
+             =  0  → 7/15  **穿鞋：完整一双红底高跟鞋**（= moc3 默认）
+             =  1  → 5/15  **脱鞋：黑丝光脚**
+             = -1  → 3/15  残缺档，左脚那只不见
+           不用"中点"当阈值：不同参数三档间距不一定对称，只有默认值本身是语义确定的。 */
+        const dv = core.getParameterDefaultValue(ix);
+        t._midV = (typeof dv==='number' && isFinite(dv)
+                   && dv>t._offV && dv<t._onV) ? dv : null;
+        /* 🔴 三态参数的正确两端：**关 = 默认档，开 = 最大值**（2026-10-29 第二轮修正）。
+           第一版只把启动值改回默认档，但点击循环仍是 `to = _on===_onV ? _offV : _onV`，
+           于是走 0 → 1 → -1 → 1 → -1… **永远回不到 0**：用户点第二次"穿鞋"就落到 -1 残缺档，
+           表现正是"穿鞋后左脚高跟鞋不见了"。
+           语义上也支持这么定：参数名叫 `ShoseOff`（脱鞋），所以 1 = 脱、0 = 穿（默认），
+           最小值 -1 是素材里未被使用的残缺档——不该让它参与切换。
+           `t.off` 显式配置时尊重用户选择，不自动改写。 */
+        if(t._midV!==null && t.off===undefined) t._offV = t._midV;
+      }catch(e){ t._onV=(t.on!==undefined)?t.on:1; t._offV=(t.off!==undefined)?t.off:0; t._midV=null; } }
     const normHit=n=>String(n||'').toLowerCase().replace(/^touch_drag(\d+)$/,'touchdrag$1');
     const stateFind=n=>{ const h=normHit(n); return STOGS.find(t=>t.trigger===h)||null; };
     const stateCurOn=t=>{ try{ const cur=core.getParameterValueById(t.id);
+        /* 两端即「脱/穿」两个真实语义档（初始化时已把 `_offV` 校正为默认档，见 STOGS 初始化处）。
+           三态参数（`ShoseOff` = -1/0/1）靠这条校正就能正确归类：
+             cur=0 → 0（穿）   cur=1 → 1（脱）   cur=-1 → 0（残缺档归到"穿"，不留半只鞋）
+           这里**不再需要**单独的"中间档"分支：`_offV` 一旦等于默认档，中段判断就恒为假，
+           留着只会让后来人误以为三态还有第三条路径。 */
         return Math.abs(cur-t._onV)<Math.abs(cur-t._offV)?t._onV:t._offV; }catch(e){ return t._offV; } };
     const stateApply=()=>{ for(const t of STOGS){
       try{
