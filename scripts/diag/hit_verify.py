@@ -103,6 +103,7 @@ JS = r"""(async key => { try{
     const cux=im.width/ppu, cuy=im.height/ppu;
     const g=m.toGlobal(new PIXI.Point((sx/n+cux/2)*ppu, (cuy/2-sy/n)*ppu));   // 点击瞬间重算：框会随呼吸/物理位移
     return {scr:[r.left+g.x, r.top+g.y], v:[sx/n, sy/n]}; };
+  const groups=Object.keys((mm.definitions)||{});
   const res=[];
   for(const a of areas){
     mm.startMotion('idle',0,3); await t(300);           // 先归位，避免上一次残留
@@ -138,10 +139,24 @@ JS = r"""(async key => { try{
     /* A3（2026-09-24 用户裁定）：同一位置挂多个 Touch 标记时随机挑一条 →
        断言从「必须等于自己」改成「必须落在候选集合里」，否则把设计行为当失败 */
     const usable=window.__L2_HITUSE? window.__L2_HITUSE() : null;
+    /* 期望集合要把「产品自己的映射」算进去：TouchDragN 这类标记不一定有同名动作组，
+       产品会按 dragGroupOf 轮转到现有的 touch_dragN（实测 ougen_8 的 touchdrag6/7 →
+       touch_drag1）。旧写法只看候选名，于是把产品的正常映射判成 WIRING（假红：
+       2026-10-29 实测该模型 6 条 WIRING 里 5 条是这么来的）。这里用产品同一条映射规则
+       算期望值，判据仍是「实播必须落在产品允许的集合里」，只是把集合算准。 */
+    const altOf=(nm)=>{ if(!nm) return [];
+      if(groups.includes(nm)) return [nm];
+      const lo=groups.find(x=>x.toLowerCase()===String(nm).toLowerCase()); if(lo) return [lo];
+      const alt=String(nm).replace(/^touchdrag(\d+)$/i,'touch_drag$1');
+      if(groups.includes(alt)) return [alt];
+      const k=parseInt((String(nm).match(/(\d+)$/)||[])[1]||'1',10);
+      const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
+      return ds.length? [ds[(k-1)%ds.length]] : []; };
+    const expect=[...new Set([].concat(cand, ...cand.map(altOf)))];
     let cls;
     if(!cand.length) cls=(usable && !usable.includes(a.Name)) ? 'NOTCLICKABLE' : 'OUTSIDE';
     else if(cur===a.Name) cls='HIT';
-    else if(cand.includes(cur)) cls='INGROUP';
+    else if(expect.includes(cur)) cls='INGROUP';
     else cls='WIRING';
     res.push({area:a.Name, played:cur, cand, reachable:cand.includes(a.Name), cls});
   }

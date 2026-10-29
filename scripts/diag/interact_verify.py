@@ -33,16 +33,34 @@ for _ in range(90):
     time.sleep(0.5)
 ws = websocket.create_connection(w[0], timeout=120, max_size=None)
 _id = 0
-def cmd(m, p=None):
+def reconnect():
+    """重连同一张 tab（页面导航会换 ws 端点；仅 sleep 不会自愈）。"""
+    global ws
+    for _ in range(40):
+        try:
+            tabs = json.load(urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json'))
+            urls = [t['webSocketDebuggerUrl'] for t in tabs
+                    if 'gallery_v2' in t.get('url', '') and t.get('webSocketDebuggerUrl')]
+            if urls:
+                try: ws.close()
+                except Exception: pass
+                ws = websocket.create_connection(urls[0], timeout=120, max_size=None)
+                return True
+        except Exception: pass
+        time.sleep(0.5)
+    return False
+
+
+def cmd(m, p=None, tmo=120):
     global _id; _id += 1; mid = _id
-    ws.send(json.dumps({'id': mid, 'method': m, 'params': p or {}})); ws.settimeout(120)
+    ws.send(json.dumps({'id': mid, 'method': m, 'params': p or {}})); ws.settimeout(tmo)
     while True:
         r = json.loads(ws.recv())
         if r.get('id') == mid:
             if 'error' in r: raise RuntimeError(json.dumps(r['error'])[:150])
             return r.get('result', {})
-def ev(e):
-    r = cmd('Runtime.evaluate', {'expression': e, 'returnByValue': True, 'awaitPromise': True})
+def ev(e, tmo=120):
+    r = cmd('Runtime.evaluate', {'expression': e, 'returnByValue': True, 'awaitPromise': True}, tmo)
     if r.get('exceptionDetails'): return 'EVALERR ' + str(r['exceptionDetails'].get('text'))[:180]
     return r.get('result', {}).get('value')
 
@@ -71,13 +89,41 @@ JS = r"""(async(key)=>{ try{
   const hitAreas=im.settings.hitAreas||[];
   const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
   const st=()=>({scale:+m.scale.x.toFixed(6), x:Math.round(m.x), y:Math.round(m.y), grp:mm.state.currentGroup||null});
-  const out={key, groups:Object.keys(mm.definitions||{}).length, nAreas:(im.settings.hitAreas||[]).length, start:st()};
+  const out={key, groups:Object.keys(mm.definitions||{}).length, nAreas:(im.settings.hitAreas||[]).length};
+
+  /* 静止基线（2026-10-29 修假红）：产品在 `new ResizeObserver(()=>refit(true))` 里按**视口尺寸**
+     重算基准缩放 baseK；连跑 5 个模型时，前面模型留下的布局/字体/滚动条变化会让这一次 refit
+     落在本模型的"滚轮前/滚轮后"之间，于是 `afterPlainWheel.scale !== start.scale`，
+     报 plainWheelNoop=false。但那是**取景自适应**，不是滚轮在缩放：refit(true) 明确保留
+     用户 z 与归一化偏移，只是把它换算到新视口（见 index.html refit 注释）。
+     实测（aersasi_2）：单独跑恒 true；连跑 5 个模型时约 1/2 概率红，且 x/y 同向平移 17px
+     —— 单一 dm.scale 无法解释整体重算，只有 refit 能。
+     判据因此改为「等 wrap 尺寸稳定后再取基线」，并在判定时要求 refit 本身没发生：
+     wrap 尺寸变了就重取基线并重测，最多 3 轮；始终不稳才判红。 */
+  const wrapSize=()=>wrap.clientWidth+'x'+wrap.clientHeight;
+  let sz0=wrapSize();
+  for(let i=0;i<40 && wrapSize()!==sz0;i++){ await t(80); sz0=wrapSize(); }
+  await t(450);                       /* 再给一次 refit 落到位的余量 */
+  out.start=st(); out.startWrap=sz0;
 
   // ① 裸滚轮 20 格：不应改变缩放/位置（也不 preventDefault）
   for(let i=0;i<20;i++){ const e=new WheelEvent('wheel',{deltaY:-120,clientX:cx,clientY:cy,bubbles:true,cancelable:true});
     wrap.dispatchEvent(e); if(e.defaultPrevented) out.plainWheelPrevented=true; await t(25); }
-  await t(300); out.afterPlainWheel=st();
-  out.plainWheelNoop = out.plainWheelPrevented!==true && out.afterPlainWheel.scale===out.start.scale;
+  await t(300); out.afterPlainWheel=st(); out.afterWrap=wrapSize();
+  /* 若这期间 wrap 尺寸变了，说明触发过 refit ⇒ 缩放变化不能归罪于滚轮，重测一次基线。
+     （最多 3 轮；3 轮都变就是真的不稳，按红处理。） */
+  let retried=0;
+  while(retried<3 && out.afterWrap!==out.startWrap){
+    retried++; out.refitRetry=retried;
+    sz0=out.afterWrap; await t(450);
+    out.start=st(); out.startWrap=sz0;
+    for(let i=0;i<20;i++){ const e=new WheelEvent('wheel',{deltaY:-120,clientX:cx,clientY:cy,bubbles:true,cancelable:true});
+      wrap.dispatchEvent(e); if(e.defaultPrevented) out.plainWheelPrevented=true; await t(25); }
+    await t(300); out.afterPlainWheel=st(); out.afterWrap=wrapSize();
+  }
+  out.plainWheelNoop = out.plainWheelPrevented!==true
+    && out.afterWrap===out.startWrap
+    && out.afterPlainWheel.scale===out.start.scale;
 
   // ② Ctrl+滚轮 5 格：应放大
   for(let i=0;i<5;i++){ wrap.dispatchEvent(new WheelEvent('wheel',{deltaY:-120,clientX:cx,clientY:cy,ctrlKey:true,bubbles:true,cancelable:true})); await t(40); }
@@ -174,12 +220,29 @@ for k in ([m.strip() for m in _models_env.split(',') if m.strip()] if _models_en
     out = None
     for _try in range(6):
         try:
-            out = ev(JS + f"({json.dumps(k)})"); break
-        except RuntimeError as e:
-            # 页面导航中 CDP 执行上下文会被销毁（探针自身的假失败，WF-16 同类）；
-            # 上下文在导航结束后重建，重连同一张 tab 即可，别据此判定产品坏了。
-            # 就绪已由 cdp_wait.wait_ready 前置保证，这里不再拿 readyState 当门槛。
-            print(f"  [{k}] retry {_try+1}: {str(e)[:70]}", flush=True); time.sleep(4)
+            out = ev(JS + f"({json.dumps(k)})")
+            # 「100s 内模型未加载」是**资源竞争**，不是产品缺陷：5 个模型连跑时，服务器单线程
+            # + 大贴图解码会让排在中间的模型偶尔超出加载预算（实测 aersasi_3 单跑 3 s，
+            # 连跑时偶发超 100 s）。它属于可重试的探针环境抖动，重试一次基本必过。
+            try:
+                _d = json.loads(out) if isinstance(out, str) else None
+            except Exception:
+                _d = None
+            if _d and 'err' in _d and '未加载' in str(_d.get('err')):
+                print(f"  [{k}] retry {_try+1}: {str(_d.get('err'))[:60]}", flush=True)
+                time.sleep(4); out = None; continue
+            break
+        except Exception as e:
+            # 两类**探针自身**假失败都要重连，不能只捕 RuntimeError：
+            #   ① 页面导航中 CDP 执行上下文被销毁 → RuntimeError；
+            #   ② 求值本身超过 120 s（swiftshader 下偶发，实测最后一个模型冷启动叠加前面
+            #      模型留下的解码/几何开销时会撞上）→ websocket.WebSocketTimeoutException。
+            # ②不属于 RuntimeError，旧写法直接冒泡成 traceback 并以 exit 1 收场，
+            # 5 个模型全 ALL PASS 也会被记成"未通过"。重连同一张 tab 后重试即可自愈。
+            print(f"  [{k}] retry {_try+1}: {type(e).__name__} {str(e)[:60]}", flush=True)
+            time.sleep(3)
+            try: reconnect()
+            except Exception: pass
     if out is None:
         allok = False; print('=====', k); print('  ✗ 6 次仍拿不到稳定执行上下文（探针故障，非产品故障）'); continue
     print('=====', k)
@@ -197,9 +260,22 @@ for k in ([m.strip() for m in _models_env.split(',') if m.strip()] if _models_en
         else: print('  ✓ 全部通过')
     except Exception: allok = False
 print('\n总判定:', 'ALL PASS' if allok else '有未通过项')
-r = cmd('Page.captureScreenshot', {'format': 'png'})
-open(os.path.join(ROOT, '.diag', 'size_shots', 'interact_final.png'), 'wb').write(base64.b64decode(r['data']))
-ws.close(); chrome_tree.kill_tree(proc.pid)
+# 收尾截图是**取证附件，不是判据**（2026-10-29）：swiftshader 下 `Page.captureScreenshot`
+# 偶发超过 120 s 超时，旧写法让这个纯附件动作把整步判成失败——5 个模型全部 ALL PASS 之后
+# 仍以 exit 1 收场，而在 runner 里"失败"与"通过"是同一行统计，看起来就像产品坏了。
+# 截图失败只记一行提示；`finally` 保证整棵 Chrome 树一定被收掉（超时那一刻旧写法
+# 直接把 kill_tree 跳过了，留下孤儿实例）。
+try:
+    r = cmd('Page.captureScreenshot', {'format': 'png'})
+    open(os.path.join(ROOT, '.diag', 'size_shots', 'interact_final.png'), 'wb').write(base64.b64decode(r['data']))
+except Exception as _e:
+    print('  （收尾截图失败，不影响判定:', str(_e)[:80], '）')
+finally:
+    try:
+        ws.close()
+    except Exception:
+        pass
+    chrome_tree.kill_tree(proc.pid)
 # 退出码契约见 scripts/diag/probe_exit.py：判定与退出码脱节 = 回归永远绿。
 # 之前这里只 print 不 exit，'有未通过项' 也是 0，runner 记成通过。
 sys.exit(0 if allok else 1)

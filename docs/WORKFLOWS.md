@@ -4105,3 +4105,62 @@ trigger 盒用产品自己的出口取：`__stateTogglesInfo()` 里该 `id` 的 
 - `.diag/param_drawables/ougen_8.batch.json`（产物，不入库）
 - `Output/gallery_v2/param_drawables.json`（消费方映射，产品侧）
 - `docs/TROUBLESHOOTING.md` §166
+
+## WF-57 「互动区互相覆盖」的排查与改造流程（2026-10-29 收敛）
+
+**适用**：用户报「互动区点不到 / 效果被别的互动区覆盖 / 点了没反应 / 互动区错位」，
+而单点验收（`__costumeToggle` 直调）又都正常。这类问题的共同点是**几何重叠**，
+不是接线缺失——所以必须先量重叠，再改优先级。
+
+### 判据（缺一不可）
+
+1. **重叠必须两边同时问**：同一 V 坐标分别调 `__costumeHitV`（参数热区）与
+   `__L2_HIT`/`__L2_HITALL`（动作判定区）。只问一边永远看不到"被抢"。
+2. **面积口径必须是可见多边形**，不是包围盒。斜置件盒面积可虚高 3–15 倍
+   （实测 `ShoseOff` 盒 82.4 / 真实 5.4），用盒面积做优先级裁决必然错。
+3. **A/B 对照必须用改前的正本页**：`git show HEAD:gallery_src/index.html > Output/gallery_v2/_ab_pre.html`，
+   然后 `hit_verify --page _ab_pre.html`。同一份数据、同一台服务器、同一天跑两遍才有可比性。
+   跑完删掉该文件（它会被 `deploy_gallery.py --check` 之外的东西忽略，但不要留在运行目录）。
+4. **验收要落在「部位自己的中心点能不能命中自己」**，不是"整体 HIT 数"。
+   优先级规则最容易的翻车方式就是"把判定区让掉了"，而 HIT 总数看不出来。
+
+### 步骤
+
+1. **先剔标记件**。`Touch*` 是点击标记不是可见件；它的顶点常是未初始化残值
+   （实测 `Stock1` 里 `TouchDrag16` 读到 (−293, 288)，整模范围只有 −448..154）。
+   在 `buildCosGeo()` 里按 `/^touch/i` 剔除，并保留 `nMark` 计数供追溯。
+   ⇒ 这一步通常就能把"整块画布都是某个开关"治掉。
+2. **再量重叠**。逐参数在自身盒内打 24×24 网格，统计
+   「`own`（落在自己多边形内）」与「其中有多少同时落在某个判定区内」。产出：
+   `probe_overlap_area.py` 的 `res[].lostPct`。`lostPct` 接近 100% 的参数就是抢占者。
+3. **定优先级规则**：更具体者胜（可见多边形面积小者优先）；幽灵区（`nVis=0`）让位。
+4. **跑 A/B**（判据 3），确认「判定区中心可达数不变、WIRING 下降」。
+5. **跑全量 `hit_verify`**，把剩下的 WIRING 逐条与 A/B 的改前结果对照 ——
+   **改前也红的必须单独说明，不能算作本轮回归**。
+
+### 踩坑记录
+
+- **`WIRING` 会把产品的拖拽编号轮转判成失败**：`TouchDragN` 不一定是同名动作组，产品按
+  `dragGroupOf` 轮转到现有 `touch_dragN`（实测 `touchdrag6/7 → touch_drag1`）。
+  期望集合必须加上产品同一条映射规则的结果，否则真接线正确的地方也会红。
+- **「点击之后再采一次候选集」是错的**（做过、已回退）：点击后的几何漂移会让**更多**
+  部位进入候选集，`benningdun_2` 从 2 条红变 3 条 —— 断言变松等于把判据废掉。
+- **`plainWheelNoop` 的偶发红来自产品的 `ResizeObserver → refit(true)`**，不是滚轮在缩放。
+  判别法：`wrap.clientWidth×clientHeight` 在滚轮前后是否变了；变了就是 refit。
+  修法是在取基线前等尺寸稳定、判定时要求 refit 未发生（而不是把阈值放宽）。
+- **重试循环只捕 `RuntimeError` 会漏掉 WebSocket 超时**：`WebSocketTimeoutException`
+  不是它的子类，会直接冒泡成 traceback 并 `exit 1`，让"全部通过"的一步被记成失败。
+  超时后必须**重连同一张 tab**（只 sleep 不会自愈）。
+- **工具差异**：可达率工具（`l2d_hotzone_reachability.py`）的网格步长是
+  `span/target`（`span` = 全部热区盒并集最长边）⇒ **盒一变，采样口径就变**，
+  `own` 的绝对值不可跨轮比较；跨轮只能比 `rate_v` 与 `win_screen`，
+  `box_hash` 变化本身不是回归判据。
+
+### 涉及文件
+
+- `gallery_src/index.html`：`buildCosGeo`（标记剔除）、`costumeAreaOf`（可见多边形面积）、
+  `localHitAll`（判定区候选）、`onUp`（更具体者胜裁决）
+- `scripts/diag/hit_verify.py`、`scripts/diag/interact_verify.py`
+- `scripts/diag/l2d_hotzone_reachability.py`（跨轮对照口径）
+- `.diag/probe_overlap_area.py`-类一次性探针（量化重叠；用完即走，
+  常驻版本见 `scripts/diag/l2d_param_retain_verify.py` 的同类写法）

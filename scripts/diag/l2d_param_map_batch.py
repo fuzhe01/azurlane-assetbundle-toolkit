@@ -274,6 +274,63 @@ def row_diff(a, b):
     return why
 
 
+#: 「语义通道」—— 真正说明「参数改变了这件 drawable 的渲染语义」的证据。
+#   box/cen/disp 只是几何被顺带牵动（典型：交叉淡化的对侧件被推了几个像素），
+#   ro 更是整表平移的结果。用它们做**参考簇**会把簇本身撑大。
+SEMANTIC_CH = ('op', 'vis', 'uv', 'mc', 'sc', 'cnt', 'mask', 'inv', 'cull', 'tex', 'blend')
+
+
+def prune(idx, why, geo, margin_rel=0.25, area_rel=4.0, min_side=0.05):
+    """几何聚类收窄：剔掉「退化 / 远离簇 / 超尺寸」的件，返回 (keep, drop)。
+
+    为什么必须有这一步（2026-10-29 实测）：映射里混进异常件后，前端 `buildCosGeo()`
+    把这些件的顶点并集当成热区盒 ⇒ 盒被撑大 20~70 倍。可达率工具的 V 空间网格是
+    `step = span/target`（span = 全部热区盒并集），span 从 21.68 变 252 ⇒ step 从
+    0.1204 变 1.4001，采样点 15385→2172。于是 `own` 从千级掉到个位数、
+    `box_hash` 变、`rate_v` 全线塌 —— **看起来像热区变小了，其实是分母口径变了**。
+    实例：`ShoseOff` 里 `#828` 质心 x≈-240.8（整模顶点范围仅 -448..154，鞋在
+    x≈-10.8..-0.4）、`#612/#620/#628` 质心 x≈8.2（鞋的**右侧**）、`#757` 盒是一点；
+    `Stock1` 里 `#591 ArtMesh813` 盒 13.84×13.98 而参考簇并集仅约 33。
+
+    ⚠️ 不能只按通道剔：`ShoseOff` 的 `194/195/466/468/840/841` 有的只有
+    `op|box|cen|disp|ro`（无 vis），却是真鞋件（交叉淡化的对侧，vis=1/op=0）。
+    所以主判据是**几何聚类**，通道只用来挑出「参考簇」（语义件各占一处的并集）。
+
+    geo: {idx: [x0,y0,x1,y1,cx,cy]}（冻结 lo 态下该 drawable 的顶点包围盒与质心）
+    """
+    idx = sorted(idx)
+    if not idx:
+        return [], {}
+    ref = [i for i in idx if set(why.get(i, '').split('|')) & set(SEMANTIC_CH)] or idx
+    box = [geo[i] for i in ref if i in geo]
+    if not box:
+        # 没有几何就拿不出聚类判据 —— 退化为原样返回，并在 drop 里标出原因，
+        # 免得「静默全留」被当成「已收窄」。
+        return idx, {'_no_geo': 'GEO_MISSING'}
+    ux0, uy0 = min(b[0] for b in box), min(b[1] for b in box)
+    ux1, uy1 = max(b[2] for b in box), max(b[3] for b in box)
+    w, h = ux1 - ux0, uy1 - uy0
+    m = margin_rel * max(w, h)
+    ref_area = max(w, 1e-6) * max(h, 1e-6)
+    keep, drop = [], {}
+    for i in idx:
+        g = geo.get(i)
+        if not g:
+            drop[i] = 'GEO_MISSING'
+            continue
+        x0, y0, x1, y1, cx, cy = g[:6]
+        dw, dh = x1 - x0, y1 - y0
+        if dw < min_side and dh < min_side:
+            drop[i] = 'degenerate'
+        elif not (ux0 - m <= cx <= ux1 + m and uy0 - m <= cy <= uy1 + m):
+            drop[i] = 'outside'
+        elif dw * dh > area_rel * ref_area:
+            drop[i] = 'oversize'
+        else:
+            keep.append(i)
+    return keep, drop
+
+
 def ident(snap):
     """模型身份指纹：drawable 数量 + 前 16 件的可见性/贴图/绘制序 + 首件包围盒左边界。
 
@@ -458,17 +515,27 @@ def main():
                 n_rebuilt += 1
                 continue
             d = diff_rows(base, cur)
+            # 收窄用**本条参数自己的 lo 基线**几何（每条参数前都重取，见上方残留注释）
+            geo_lo = dict((r[0], r[2]) for r in base['rows'] if r[2])
+            keep, drop = prune(sorted(d), d, geo_lo)
+            dropped = dict((str(k), v) for k, v in drop.items() if not isinstance(k, str))
             result[pid] = {'lo': lo2, 'hi': hi2, 'n': len(d),
-                           'idx': sorted(d), 'why': {str(k): v for k, v in d.items()}}
-            print('%-16s %-8s hi=%+.2f 驱动 %-3d 件  %s'
-                  % (pid, it.get('label', ''), hi2, len(d),
+                           'idx': sorted(d), 'why': {str(k): v for k, v in d.items()},
+                           'n_pruned': len(keep), 'pruned': keep, 'dropped': dropped}
+            print('%-16s %-8s hi=%+.2f 驱动 %-3d 件（收窄后 %d）  %s'
+                  % (pid, it.get('label', ''), hi2, len(d), len(keep),
                      ' '.join('#%d%s' % (i, names.get(i, '?')) for i in sorted(d)[:10])))
+            if dropped:
+                print('%-16s 剔除 %d 件: %s' % ('', len(dropped),
+                      ', '.join('%s(%s %s)' % (k, names.get(int(k), '?'), v)
+                                for k, v in dropped.items())))
             pg.ev(UNPIN % {'k': json.dumps(KEY), 'p': json.dumps(pid)})
             # 回落到 lo 要显式写回：冻结姿态下没人会替你复原（见上方基线注释）
             pg.ev(PIN % {'k': json.dumps(KEY), 'p': json.dumps(pid), 'v': lo2})
             settle(pg, pid, lo2)
 
-        dst = os.path.join(OUT, '%s.batch.json' % KEY)
+        # 样本运行时不许覆盖全量产物（`ONLY` 只测几条，覆盖会让 12 条的权威映射蒸发）
+        dst = os.path.join(OUT, '%s%s.batch.json' % (KEY, '' if not ONLY else '.only'))
         json.dump({KEY: result}, open(dst, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print('\n已写 %s' % dst)
 

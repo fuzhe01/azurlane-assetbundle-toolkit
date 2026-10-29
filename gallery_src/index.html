@@ -2144,13 +2144,24 @@ async function renderLive2D(s, sk){
       const map=(PARAM_DRAWABLES&&PARAM_DRAWABLES[sk.key])||null;
       if(!rows.length||!map||!_cosNd) return [];
       const ro=renderOrders();
+      /* ── 标记件必须剔出热区几何（2026-10-29）──
+         `Touch*` 是 moc3 里为点击/拖拽判定放置的四边形标记，**不是可见部件**。它出现在某条
+         参数的驱动清单里，只是「物理/呼吸让整张顶点表跟着动」的连带结果；而隐藏件的顶点
+         位置经常是未初始化残值。实测 ougen_8：`TouchDrag16` 在 Stock1 里读到 (-293, 288)，
+         整模顶点范围只有 -448..154、鞋在 x≈-10.8..-0.4 ⇒ 一条本该 5×5 的热区被撑成
+         290×290，整块画布都成了「丝袜开关」，点哪儿都切丝袜、动作判定区全被吞掉。
+         这正是用户报的「互动区互相覆盖、点了没反应」的一类真实成因。
+         判据用 IdName 前缀：标记件语义上从不参与画面，剔除不改变任何可见几何。 */
+      const dNames=(()=>{ try{ return core._model.drawables.ids; }catch(e){ return null; } })();
+      const isMarker=i=>{ try{ return !!(dNames && /^touch/i.test(String(dNames[i]||''))); }catch(e){ return false; } };
       const out=[];
       for(const it of rows){
         const idxs=map[it.id]; if(!idxs||!idxs.length) continue;   /* 映射为空的参数（如眼睛类）没有热区 */
-        let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9,n=0,zOrd=-1,nVis=0;
+        let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9,n=0,zOrd=-1,nVis=0,nMark=0;
         const parts=[];
         for(const i of idxs){
           if(!(i>=0&&i<_cosNd)) continue;
+          if(isMarker(i)){ nMark++; continue; }
           let p=null; try{ p=core.getDrawableVertexPositions(i); }catch(e){ p=null; }
           if(!p||p.length<2) continue;
           const pos=Float32Array.from(p);
@@ -2175,7 +2186,7 @@ async function renderLive2D(s, sk){
         if(h<COS_MIN_SIDE){ const c=(y0+y1)/2; y0=c-COS_MIN_SIDE/2; y1=c+COS_MIN_SIDE/2; h=COS_MIN_SIDE; }
         out.push({
           id:it.id, label:it.label, kind:it.kind, lo:+it.lo, hi:+it.hi, def:+it.def,
-          n:n, nVis, zOrd, parts,
+          n:n, nVis, nMark, zOrd, parts,
           triTotal:parts.reduce((s,p)=>s+(p.tris?Math.floor(p.tris.length/3):0),0),
           area:w*h, box:{x0:x0,y0:y0,x1:x1,y1:y1}
         });
@@ -2406,6 +2417,23 @@ async function renderLive2D(s, sk){
         }
       }catch(e){}
     }, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+    /* 热区的**可见多边形覆盖面积**（V 空间），用于与动作判定区做「谁更具体」的裁决。
+       为什么不用已有的 `b.area`：那是包围盒面积，对斜置的鞋/丝袜会虚高数倍（实测
+       ShoseOff 盒 82.4 而真实多边形只有 5.4），拿盒面积去比会把细长热区判成"不具体"。
+       只用可见且不透明度 >2% 的部件：隐藏件的多边形在画面外/是残值，不该算成占地。 */
+    const costumeAreaOf=(b)=>{
+      try{
+        let s=0;
+        for(const p of (b.parts||[])){
+          if(!p.vis || !(p.op>0.02)) continue;
+          const q=p.pos, tr=p.tris; if(!tr||tr.length<3) continue;
+          for(let t=0;t+2<tr.length;t+=3){
+            const ax=q[tr[t]*2],   ay=q[tr[t]*2+1];
+            const bx=q[tr[t+1]*2], by=q[tr[t+1]*2+1];
+            const cx2=q[tr[t+2]*2], cy2=q[tr[t+2]*2+1];
+            s+=Math.abs((bx-ax)*(cy2-ay)-(cx2-ax)*(by-ay))/2; } }
+        return s;
+      }catch(e){ return Infinity; } };
     /* 探针出口（验收脚本按产品自己的判定走，不另写一份几何）：
        __costumeBoxes()   当前热区清单（V 空间包围盒 + 面积 + 驱动部件数）
        __costumeHit(cx,cy) 屏幕点命中的热区（与 onUp 同一函数）
@@ -2905,6 +2933,11 @@ async function renderLive2D(s, sk){
     const localHit=(cx,cy)=>{ const r=wrap.getBoundingClientRect();
       const lp=mdl.toLocal(new PIXI.Point(cx-r.left, cy-r.top));
       const pv=P2V(lp.x/ppu, lp.y/ppu); return hitAt(pv.x, pv.y); };
+    /* 同一屏幕点上的**全部**动作判定区候选（含各自的四边形面积），只用于「参数热区 vs
+       动作判定区」的优先级裁决，不参与随机挑选（随机挑选仍由 hitAt 负责）。 */
+    const localHitAll=(cx,cy)=>{ const r=wrap.getBoundingClientRect();
+      const lp=mdl.toLocal(new PIXI.Point(cx-r.left, cy-r.top));
+      const pv=P2V(lp.x/ppu, lp.y/ppu); return hitAll(pv.x, pv.y); };
     /* 拖拽区→动作组的编号映射（点击路径仍在用：点 TouchDragN 补区时找同名 touch_drag 组）。
        拖动方向没分组时按编号轮转到现有的 touch_drag1..N，避免有区点不出动作。 */
     const dragGroupOf=n=>{ if(groups.includes(n)) return n;
@@ -2950,7 +2983,26 @@ async function renderLive2D(s, sk){
          命中结果优先用 pointerdown 那一刻算好的（`cd`）：抬起时的几何已晚 80–160 ms，
          小部件（ougen_8 鞋的可见件面积仅 6.47）早已漂出该屏幕点 ⇒ 按下没判到时才补算。 */
       { const cb=cd || costumeHitAt(e.clientX,e.clientY,freshGeo());
-        if(cb){ costumeToggle(cb); return; } }
+        /* ── 与动作判定区重叠时按「谁更具体」裁决（2026-10-29，用户需求③）──
+           过去参数热区**无条件**抢在动作之前，于是它盖住某块判定区时，那块判定区就永久失效
+           （用户报的「互动区无法触发 / 效果被另一个互动区覆盖」）。现在比较两边的**可见多边形
+           覆盖面积**，小的一方更具体、更符合「点这块具体东西」的意图：
+             · 热区面积 < 重叠判定区里最小的那个 ⇒ 热区胜（点戒指/眼睛不该播身体动作）
+             · 否则动作胜（大片丝袜/鞋不该吞掉贴在上面的 touch_idle* 小标记）
+           实测 ougen_8：网格 2065 个「至少一方命中」的点里 351 点发生改判，而 31 个判定区
+           的中心点**一个都没丢**（判定区自己很小，永远赢）；被让出的是 Stock2/Cloth2 那些
+           跨整个腿部的大热区 —— 它们本来就是"窝在别的小标记下面"，不让出就没法点到那些标记。
+           `stateFind` 命中（手工接线）不受此规则影响，仍最高优先。 */
+        if(cb){
+          const areas=localHitAll(e.clientX,e.clientY);
+          if(!areas.length){ costumeToggle(cb); return; }
+          const aMin=Math.min.apply(null, areas.map(o=>(isFinite(o.area)&&o.area>0)?o.area:Infinity));
+          const cArea=costumeAreaOf(cb);
+          /* 幽灵区（该热区此刻没有任何可见件）不参与面积比较：它的可见面积为 0，
+             若按 0 <= aMin 让它在重叠处胜出，就会把判定区整块吞掉。让位给判定区。 */
+          const hidden=!cb.nVis;
+          if(!hidden && cArea<=aMin){ costumeToggle(cb); return; }
+        } }
       // 普通点击补区（touchdragN）也要能触发：先查同名组，再走 dragGroupOf 的编号映射。
       const g = name && (groups.includes(name) ? name
         : (groups.find(x=>x.toLowerCase()===name.toLowerCase()) || dragGroupOf(name))) || (name?null:fallbackG);

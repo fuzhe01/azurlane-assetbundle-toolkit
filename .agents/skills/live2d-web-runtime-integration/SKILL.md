@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**，**以及逐帧探针的仪器体检前置（§25：十一条仪器 bug、出帧源解耦、采样点挂 `coreModel.update` 入口、保活必须周期重发、坐标只许用页面出口、`stringify` 丢 undefined 键、pins 对比须先让渡）**，**以及「模型少了一个部件」的定性流程（§27：不透明度绑定反查必须带阳性对照、几何镜像配对区分「有件但关着」与「真的缺件」、真实播放态不冻结审计回答观感、像素差分不能当缺件证据、canvas rect 只许问页面、`getParameterId` 不存在、`getParameterIndex` 越界返回 count）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全/少一只鞋少一条腿/某个部位消失"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见、逐帧探针、出帧源、1Hz 节流、fps 假绿、探针仪器坏了、部位消失、少一只鞋、少一条腿、部件是不是丢了、参数反查、不透明度绑定、镜像配对、参数效果测量、冻眨眼、相对阈值、整模重建。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.24
+version: 1.10.25
 ---
 
 # Live2D 网页运行时集成
@@ -1489,3 +1489,66 @@ if(eb&&typeof eb.updateParameters==='function'){
 `scripts/diag/l2d_param_effect_pixel.py`（像素判据 + 正确冻眨眼 + 模型身份闸，端口 9420）。
 
 **项目侧对应**：`docs/WORKFLOWS.md` WF-56、`docs/TROUBLESHOOTING.md` §166。
+
+## 30. 互动区「互相覆盖」：先剔点击标记，再按"更具体者"裁决 + 采样点必须不依赖 emit（2026-10-29，version 1.10.25）
+
+### 三十·1 参数热区盒会被点击标记撑爆
+
+`buildCosGeo()` 用「驱动件顶点并集」当热区盒。而 `Touch*` 是点击标记、不是可见件；
+它进驱动清单只是"整张顶点表跟着动"的连带结果，且隐藏件顶点常是未初始化残值。
+
+实测 `ougen_8`：`Stock1` 的 `#735 TouchDrag16` 读到 `(-293.09, 288.16)`，而整模顶点范围只有
+`-448..154`、鞋在 `x≈-10.8..-0.4` ⇒ 本该 5×5 的热区变成 290×290，整块画布都成了"丝袜开关"。
+
+**判据**：凡驱动集里出现 `/^touch/i` 的件，就必须在算盒前剔掉（保留 `nMark` 计数）。
+剔除不改变任何可见几何，对其它模型零风险。
+
+### 三十·2 参数热区不能无条件抢占动作判定区
+
+`onUp` 的顺序是 `stateFind` → 参数热区 → 动作判定区，参数热区命中即 `return`
+⇒ 它盖住的判定区永久失效。实测 11 条热区里 9 条与判定区重叠，`Cloth1`/`Paramring` 是 100%。
+
+**判据（更具体者胜）**：比**可见多边形面积**，小者胜。
+
+- 热区面积 ≤ 重叠判定区里最小的那个 ⇒ 热区胜
+- 否则动作胜
+- 幽灵区（`nVis=0`）不参与面积比较，直接让位
+
+⚠️ 不能用包围盒面积：斜置件虚高 3–15 倍（`ShoseOff` 盒 82.4 / 真实 5.4）。
+
+**A/B 效果（ougen_8，改前页由 `git show HEAD:gallery_src/index.html` 落盘）**：
+HIT 19→26，WIRING 4→0，判定区中心可达 31/31 不变。
+
+### 三十·3 探针侧三个必须记住的坑
+
+1. **`plainWheelNoop` 偶发红不是产品缺陷**：产品的 `ResizeObserver(()=>refit(true))` 会按视口
+   尺寸重算基准缩放，连跑多模型时它可能落在"滚轮前/后"之间。判据：`wrap.clientWidth×clientHeight`
+   是否变了。修法是取基线前等尺寸稳定（不是放宽阈值）。
+2. **重试循环只捕 `RuntimeError` 会漏 WebSocket 超时**：`WebSocketTimeoutException` 不是它的
+   子类，会冒泡成 traceback + `exit 1`，把"全部通过"的一步记成失败。超时后必须**重连同一张 tab**。
+3. **`WIRING` 要把产品的拖拽编号轮转算进期望集合**：`TouchDragN` 不一定有同名动作组，产品按
+   `dragGroupOf` 轮转到现有 `touch_dragN`（实测 `touchdrag6/7 → touch_drag1`）。
+   ❌ 已试过并**回退**的错法：给 `WIRING` 加"点击后再采一次候选集" —— 点击后的几何漂移会让
+   更多部位进候选集，断言变松，`benningdun_2` 从 2 条红变 3 条。
+
+### 三十·4 「参数跨动作保留」只能用渲染有效值判，且采样点不能依赖 emit
+
+`beforeModelUpdate` 事件在本页**实测不稳定**（同一模型：限跑 3 个动作触发 65 帧，
+跑全量一帧都不触发）⇒ 拿它当判据必然得到**空断言**（"0 个被拉走"其实一次比较都没做）。
+
+**可用判据**：把 `coreModel.update` 包一层，**原函数返回之后**立刻读参数值 ——
+`core.update()` 用当时的参数算完 drawable，之后 `loadParameters` 才复原成曲线值，
+所以这一刻读到的就是**这一帧真正用于渲染的值**，且不依赖任何 emit。
+
+⚠️ `coreModel` 会随换肤/重建换对象 ⇒ 一次性包旧对象会得 `fired=0`。必须周期性重新解析
+当前模型的 `coreModel` 并补挂（用函数自身标记 `__retainWrapped` 防重包）。
+
+实测结论（`ougen_8` / 55 个动作 × 12 条装扮参数）：**全部保持，0 偏差**。
+（反面对照：直接读 `getParameterValueById` 会报 51/55 个动作"被拉走"，那是曲线值，非渲染值。）
+
+### 工具
+
+`scripts/diag/l2d_param_retain_verify.py`（渲染有效值 + 自愈挂钩 + 空断言红闸）、
+`scripts/diag/hit_verify.py`、`scripts/diag/interact_verify.py`。
+
+**项目侧对应**：`docs/WORKFLOWS.md` WF-57、`docs/TROUBLESHOOTING.md` §167。
