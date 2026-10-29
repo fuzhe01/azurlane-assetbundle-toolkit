@@ -8766,3 +8766,83 @@ NameError: name 'chrome_tree' is not defined
 
 **涉及文件**：`scripts/diag/migrate_chrome_launch.py`（新增 `--audit` 模式 +
 `import_order_problem()`）、上述 6 个探针、`docs/WORKFLOWS.md` WF-49。
+
+## §166. 参数效果批量测量：本轮连撞 5 个仪器缺陷，每一个都能把真效果读成 0（2026-10-29 收敛）
+
+**现象**：同一条参数 `ParamEyeSmile` 在不同的仪器版本里分别报 **0 件 / 14 件**；
+`ShoseOff` 报 **842 件 / 20 件**；`NeckMoney` 单独测 **1 件**、全量跑 **14 件**。
+四组读数互相矛盾，但**每一组都是"跑通了"的**（冻结漂移 0、参数读回 = hi）。
+这正是最危险的一类：仪器跑通、数字合理、结论完全错。
+
+### 缺陷一：眨眼污染（像素判据侧）
+
+冻结 idle/motion 之后，`InternalModel.update()` 里的
+`if(!motionUpdated) this.eyeBlink.updateParameters(model, dt)` **反而开始执行**——
+不冻的时候 `motionUpdated=true` 把眨眼挡住了，冻住之后没人挡。
+于是每帧都可能把 `ParamEyeLOpen/ROpen` 拍成 0..1，眼睛整块重绘。
+
+实测把两只眼睛参数判成了"有效果"：
+
+| 判据 | 报的变化 | 包围盒 |
+|---|---|---|
+| `BondEyes` | 348 px | (638,265,689,280) |
+| `ParamEyeSmile` | 103 px | (640,270,681,280) |
+| **眨眼本身（未冻）连拍 #2** | 334 px | (639,266,689,282) |
+| **眨眼本身（未冻）连拍 #4** | 241 px | (639,266,689,281) |
+
+四个包围盒几乎完全重合 ⇒ 那是**同一只偶发眨眼**被当成了参数效果。
+冻结后连拍 5 张全等（0 px），重测：`BondEyes`/`HeartEyes` = 0 px，`ParamEyeSmile` = 89 px。
+
+**两个必须同时记住的点**：
+1. 方法名是 `updateParameters`，不是 `update`（后者在这个类上不存在，改它等于没改）；
+2. **不是换成空函数**，而是每次调用都把 `ParamEye[LR]Open` 写回 **1**——
+   空函数会让眼睛停在上一次眨眼值（可能半闭），整场测量都在半闭眼上做。
+
+### 缺陷二：绝对阈值漏判小部件（`ParamEyeSmile` 被判 0 件）
+
+旧 `row_diff()` 把 `box/cen/disp` 阈值写死成 **0.5**（V 空间绝对值）。整模顶点范围
+X∈[-448.4, 153.7]（总宽约 602），0.5 是它的 0.08%；但眼睛 ArtMesh 只有 **0.1441** 宽，
+0.5 是它自身尺寸的 **3.5 倍**。`ParamEyeSmile` 的真位移 0.0153 V（占自身 **10.62%**，
+屏幕上 89 px）在这个阈值下必然判 0。
+
+**修法**：阈值改成按 drawable 自身尺寸归一化的相对阈值
+（`_thr()`：`ext × 0.005`，兜底 `1e-4`）。改完 `ParamEyeSmile` 从 0 件 → **14 件**。
+
+### 缺陷三：「仅 `ro` 变化」不是变化（`ShoseOff` 报 842/842）
+
+`getDrawableRenderOrders` 不是 drawable 的属性，是渲染器**每帧按可见性重排**的结果。
+任何一件被隐藏/显示，整表绘序号平移 ⇒ 每一件都报"变了"。
+`ShoseOff` 的 842 件里 **822 件的变化通道只有 `ro`**，剔掉后真驱动 **20 件**。
+
+判据：`why == ['ro']` 的行剔除。真正的层序翻转不会单独出现——被翻动的两件
+必然伴随 `vis`/`op` 变化，所以 `ro` 保留为辅助通道，"仅 ro"不算证据。
+
+### 缺陷四：基线只取一次 ⇒ 污染跨参数叠加
+
+全 12 条参数钉 lo 只保证"参数回到 lo"，**不保证画面回基态**。冻结姿态下没人复原，
+前一条的残留下一条继承。铁证：`NeckMoney` 单独测 **1 件**、全量跑 **14 件**，
+且 14 件里有 10 件与 `Param233` 完全相同。
+
+**修法**：每条参数测前重取基线。残留**同时出现在基线和 hi 态**里，逐 drawable 相减自动消掉。
+代价：每条多一次全量快照（842 件含 UV 约 4–6 s，12 条约 70 s）。
+改完 `NeckMoney` 回到 1 件、`Param233` 回到 16 件（与旧手写值一致）。
+
+### 缺陷五：值写进去了 ≠ 几何已重算
+
+`settle()` 轮询的是 `getParameterValueById` 的**读回值**，那是本帧写进去的参数；
+drawable 顶点/opacity 要等 `core.update()` 才重算。刚 `settle` 完立刻快照，
+拿到的可能是**上一帧**的几何 ⇒ 真效果被读成 0 件。
+**修法**：`settle()` 之后 `pg.require_frames(1.0)` 再 `snap()`。
+
+### 附带的诊断纪律
+
+- `faulthandler.dump_traceback_later(1200, exit=True)`：本工具曾两次在"基线已取"之后
+  **单核空转 4 分钟以上**（CPU 632s→672s、730s→757s，日志一行不动），既不是等画面也不是超时。
+  空转只能靠线程栈揪出来。
+- 逐参数进度打印（`→ 测 X (lo=…)`）是定位空转位置的最低成本手段；
+  没有它，空转表现为"卡住了，不知道卡在哪"。
+- 阳性对照必须硬性自检：阳性最大变化为 0 ⇒ 判红，任何 0 都不许当结论（AGENTS.md 规则 5）。
+
+**涉及文件**：`scripts/diag/l2d_param_map_batch.py`（缺陷二/三/四/五 + watchdog）、
+`scripts/diag/l2d_param_effect_pixel.py`（缺陷一 + 模型身份闸）、
+`docs/WORKFLOWS.md` WF-56、`.diag/param_drawables/ougen_8.batch.json`（最终映射）。

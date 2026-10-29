@@ -4047,3 +4047,61 @@ trigger 盒用产品自己的出口取：`__stateTogglesInfo()` 里该 `id` 的 
 
 **涉及文件**：`scripts/diag/migrate_chrome_launch.py`（`--audit` + `import_order_problem()`）、
 `docs/TROUBLESHOOTING.md` §165、`scripts/diag/chrome_lifecycle_selftest.py`（同批事故的生命周期判据）。
+
+## WF-56 参数效果的双判据裁定流程（API 全通道 + 像素阳性对照，2026-10-29 收敛）
+
+**用途**：判定"某个 Live2D 参数到底驱动哪几个 drawable"。这是参数型互动区（热区）的
+地基——映射错了，热区就点不中、点了没效果、或者把整模重建当成形变。
+
+**两条判据必须同时跑，缺一条都不能出结论**：
+
+| 判据 | 工具 | 它能看见什么 | 它的盲区 |
+|---|---|---|---|
+| API 全通道 | `l2d_param_map_batch.py` | 逐 drawable 的 op/box/cen/cnt/disp/uv/vis/mc/sc/mask/inv/cull/tex/ro/blend | 小于自身尺寸 0.5% 的位移 |
+| 像素 | `l2d_param_effect_pixel.py` | 屏幕上有多少像素真的变了 | 不告诉你驱动了哪几件 |
+
+单跑 API 会把 `ParamEyeSmile` 读成 0 件（阈值口径）；单跑像素会把
+"整模重建"读成"驱动了全部 842 件"（没有归属）。**两者交叉才定得住。**
+
+### 步骤
+
+1. **环境闸**：`py -3 scripts/diag/check_env.py`；确认 gallery 服务器在 8778 上活着。
+2. **冻结姿态**（七件套，缺一件读数就作废）：
+   `idle` 换成不存在的组 / `stopAllMotions` / `updateNaturalMovements` 置空 /
+   **`eyeBlink.updateParameters` 改写为"把 ParamEye[LR]Open 写回 1"** /
+   `physics.reset`。眨眼这一条是 2026-10-29 才补上的，漏掉它整条读数全废（见 §166 缺陷一）。
+3. **漂移闸**：同一份快照连采 4 次，逐 drawable 比，**必须为 0**。非 0 直接退出码 2，
+   不出任何结论。
+4. **逐参数（每条都要重取基线）**：参数钉 lo → 重取基线 → 参数钉 hi → `settle()` 确认读回 =
+   hi → **等一帧** → 取 hi 态快照 → 逐 drawable 相减。
+5. **三条读法纪律**：
+   - 阈值按 drawable 自身尺寸归一化（`ext × 0.005`），不用绝对 0.5；
+   - `why == ['ro']` 的行剔掉（绘序号是可见性重排的连带结果）；
+   - drawable 集合指纹（数量 + 前 16 件的 vis/tex/ro/首件包围盒）变了 ⇒ 整模重建，
+     API 读数判废，交给像素侧。
+6. **阳性对照自检**：跑至少两条已知有效的参数（本项目用 `Cloth3`/`ShoseOff`/`Param233`）。
+   阳性最大变化为 0 ⇒ 判红，全表 0 值不许当结论。
+
+### 判据
+
+- API 侧"驱动 N 件"要能点名（`#idx IdName`），且 N 与像素侧的变化区域**空间吻合**。
+- 报 0 件的参数必须同时满足：漂移闸 0、参数读回 = hi、阳性对照有区分力、像素侧 0 px。
+  四条齐了才能判"本模型不可见 ⇒ 降级面板控件"。
+
+### 踩坑
+
+- **眨眼污染**：冻结 idle/motion 恰恰让 `motionUpdated=false`，眨眼每帧都跑（§166 缺陷一）。
+- **绝对阈值**：`ParamEyeSmile` 真位移 0.0153 V（占自身 10.62%、屏幕 89 px），
+  在 0.5 的绝对阈值下是 0 件（缺陷二）。
+- **仅 ro 变化**：`ShoseOff` 842 件里 822 件只有绘序号变（缺陷三）。
+- **基线只取一次**：`NeckMoney` 单独 1 件 / 全量 14 件（缺陷四）。
+- **值写进 ≠ 几何重算**：`settle()` 读回是参数值，几何要等 `core.update()`（缺陷五）。
+- **静默空转**：两次在"基线已取"后单核空转 4 分钟以上，必须挂 `faulthandler`。
+
+### 涉及文件
+
+- `scripts/diag/l2d_param_map_batch.py`（API 全通道，端口 9412）
+- `scripts/diag/l2d_param_effect_pixel.py`（像素判据 + 模型身份闸，端口 9420）
+- `.diag/param_drawables/ougen_8.batch.json`（产物，不入库）
+- `Output/gallery_v2/param_drawables.json`（消费方映射，产品侧）
+- `docs/TROUBLESHOOTING.md` §166

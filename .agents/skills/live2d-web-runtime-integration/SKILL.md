@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
-description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**，**以及逐帧探针的仪器体检前置（§25：十一条仪器 bug、出帧源解耦、采样点挂 `coreModel.update` 入口、保活必须周期重发、坐标只许用页面出口、`stringify` 丢 undefined 键、pins 对比须先让渡）**，**以及「模型少了一个部件」的定性流程（§27：不透明度绑定反查必须带阳性对照、几何镜像配对区分「有件但关着」与「真的缺件」、真实播放态不冻结审计回答观感、像素差分不能当缺件证据、canvas rect 只许问页面、`getParameterId` 不存在、`getParameterIndex` 越界返回 count）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全/少一只鞋少一条腿/某个部位消失"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见、逐帧探针、出帧源、1Hz 节流、fps 假绿、探针仪器坏了、部位消失、少一只鞋、少一条腿、部件是不是丢了、参数反查、不透明度绑定、镜像配对。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.23
+description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**，**以及逐帧探针的仪器体检前置（§25：十一条仪器 bug、出帧源解耦、采样点挂 `coreModel.update` 入口、保活必须周期重发、坐标只许用页面出口、`stringify` 丢 undefined 键、pins 对比须先让渡）**，**以及「模型少了一个部件」的定性流程（§27：不透明度绑定反查必须带阳性对照、几何镜像配对区分「有件但关着」与「真的缺件」、真实播放态不冻结审计回答观感、像素差分不能当缺件证据、canvas rect 只许问页面、`getParameterId` 不存在、`getParameterIndex` 越界返回 count）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全/少一只鞋少一条腿/某个部位消失"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见、逐帧探针、出帧源、1Hz 节流、fps 假绿、探针仪器坏了、部位消失、少一只鞋、少一条腿、部件是不是丢了、参数反查、不透明度绑定、镜像配对、参数效果测量、冻眨眼、相对阈值、整模重建。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
+version: 1.10.24
 ---
 
 # Live2D 网页运行时集成
@@ -1413,3 +1413,79 @@ pill 报 `▸ off`（**谎报**）、像素 0 变化。**修法在 `toggleState`
 `scripts/diag/ownership_entry_diag.py`（让渡态 `core.update` 入口采样）。
 
 **项目侧对应**：`docs/WORKFLOWS.md` WF-54、`docs/TROUBLESHOOTING.md` §164。
+
+## 29. 参数效果测量：**先冻眨眼**，再用「相对阈值 + 阳性对照」裁定（2026-10-29，version 1.10.24）
+
+判「某参数驱动几件 / 到底可见不可见」时，本轮把同一条参数在四个仪器版本上读出了
+**0 / 14 / 842 / 20 / 1 / 14** 六种数字，每一组都"跑通了"。仪器跑通 ≠ 数字可信。
+
+### 29.1 冻结姿态是七件套，眨眼必须单独冻
+
+```js
+// 错：只冻 idle/motion/breath/phys —— 恰恰让 motionUpdated=false
+// 对：替换 eyeBlink.updateParameters，把 ParamEye[LR]Open 写回 1
+var eb=im.eyeBlink;
+if(eb&&typeof eb.updateParameters==='function'){
+  if(!eb.__hzBak) eb.__hzBak=eb.updateParameters;
+  eb.updateParameters=function(model){
+    var ids=(model&&model.parameters&&model.parameters.ids)||[];
+    for(var i=0;i<ids.length;i++)
+      if(/^ParamEye[LR]Open$/.test(String(ids[i]))) model.setParameterValueByIndex(i,1);
+    return 1; };
+  done.push('blinkOpen'); }
+```
+
+两条都容易错，且错法互不相同：
+
+1. **方法名是 `updateParameters`，不是 `update`**（后者在这个类上不存在，改它等于没改）。
+   `InternalModel.update()` 里写死的是
+   `if(!motionUpdated) this.eyeBlink.updateParameters(model, dt)` ——
+   冻住 idle/motion 恰好让 `motionUpdated=false` ⇒ **眨眼反而开始跑**。
+2. **不能换成空函数**：眼睛会停在上一次眨眼值（可能半闭），整场测量都在半闭眼上做。
+
+实测证据：未冻时连拍 6 张出现 `#2=334px (639,266,689,282)` / `#4=241px (639,266,689,281)`，
+而当时被判成"参数效果"的 `BondEyes` 是 `348px (638,265,689,280)`、
+`ParamEyeSmile` 是 `103px (640,270,681,280)` —— **四个包围盒几乎完全重合**。
+冻住后连拍 5 张全等（0 px），重测 `BondEyes`/`HeartEyes` = 0 px、`ParamEyeSmile` = 89 px。
+
+### 29.2 阈值必须按 drawable 自身尺寸归一化
+
+绝对阈值 `0.5` 在整模（总宽约 602 V）上是 0.08%，但在眼睛 ArtMesh（`ext=0.1441`）上是
+**自身尺寸的 3.5 倍**。`ParamEyeSmile` 的真位移 `0.0153 V` = 自身的 **10.62%** = 屏幕 89 px，
+判 0 件。改 `ext × 0.005`（兜底 `1e-4`）后 0 → **14 件**。
+
+判据口诀：**小部件上的小位移是真的**。看绝对量级会系统性漏判眼睛/嘴/手指。
+
+### 29.3 三条读数纪律（每条都曾把结论带偏）
+
+| 纪律 | 不做会怎样 |
+|---|---|
+| `why == ['ro']` 的行剔掉 | `getDrawableRenderOrders` 是**按可见性每帧重排**的结果，隐藏一件整表平移 ⇒ `ShoseOff` 报 842/842，实际 20 件 |
+| **每条参数测前重取基线** | 冻结后没人复原，前一条残留下一条继承 ⇒ `NeckMoney` 单独 1 件、全量 14 件（10 件与 `Param233` 相同） |
+| `settle()` 之后再 `require_frames(1.0)` | 读回的是参数值，drawable 顶点要等 `core.update()` ⇒ 拿到上一帧几何，真效果读成 0 件 |
+
+另加**模型身份闸**：drawable 集合指纹（数量 + 前 16 件的 vis/tex/ro/首件包围盒）变了 ⇒
+整模重建，API 读数全部判废（像素侧独立可信）。
+
+### 29.4 结论要两条判据交叉才对得上
+
+- 只跑 API：`ParamEyeSmile` 读 0 件（阈值口径）；
+- 只跑像素：`ShoseOff` 读"驱动 842 件"（没有归属，其实是整模重建）；
+- **交叉**：API 能点名 + 像素能定位区域 + 阳性对照有区分力 ⇒ 才敢写"驱动 N 件"。
+
+阳性对照必须硬闸：阳性最大变化 = 0 ⇒ 判红，全表 0 值作废。
+
+### 29.5 已否证的假设（别再重跑）
+
+- **「13 路 API 报 0 件 ⇒ 参数真不可见」不成立**（本轮推翻）：`ParamEyeSmile` 有效，被阈值漏判。
+- **「像素探针在眼部测到 348/103 px ⇒ 眼睛参数有效」不成立**：那是偶发眨眼被采样。
+- **「`ShoseOff` 驱动全部 842 件」不成立**：822 件只是绘序号重排。
+- **`BondEyes`/`HeartEyes` 在本模型当前姿态下确实 0 变化**（冻结后 0 px + 阳性对照有区分力
+  ⇒ 可信）⇒ 降级面板控件，不做热区。
+
+### 工具
+
+`scripts/diag/l2d_param_map_batch.py`（API 全通道，端口 9412）、
+`scripts/diag/l2d_param_effect_pixel.py`（像素判据 + 正确冻眨眼 + 模型身份闸，端口 9420）。
+
+**项目侧对应**：`docs/WORKFLOWS.md` WF-56、`docs/TROUBLESHOOTING.md` §166。
