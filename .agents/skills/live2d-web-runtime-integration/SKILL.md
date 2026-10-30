@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
 description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**，**以及逐帧探针的仪器体检前置（§25：十一条仪器 bug、出帧源解耦、采样点挂 `coreModel.update` 入口、保活必须周期重发、坐标只许用页面出口、`stringify` 丢 undefined 键、pins 对比须先让渡）**，**以及「模型少了一个部件」的定性流程（§27：不透明度绑定反查必须带阳性对照、几何镜像配对区分「有件但关着」与「真的缺件」、真实播放态不冻结审计回答观感、像素差分不能当缺件证据、canvas rect 只许问页面、`getParameterId` 不存在、`getParameterIndex` 越界返回 count）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全/少一只鞋少一条腿/某个部位消失"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见、逐帧探针、出帧源、1Hz 节流、fps 假绿、探针仪器坏了、部位消失、少一只鞋、少一条腿、部件是不是丢了、参数反查、不透明度绑定、镜像配对、参数效果测量、冻眨眼、相对阈值、整模重建。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.10.29
+version: 1.10.30
 ---
 
 # Live2D 网页运行时集成
@@ -1735,3 +1735,57 @@ if (typeof dv === 'number' && dv > lo && dv < hi) offV = dv;
 `splitHitAt`/`splitMove`、`costumeToggle` 成组广播、`__splitInfo`/`__splitScreenX`/`__splitHitAt`）、
 `scripts/diag/l2d_split_drag_verify.py`（六条判据验收）、
 `docs/TROUBLESHOOTING.md` §173/§174、`docs/WORKFLOWS.md` WF-58。
+
+## 32. 分屏拖动的「界限」与「画面跟随」：先证机制存在，再谈手感（2026-10-30，version 1.10.30）
+
+### 32.1 只验「线会动」不够，必须验「内容会不会跟着动」
+
+上一轮验收分屏拖动只跑了四条判据（线单调移动 / 拖动生效 / 松手保持 / 阴性对照），
+**全绿**，但用户一眼看出「和游戏不一样」。缺的那一条是**内容位移**：
+
+| 判据 | 方法 | 结论 |
+|---|---|---|
+| 线会动 | `__splitScreenX` 随参数单调 | ✅ |
+| **内容会跟着动** | 一维互相关求右半 dx | **❌ dx 恒为 0（纯裁切）** |
+| 内容件的可见性会变 | 842 件 `(vis, opacity)` 两态快照 | ❌ 变化 0 件 |
+| 有"两份副本"所以能两半各自取景 | drawable / part 名去重 | ❌ 重名 0 |
+
+⇒ **「线会动」与「画面跟随」是两件事**。用户说"跟随"时，验的必须是**内容位移**，
+不是边界几何。这条要写进任何「拖动型互动区」的验收清单。
+
+### 32.2 判「拖动界限」不能用「内容包围盒」
+
+第一版用「遮罩 fan-out 件的包围盒」当内容范围，算出 `vMin=0 / vMax=19.0`（几乎等于值域，等于没夹）。
+原因：fan-out 里包含**全屏背景**，它的包围盒就是整幅画布。
+
+正确判据：**遮罩边界必须落在画布内部**。线跑出画布时被遮那一侧整块空
+（实测 v=19.0 时左侧内容占比 **0.0%**）。把「边界 x ∈ 画布内」翻译成参数值区间即可
+（边界 x 随参数线性，已两点标定）。
+
+验证必须包含「两端各自的左右两侧内容占比」——只看参数值被夹住不算，要看画面真的两侧都有内容。
+
+### 32.3 「整模级参数」不等于「干扰项」
+
+`Param147/148/149/162` 各驱动 667 件，我上一轮把它们当「整模级干扰」排除了。
+但**驱动全部件正是相机/整体变换的特征**。判它们的类型不能用互相关（整幅缩放/旋转下
+不存在单一 dx，err 会到 70–200），要用**6×6 网格变化分布**：
+
+- 整幅均匀变（80–89%）⇒ 整体变换
+- 只少数格变 ⇒ 局部
+
+### 32.4 探针关缓存是硬要求
+
+`model3.json` 被浏览器缓存。改完判定区后新开探针仍读旧副本
+（`hit_verify` 报 60 条，服务器已吐 120 条），差点把「改了不生效」当成产品缺陷。
+`gallery_ui_shots.Page.__init__` 已加 `Network.enable` + `Network.setCacheDisabled(true)`。
+
+### 32.5 判重只能按原样 Id（判定区补登记）
+
+moc3 里 `TouchHead` 与 `Touch_Head` 是**两个真实、位置不同的 drawable**，指向同一动作组。
+按归一化名去重会把 59 个真实区域整块丢掉（判定区 120→60）。
+「共用动作组」是设计，不是缺陷。详见 TROUBLESHOOTING §175 / WF-59。
+
+**涉及**：`gallery_src/index.html`（`splitCalib` 的 `vMin/vMax`、`splitMove` 夹取、
+`__splitInfo` 导出）、`scripts/fix_model3.py`（下划线形态）、
+`scripts/diag/hitarea_audit.py`、`hitarea_missing_cause.py`、`hitarea_underscore_check.py`（新增）、
+`scripts/diag/gallery_ui_shots.py`（关缓存）。

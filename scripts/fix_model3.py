@@ -233,17 +233,30 @@ for model_name in sorted(os.listdir(OUTPUT_DIR)):
         gexact = set(groups)
         cur_hits = model.get("HitAreas") or []
         known = {h.get('Id') for h in cur_hits}
+        # ⚠️ 去重只能按**原样 Id**（2026-10-30 实测）：moc3 里 `TouchHead` 与 `Touch_Head`
+        # 是**两个真实存在、位置不同的 drawable 标记**，它们恰好指向同一个动作组。
+        # 曾试过按「去前缀去下划线」归一化去重，结果把 60 个真实区域整块丢掉
+        # （判定区从 120 退回 60）—— 那才是真遗漏。共用动作组不是缺陷，是设计。
         extra = []
         for mm in _re.finditer(rb'Touch[ -~]{1,20}?(?=[^\x20-\x7e])', moc3_bytes):
             tid = mm.group(0).decode()
             if tid in known:
                 continue
+            # 🔴 **下划线形态**（2026-10-30 审计出的真遗漏）：moc3 里同一个触摸标记有
+            # 两种写法 —— `TouchIdle6` 与 `Touch_Idle6`。旧规则用
+            # `'touch_' + re.sub(驼峰插下划线)(tid[5:])` 再 `replace('__','_')`：
+            #   TouchIdle6  → 'touch_' + 'idle6'  = touch_idle6   ✓
+            #   Touch_Idle6 → 'touch_' + '_idle6' = touch__idle6 → replace → touch_idle6 ✓
+            # 看着都对，但 `replace('__','_')` **只替换第一处**，名字里出现第二段下划线
+            # （如 `Touch_Drag_11`）就会漏；更要紧的是 `known` 只按**原样 Id** 判重，
+            # 于是 `TouchHead` 与 `Touch_Head` 被当成两个不同标记各登记一次。
+            # ⇒ 统一：① 压掉连续下划线并去首尾；② 按**归一化名**判重（见 known_norm）。
             cand = 'touch_' + _re.sub(r'(?<!^)(?=[A-Z])', '_', tid[5:]).lower()
-            cand = cand.replace('__', '_')
+            cand = _re.sub(r'_+', '_', cand).strip('_')
             # 有些按钮的动作组不带 touch_ 前缀：TouchIdle6 对应的是 idle6（脱鞋/换装待机），
             # 旧规则只认 touch_idle6 → 整块被判成“无动作”而丢弃。先查 touch_<x>，再退回 <x>。
             if cand not in gexact:
-                alt = tid[5:].lower()
+                alt = _re.sub(r'_+', '_', tid[5:]).strip('_').lower()
                 if alt in gexact:
                     cand = alt
             if cand in gexact:

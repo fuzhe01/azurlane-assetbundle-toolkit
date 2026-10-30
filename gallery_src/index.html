@@ -2539,12 +2539,16 @@ async function renderLive2D(s, sk){
     /* 拖动型互动区（分屏线）出口（2026-10-30）：探针需要「此刻这条线在屏幕哪」以及
        「按某个参数值反解出的屏幕 x」，否则只能靠猜坐标点，验不出真实行为。 */
     window.__splitInfo=()=>splitCfg().map(it=>{
-      let cur=null, lo=it.lo, hi=it.hi, mask=-1;
+      let cur=null, lo=it.lo, hi=it.hi, mask=-1, cal=null;
       try{ cur=+core.getParameterValueById(it.id); }catch(e){}
       try{ const ix=core.getParameterIndex(it.id);
         if(ix>=0){ lo=core.getParameterMinimumValue(ix); hi=core.getParameterMaximumValue(ix); } }catch(e){}
       try{ mask=splitMaskOf(it.id); }catch(e){}
-      return {id:it.id, label:it.label, band:it.band, cur, lo, hi, mask};
+      /* 界限也一起导出：验收脚本必须能读到「夹在哪」，否则只能间接推断 */
+      try{ cal=splitCalib(it); }catch(e){}
+      return {id:it.id, label:it.label, band:it.band, cur, lo, hi, mask,
+              vMin: cal? cal.vMin : null, vMax: cal? cal.vMax : null,
+              edgeV: cal? cal.edgeV : null, canvasV: cal? cal.canvasV : null};
     });
     window.__splitScreenX=(id, val, clientY)=>{
       const it=splitCfg().find(o=>o.id===id); if(!it) return null;
@@ -2736,18 +2740,44 @@ async function renderLive2D(s, sk){
               const b=document.createElement('button'); b.style.width='auto'; b.style.padding='0 6px';
               const cur=()=>{ try{ return +core.getParameterValueById(it.id); }catch(e){ return lo; } };
               const paint=()=>{ b.textContent=String(cur()); };
-              b.onclick=()=>{ const v=cur();
-                let ni=vals.findIndex(x=>Math.abs(x-v)<1e-3);
-                ni=(ni<0)?0:((ni+1)%vals.length);
-                pins[it.id]=vals[ni]; try{ core.setParameterValueById(it.id, vals[ni]); }catch(e){}
-                paint(); };
+              /* 🔴 面板按钮必须走 `costumeToggle`，不能直接写值（2026-10-30 用户实测：右脚无过渡）。
+                 直写 `pins[id]=v; setParameterValueById(id,v)` 的两个后果（本轮逐帧实测对照）：
+                   ① **没有过渡动画**：值一帧从 0 跳到 1（采样「唯一值 2 个、中间帧 0 个」），
+                      而画面点击路径是「唯一值 15 个、中间帧 12 个」。
+                      用户看到的「右脚没过渡、左脚有」就是这个差异的观感：面板里**两个参数都没过渡**，
+                      只是左脚那批件是几何渐变（`ShoseOff` = GEO 型，阶跃时仍有位移感），
+                      右脚那批是透明度渐变（`Param233` = ALPHA 型，阶跃时就是硬闪）。
+                   ② **不走成组联动**：点 `ShoseOff` 时 `Param233` 完全不动（实测唯一值 1 个），
+                      于是面板能造出「左脚脱了右脚还穿着」这种画面点击永远造不出的状态。
+                 改用 `costumeToggle` 后，面板与画面点击走**同一条**路径（tween + COSTUME_LINK），
+                 两条入口不可能再漂移。目标档由 `costumeTarget` 算，不在这里自己算「下一档」。 */
+              b.onclick=()=>{ try{ costumeToggle(it); }catch(e){} paint(); };
               const rb=document.createElement('button'); rb.textContent='↺'; rb.title='复位默认 ('+dflt+')';
-              rb.onclick=()=>{ pins[it.id]=dflt; try{ core.setParameterValueById(it.id, dflt); }catch(e){} paint(); };
+              /* 复位也走 tween（否则「复位」是一次硬闪）；目标值直接指定，不经过 costumeTarget */
+              rb.onclick=()=>{ try{
+                const tws=(window.__costumeTweens=window.__costumeTweens||Object.create(null));
+                const tw=(tws[sk.key]=tws[sk.key]||Object.create(null));
+                const grp=[it.id].concat(((COSTUME_LINK[sk.key]||{})[it.id])||[]);
+                for(const gid of grp){
+                  let from=pins[gid];
+                  if(from===undefined) try{ from=core.getParameterValueById(gid); }catch(e){ from=dflt; }
+                  if(typeof from!=='number'||!isFinite(from)) from=dflt;
+                  pins[gid]=from;
+                  let to=dflt;
+                  if(gid!==it.id){ try{ const gi=core.getParameterIndex(gid);
+                    if(gi>=0) to=core.getParameterDefaultValue(gi); }catch(e){} }
+                  tw[gid]={from:from, to:to, t0:performance.now(), dur:420};
+                }
+              }catch(e){} paint(); };
               paint(); r.append(n,b,rb); gs.append(r);
             } else {
               const row=mkRow(it.id+'', lo, hi, dflt,
                 ()=>core.getParameterValueById(it.id),
-                x=>{ pins[it.id]=x; core.setParameterValueById(it.id, x); });
+                /* 滑块是**连续**调节（拖动中每帧都写），本来就没有"过渡"可言，保留直接写值；
+                   但同样要参与成组联动，否则拖左脚滑块右脚不动。 */
+                x=>{ pins[it.id]=x; try{ core.setParameterValueById(it.id, x); }catch(e){}
+                  for(const gid of (((COSTUME_LINK[sk.key]||{})[it.id])||[])){
+                    pins[gid]=x; try{ core.setParameterValueById(gid, x); }catch(e){} } });
               gs.append(row);
             }
           }
@@ -3144,7 +3174,40 @@ async function renderLive2D(s, sk){
         return order.map(i=>({x:V[i][0], y:V[i][1]}));
       };
       const ca=pick(A), cb=pick(B);
-      const cal={lo, hi, A, B, la:ca, lb:cb, idx};
+      /* ---------- 拖动界限（2026-10-30，用户需求：拖动要有界限，不能让一半完全消失）----------
+         两条硬边界，都必须满足：
+
+           ① **内容边界**：遮罩 fan-out 那批件的包围盒 = 有意义的内容范围。
+              遮罩边界越过它时，被裁的那一侧就什么都不剩。
+           ② **画布边界**：遮罩边界跑出画布时，同样一侧全空。
+
+         ⚠️ 只用 ① 会失效（本轮实测踩到）：`FanMeng` 的 fan-out 里包含**全屏背景**，
+            其包围盒是 `[-27.81, 19.78]`（覆盖整个画布），于是「内容范围」≈ 画布，
+            算出的界限几乎等于值域本身（vMin=0 / vMax=19.0），等于没夹。
+         ⇒ 真正的判据必须是「**遮罩边界落在画布内部**」，因为一旦线跑出画布，
+            被遮的那一侧就整块空了（实测 v=19.0 时左侧内容占比 0.0%）。
+
+         实现：把「边界必须落在画布内、并留 margin」翻译成参数值区间。
+         边界 x 随 v 线性（已标定两端），所以可以直接解出 v 的上下界。
+         若算不出（退化），退回「值域内侧 8%」。
+         每侧 margin 用画布宽度的 3%（`item.margin`，0..1 比例）。 */
+      const edgeXs=[ca[0].x, ca[1].x, cb[0].x, cb[1].x];
+      const eMin=Math.min.apply(null, edgeXs), eMax=Math.max.apply(null, edgeXs);
+      let vMin=lo, vMax=hi;
+      if(eMax-eMin>1e-6){
+        /* 画布在 V 空间的范围：画布 x ∈ [0, cux]（V 原点在画布中心） */
+        const mg=(item.margin===undefined?0.03:item.margin)*cux;
+        const canvasLo=-cux/2+mg, canvasHi=cux/2-mg;
+        /* 边界允许停在 [canvasLo, canvasHi] 内 ⇒ 解出对应 v 区间 */
+        const vAt=(x)=>lo+(x-eMin)/(eMax-eMin)*(hi-lo);
+        const v1=vAt(canvasLo), v2=vAt(canvasHi);
+        vMin=Math.max(lo, Math.min(v1, v2));
+        vMax=Math.min(hi, Math.max(v1, v2));
+      }
+      if(!(vMax-vMin>1e-6)){ const m=(hi-lo)*0.08; vMin=lo+m; vMax=hi-m; }
+      const cal={lo, hi, A, B, la:ca, lb:cb, idx, vMin, vMax,
+                 edgeV:[ +eMin.toFixed(2), +eMax.toFixed(2) ],
+                 canvasV:[ +(-cux/2).toFixed(2), +(cux/2).toFixed(2) ]};
       _splitCal[ck]=cal; return cal;
     };
     const splitScreenX=(item, val, clientY)=>{
@@ -3170,6 +3233,41 @@ async function renderLive2D(s, sk){
     /* 反查该模型里「被这个参数驱动、且被别的件当遮罩用」的件索引。
        缓存按模型+参数 id 存，避免每次按下都扫 842 件。 */
     const _splitMaskCache=Object.create(null);
+    /* 某遮罩件的 **fan-out**：哪些件把它当遮罩用（这些才是被它裁切的内容）。
+       与 fan-in 相反 —— 判「遮罩边界越过什么就没内容了」必须用 fan-out。 */
+    const _splitUserCache=Object.create(null);
+    const splitMaskUsers=(maskIdx)=>{
+      const ck=sk.key+'|u|'+maskIdx;
+      if(_splitUserCache[ck]) return _splitUserCache[ck];
+      const out=[];
+      try{
+        const m=core._model, n=core.getDrawableCount();
+        for(let i=0;i<n;i++){
+          const cnt=m.drawables.maskCounts[i], arr=m.drawables.masks[i];
+          if(!arr) continue;
+          for(let k=0;k<cnt;k++){ if(arr[k]===maskIdx){ out.push(i); break; } }
+        }
+      }catch(e){}
+      _splitUserCache[ck]=out; return out;
+    };
+    /* 某件在「参数两端」的顶点包围盒并集（V 空间）。用于算内容范围。 */
+    const _splitBoxCache=Object.create(null);
+    const calibBoxOf=(idx, lo, hi)=>{
+      const ck=sk.key+'|b|'+idx;
+      if(_splitBoxCache[ck]!==undefined) return _splitBoxCache[ck];
+      let box=null;
+      try{
+        const p=core.getDrawableVertexPositions(idx);
+        if(p&&p.length>=4){
+          let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+          for(let k=0;k+1<p.length;k+=2){
+            if(p[k]<x0)x0=p[k]; if(p[k]>x1)x1=p[k];
+            if(p[k+1]<y0)y0=p[k+1]; if(p[k+1]>y1)y1=p[k+1]; }
+          box={x0:x0,y0:y0,x1:x1,y1:y1};
+        }
+      }catch(e){}
+      _splitBoxCache[ck]=box; return box;
+    };
     const splitMaskOf=(pid)=>{
       const ck=sk.key+'|'+pid;
       if(_splitMaskCache[ck]!==undefined) return _splitMaskCache[ck];
@@ -3239,7 +3337,13 @@ async function renderLive2D(s, sk){
       if(Math.abs(xb-xa)<1e-6) return null;
       let t=(cx-xa)/(xb-xa);
       t=Math.max(0,Math.min(1,t));
-      const v=cal.lo+t*(cal.hi-cal.lo);
+      let v=cal.lo+t*(cal.hi-cal.lo);
+      /* **拖动界限**（见 splitCalib 里的取证注释）：夹到「内容不被切空」的合法区间。
+         用户明确要求「拖动是有限度的，不能让一半分屏完全消失」——
+         所以这里必须夹，而不是只夹到参数值域。 */
+      if(cal.vMin!==undefined && cal.vMax!==undefined){
+        v=Math.max(cal.vMin, Math.min(cal.vMax, v));
+      }
       const pins=costumePins();
       pins[it.id]=v;
       try{ cm.setParameterValueById(it.id, v); }catch(e){}

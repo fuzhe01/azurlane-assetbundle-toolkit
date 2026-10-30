@@ -111,6 +111,15 @@ class Page:
         self._id = 0
         self._lock = threading.Lock()
         self.cmd('Page.enable'); self.cmd('Runtime.enable')
+        # 关缓存（2026-10-30）：`model3.json` 是被浏览器缓存的静态文件，
+        # 改了判定区/动作组后**新开的探针仍会读到旧副本** —— 实测 `hit_verify` 报
+        # `nAreas: 60`，而服务器明明已经吐出 120 条。这类「改了不生效」会被误判成产品缺陷。
+        # 探针一律禁缓存；产品侧靠服务器已有的 `Cache-Control: no-cache` 兜底。
+        try:
+            self.cmd('Network.enable')
+            self.cmd('Network.setCacheDisabled', {'cacheDisabled': True})
+        except Exception:
+            pass
         self.keepalive = keepalive
         if keepalive:
             self.cmd('Emulation.setFocusEmulationEnabled', {'enabled': True})

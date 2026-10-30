@@ -4326,3 +4326,48 @@ trigger 盒用产品自己的出口取：`__stateTogglesInfo()` 里该 `id` 的 
 - `scripts/diag/l2d_split_drag_verify.py`（新增）：分屏拖动六条判据验收。
 - `scripts/diag/l2d_shoe_param_diff.py`（沿用）：参数差分取证的**正确入口示范**。
 - `docs/TROUBLESHOOTING.md` §173（双脚两参数）、§174（分屏参数定位）。
+
+## WF-59 判定区（HitAreas）审计与补登记的完整流程（2026-10-30 收敛）
+
+**适用**：用户问「判定区的生成和对应规则是怎么实现的？有没有遗漏和不对应？」
+或要修「某块区域点不到 / 点了播错动作」。
+
+### 判据（按顺序，每步都要有阴性对照）
+
+1. **先读规则源码，不要凭现象猜**。本项目的规则在 `scripts/fix_model3.py` 的两段：
+   占位替换（只补 Head/Body/Special）+ 补登记（扫 moc3 字节里的 `Touch*`，命中动作组才登记）。
+2. **四类问题分开量化**（`scripts/diag/hitarea_audit.py`）：
+   ① moc3 有 `Touch*` 但未登记；② 登记的 Id 不是真实 drawable；
+   ③ 登记的 Name 不是动作组；④ 同一 Name 被多条登记。
+   判据全部来自 `model3.json` + `moc3` 字节 + `motion/` 目录，**不需要浏览器**，可全库跑。
+3. **「未登记」必须再分两类**（`scripts/diag/hitarea_missing_cause.py`）：
+   a) 该模型确实没有对应动作组 → **丢弃是对的**；
+   b) 有动作组但名字拼不出来 → **真遗漏**。
+   不做这一步就会把「合理的丢弃」当成 bug 去修，或者反过来把真遗漏放过。
+4. **改完必须验「零回退」**：逐模型比 `HitAreas` 条数 + **其它字段逐字段相等**。
+   本项目要求「已带正确 HitAreas 的模型一律不动」。
+5. **改完必须验「新增的可点」**：`__L2_HITINFO()` 里统计 `w/h >= 0.5` 的比例，
+   退化框（`w` 或 `h` < 0.5）必须为 0。
+
+### 踩坑记录
+
+- **判重只能按原样 Id**：moc3 里 `TouchHead` 与 `Touch_Head` 是**两个真实、位置不同的 drawable**，
+  指向同一动作组。按归一化名去重会把这 59 个真实区域整块丢掉（判定区 120→60）。
+  「共用动作组」是设计，不是缺陷。
+- **`str.replace('__','_')` 只替换第一处**：对 `Touch_Drag_11` 这类多段下划线会漏。
+  用 `re.sub(r'_+','_',x).strip('_')`。
+- **探针必须关缓存**：`model3.json` 被浏览器缓存，改完判定区新开探针仍读旧副本
+  （`hit_verify` 报 60 条，服务器已吐 120 条）。已在 `gallery_ui_shots.Page.__init__` 加
+  `Network.setCacheDisabled(true)`。这类「改了不生效」会被误判成产品缺陷。
+- **`hit_verify` 的 `nAreas` 不等于 `HitAreas` 条数**：它统计的是「有可用几何」的判定区
+  （`__L2_HITUSE`），本项目 `benningdun_2` 是 120 条登记 / **78 条可用**，两者不同。
+  拿 `nAreas` 当「有没有生效」的判据会得出错误的「没生效」。
+
+### 涉及文件
+
+- `scripts/fix_model3.py`：下划线形态归一 + 判重（只按原样 Id）。
+- `scripts/diag/hitarea_audit.py`（新增）：四类问题全库审计。
+- `scripts/diag/hitarea_missing_cause.py`（新增）：未登记根因分类（真遗漏 vs 无动作组）。
+- `scripts/diag/hitarea_underscore_check.py`（新增）：下划线形态量化。
+- `scripts/diag/gallery_ui_shots.py`：探针关缓存。
+- `docs/TROUBLESHOOTING.md` §175（判定区审计与 59 条真遗漏）、§176（分屏是裁切不是平移）。
