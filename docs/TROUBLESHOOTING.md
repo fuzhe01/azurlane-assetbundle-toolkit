@@ -9475,6 +9475,42 @@ A/B 实测：
 - **`TypeError: Cannot read properties of undefined (reading 'session')` 是元凶**：不成立 ——
   它的堆栈落在 `_syncPermissionModeAfterConfigChange`（权限同步），与模型无关。
 
+### 补充（2026-10-30 15:08 实测）：改 `session.db` 也无效，真正的回放源是 SDK 事件日志
+
+上面「修法 1」＝改 `session.db` 两处，**已被实测证否**。用户在 15:08:22 改下拉框，
+15:08:30/41/43、15:09:14/16 连续 5 次仍报同一错误，`session.resume` 的 `selectedModel` 始终是 workbuddy。
+
+- **真正决定 resume 后模型的，是 SDK 自己的事件日志**：
+  `~/.copilot/session-state/<sdk-sid>/events.jsonl`。
+  判据：该文件 41436 行，与 `session.resume` 记录的 `eventCount` 41297/41300 吻合；
+  里面只有 4 条真实 `session.model_change`，最后一条是 `10-30 03:11 raccoon→workbuddy`
+  （若切换生效，必然追加一条新的）。SDK 回放到最后一条 `model_change` 即为当前模型。
+- 改 `session.db` 的效果仅及界面：`ChatSessionStore.index`（workspaceStorage）里的
+  `inputState.selectedModel` 确实会变成 trae，但派发仍走 workbuddy。
+- 顺带证否的两个「零风险重定向」设想：
+  - 扩展的 `configId` 只用于区分同名模型（`provideModel.js:68` 拼成 `id::configId`），
+    `provider.js:410` 发往上游仍是 `id`，**不能**用做别名。
+  - 中转层也没有模型别名机制（`forward.js` 的 `baseModelId` 只剥掉 `(suffix)`）。
+
+**因此「在原会话里原地继续」的唯一可行修法 = 上游侧别名重定向**：
+`parsedModelId` 是扩展全部请求的唯一收口（ollama/anthropic/responses/gemini/openai
+五个分支都写 `model: parsedModelId.baseId`，共 5 处），在此注入别名即可全覆盖，
+且 Copilot 侧模型 id 不变 ⇒ 按模型配的 `baseUrl`/`apiMode`/`context_length` 仍取原模型的。
+
+已落成可重复执行的补丁脚本：`scripts/diag/apply_oaicopilot_model_alias.py`
+（`--check` / `--alias A=B` / `--revert`，幂等，自动留 `.orig` 备份）。
+本次实例：`workbuddy/deepseek-v4.1-flash → workbuddy/deepseek-v4.1-flash-sg`
+（前者 502 限流到 10-31 10:43，后者实测 200）。
+
+验证链（缺一不可，都是这次踩出来的）：
+1. `provider.js` 补丁后 `wireModelId` 出现 5 次、`model: parsedModelId.baseId` 归零。
+2. **语法检查必须有阴性对照**：本机无 node，用
+   `ELECTRON_RUN_AS_NODE=1 Code.exe --check <file>`；先用一份故意写坏的副本确认它会报错，
+   否则「exit 0」可能只是没跑到。注意 `--check` 是异步返回的，
+   必须 `Start-Process -Wait` 取退出码，直接 `& $exe --check` 拿到的 `$LASTEXITCODE` 不可信。
+3. 行为用**从文件里原样抽出的那段补丁**跑 5 个用例（命中 / 不命中 / 空表 / 空值 / `null`），
+   全 PASS 才算过。`eval` 里的 `const` 不外泄，要用 `new Function` 包一层。
+
 ### 涉及文件（均在本机，不属本仓库）
 
 `%APPDATA%\Code\agentSessionData\<sid>\session.db`、
@@ -9483,4 +9519,6 @@ A/B 实测：
 `~/.copilot/oaicopilot/logs/oaicopilot-<date>.log`、
 `~/.dsh/channel-pack/state.json`、
 `~/.vscode/extensions/johnny-zhao.oai-compatible-copilot-0.4.2/out/openai/openaiApi.js`、
-`~/.dsh/our-free-model/upgrade-stage/src/forward.js`。
+`~/.vscode/extensions/johnny-zhao.oai-compatible-copilot-0.4.2/out/provider.js`（**本次打补丁处**）、
+`~/.dsh/our-free-model/upgrade-stage/src/forward.js`、
+本仓库 `scripts/diag/apply_oaicopilot_model_alias.py`（补丁脚本，可重复执行）。
