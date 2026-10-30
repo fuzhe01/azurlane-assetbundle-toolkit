@@ -9453,9 +9453,12 @@ A/B 实测：
    步骤：关闭该会话 → `Copy-Item session.db` 备份 → 事务内同时更新
    `copilot.model` 与 `configValues…current` → `pragma integrity_check` 应为 `ok`
    → 打开会话确认。本次实测写入后 27 行元数据 / 38 个 turn 均完好。
-2. **可选根治 A**：给扩展的 `processDelta` 与 `createMessage` 各加一处「帧里带 `error` 就抛」，
-   让限流变成真错误（可被 `executeWithRetry` 重试、也不再谎报上下文超限）。
-   ⚠️ 这是第三方扩展，升级即覆盖，补丁须留在仓库里。
+   ⚠️ **此法后来被证否**，见下方「补充（15:08 实测）」。
+2. **根治 A（已实施）**：把三条 SSE 路径改造成「流内错误 → 真异常」。
+   脚本：`scripts/diag/patch_oaicopilot_sse_error.py`（幂等，`--check` / `--revert`，自动留 `.orig`）。
+   效果：限流不再伪装成「上下文超限」，而是
+   `Upstream refused the request: [502] QUOTA_EXCEEDED …（解禁时间）`；
+   且因消息带 `[502]`，`executeWithRetry` 会按 `RETRYABLE_STATUS_CODES` 自动退避重试。
 3. 顺带清理 `state.json` 里**已经过期**的 `modelRateLimits` 条目
    （`workbuddy-5c5e1aba` 的 `deepseek-v4.1-flash-sg` 停在 2026-10-28 21:18 已过期，
    实测该模型 200 可用，不必回避）。
@@ -9511,6 +9514,47 @@ A/B 实测：
 3. 行为用**从文件里原样抽出的那段补丁**跑 5 个用例（命中 / 不命中 / 空表 / 空值 / `null`），
    全 PASS 才算过。`eval` 里的 `const` 不外泄，要用 `new Function` 包一层。
 
+### 根治实施记录（2026-10-30 15:2x，含三次假绿灯）
+
+脚本 `scripts/diag/patch_oaicopilot_sse_error.py` 改三处，并用**同一段真实限流流**验证：
+
+| 位置 | 改动 |
+|---|---|
+| `out/utils.js` | 新增 `sseErrorFromFrame(frame)`：帧带 `error` 且 `choices` 为空 ⇒ 造 `Upstream refused the request: [<status>] <code> <message>` |
+| `out/openai/openaiApi.js` `processDelta` 循环 | 解析后立即检查并抛出（**必须在 `if (!choice) continue` 之前**） |
+| `out/openai/openaiApi.js` `createMessage` 循环 | 同上 |
+| `out/openai/openaiResponsesApi.js` `processStreamingResponse` | 同上（**必须在 `processEvent` 之前**，否则 `processEvent` 抛错就轮不到检查） |
+
+**端到端判据**（不可用「看代码对不对」代替）：抓一段真实 502 限流流
+（HTTP 200 + `choices:[]` + `error` + `[DONE]`），喂给**从文件里原样抽出**的补丁代码：
+补丁前 `{textSeen:0, toolSeen:0}`（= 假 422 的来源），补丁后抛
+`Upstream refused the request: [502] QUOTA_EXCEEDED …（含解禁时间）`，
+6 条断言全通过。另有 9 例单元用例（含正常帧 / 仅 usage / 空对象 / `null` / 非对象字符串等阴性对照）。
+
+#### 三次「自检全绿但代码是错的」——务必记住
+
+1. **按子串替换截断了半行**：锚点 `// Capture usage from the final chunk` 只是行首，
+   替换后该行变成 `} (stream_options.include_usage)`。`node --check` **照样通过**，
+   运行到这一行才崩。⇒ 插入补丁必须**按整行**做，禁止替换行的一部分。
+2. **两个循环的 catch 首行完全相同**：`openaiApi.js` 里 `delta`/`create` 两处的
+   `catch (e) { console.error("[OpenAI Provider] Failed to parse SSE chunk:", …)` 逐字相同。
+   按「全文首次匹配」插入，结果两行重抛都插进第一个 catch，第二个 catch 完全没打上。
+   ⇒ 必须**从各自的插入点向下找自己的 catch**，不能全文首匹配。
+3. **自检计数写错**：每个补丁点有 2 处 `__isSseError`（打标记 + catch 重抛），
+   自检却按 1 处比对 ⇒ 报告「补丁不完整」而实际是对的；反向的错误版本（重复插入）
+   也只数总数，同样看不出来。
+
+⇒ 结论：`--check` 的计数只是**辅助**，最终判据必须是
+「逐处打印上下文 + 重复行检测 + 端到端真实流测试」三件齐做。
+自检里因此加了 `structure_ok`（检测标记行后是否紧跟被截断的 `(`）。
+
+#### 两条本机工具坑
+
+- 本机无 `node`，用 `ELECTRON_RUN_AS_NODE=1 Code.exe --check <file>` 代替；
+  但它是异步返回的，`& $exe --check` 拿到的 `$LASTEXITCODE` **恒为 0**，
+  必须 `Start-Process -Wait`（或 Python `subprocess`）才拿得到真实退出码。
+- 语法检查必须配阴性对照：故意写坏的副本**必须**报错，否则「exit 0」可能只是没跑到。
+
 ### 涉及文件（均在本机，不属本仓库）
 
 `%APPDATA%\Code\agentSessionData\<sid>\session.db`、
@@ -9521,4 +9565,5 @@ A/B 实测：
 `~/.vscode/extensions/johnny-zhao.oai-compatible-copilot-0.4.2/out/openai/openaiApi.js`、
 `~/.vscode/extensions/johnny-zhao.oai-compatible-copilot-0.4.2/out/provider.js`（**本次打补丁处**）、
 `~/.dsh/our-free-model/upgrade-stage/src/forward.js`、
-本仓库 `scripts/diag/apply_oaicopilot_model_alias.py`（补丁脚本，可重复执行）。
+本仓库 `scripts/diag/apply_oaicopilot_model_alias.py`（别名重定向补丁，可重复执行）、
+`scripts/diag/patch_oaicopilot_sse_error.py`（**根治补丁：SSE 流内错误转真异常**）。
