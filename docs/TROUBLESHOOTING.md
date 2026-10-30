@@ -9393,3 +9393,94 @@ A/B 实测：
 **涉及文件**：`gallery_src/index.html`（`COSTUME_DRAG`、`splitCalib`、`splitScreenX`、
 `splitHitAt`、`splitMove`、`onDown`/`onMove`/`onUp`/`onCancel`、`__splitInfo`/`__splitScreenX`/`__splitHitAt`）、
 `scripts/diag/l2d_split_drag_verify.py`（新增验收脚本，六条判据）。
+
+## §175. 环境类：VS Code 会话报 422「empty response」+ 改模型下拉框不生效（2026-10-29/30）
+
+> 与 Unity 管线无关，属**开发环境**问题。记在这里是因为它连烧了两轮排查时间，
+> 且两个症状的「假判据」都很像真的。
+
+### 症状
+
+1. 长会话（`恢复上次中断的会话`，SDK 会话 `54898c8a-…`）发送消息必报
+   `422 The model 'X' returned an empty response with no text or tool calls. This can happen when
+   the conversation exceeds the model's context window or output token limit.`
+2. 在 UI 里把模型下拉框改成另一个模型，**发送时仍走旧模型**，报错里的模型名没变。
+
+### 判据（怎么确定真因）
+
+- **零 token 是关键指纹**：`session.usage_record` 出现 `inputTokens: 0 / outputTokens: 0`
+  但 `requestBodyBytes ≈ 2.15 MB` ⇒ 中转层回了**不可用**响应，不是上下文超限。
+  真超限会得到 400/413 或 `context_length_exceeded`。
+- **到中转层自己的日志里找上游原文**（不要只看扩展日志）：
+  `~/.copilot/oaicopilot/logs/oaicopilot-<date>.log`，过滤 `"tag":"openai.stream.chunk"`
+  **并且**同时匹配上游原始中文串，否则会被自己探针命令里的关键词回声造成假阳性（踩过）。
+- **拿真实请求体重放**：从扩展日志里取出失败那次完整的 `request.body`，
+  只换 `model` 字段再打一次中转层。这一步能一次性把「历史太长」和「该渠道被限流」分开：
+  同一份 593 msg / 1.81 MB 的体，`trae` 99 s 出正文、`raccoon` 18 s、`workbuddy-…-sg` 18 s，
+  唯独 `workbuddy/deepseek-v4.1-flash` 502 ⇒ 历史没问题。
+
+### 根因（两个，互相独立）
+
+**A. 上游限流被 200 SSE 吞掉 → 变成假 422。**
+上游 429/502 到达时，中转层已经写出 SSE 头与 role chunk（`forward.js` 的 `openStreamHeaders`），
+状态行再也改不了，只能在流里喊错：`data: {"choices":[],"error":{...}}` + `data: [DONE]`。
+而 BYOK 扩展 `johnny-zhao.oai-compatible-copilot-0.4.2` 的两条 SSE 路径都静默跳过无 `choices` 的帧
+（`out/openai/openaiApi.js`：`processDelta` 里 `if (!choice) return false;`，
+`createMessage` 里 `if (!choice) continue;`），`[DONE]` 也明确不抛。
+全程无异常 ⇒ `executeWithRetry` 永不重试 ⇒ SDK 收到 0 文本 0 工具调用 ⇒ 报上下文超限。
+**这句 422 是错的**，真因是限流/配额。
+实况：`workbuddy/deepseek-v4.1-flash` 两个账号分别在 `2026-10-31 10:43` / `12:59` 才解禁
+（见 `~/.dsh/channel-pack/state.json` 的 `accounts[].modelRateLimits{modelId: unix-ms}`）。
+
+**B. 切换模型只写了一处状态，另一处留在旧模型 ⇒ 改了不生效。**
+同一个会话的模型被持久化在**两个地方**：
+
+| 位置 | 表/键 | 用途 |
+|---|---|---|
+| `%APPDATA%\Code\agentSessionData\<sid>\session.db` | `session_metadata` → `copilot.model` | UI/恢复时读 |
+| 同上 | `session_metadata` → `configValues` 里 `vscode.modelConfiguration.<chatUri>.current.id` | **实际派发用** |
+
+2026-10-30 14:31:54 那次，`agentHost` 成功写了 `copilot.model = trae`（随后 resume 时由
+`_buildSessionConfig` 的 `i.kind==="create" ? i.model : i.fallback.model` 把它当 fallback 带进去），
+但 `configValues` 的 `current` 始终停在 `workbuddy`（该条还带着一个**已失效的 `owner` 客户端 id**）。
+`session.resume` 事件里 `selectedModel` 也报 workbuddy。
+⇒ **判据：两个字段不一致 = 这个会话「看起来改了、实际没改」。**
+（对照组：全部会话里只有出问题的这几个 MISMATCH，正常会话两者一致。）
+
+### 修法
+
+1. **先换到可用模型**（真解，免等 20 h）：UI 里改下拉框**不够**，要改 `session.db` 两处。
+   步骤：关闭该会话 → `Copy-Item session.db` 备份 → 事务内同时更新
+   `copilot.model` 与 `configValues…current` → `pragma integrity_check` 应为 `ok`
+   → 打开会话确认。本次实测写入后 27 行元数据 / 38 个 turn 均完好。
+2. **可选根治 A**：给扩展的 `processDelta` 与 `createMessage` 各加一处「帧里带 `error` 就抛」，
+   让限流变成真错误（可被 `executeWithRetry` 重试、也不再谎报上下文超限）。
+   ⚠️ 这是第三方扩展，升级即覆盖，补丁须留在仓库里。
+3. 顺带清理 `state.json` 里**已经过期**的 `modelRateLimits` 条目
+   （`workbuddy-5c5e1aba` 的 `deepseek-v4.1-flash-sg` 停在 2026-10-28 21:18 已过期，
+   实测该模型 200 可用，不必回避）。
+
+### 已排除的假设（附反证，别再重跑）
+
+- **上下文超限**：同一份 1.81 MB / 593 msg 请求体换模型立刻 200。且超限不会 0 token。
+- **中转层不可达 / 代理规则错**：小请求、多模型均 200；`state.json` 有 `gatewayEnabled: true`。
+- **思考档位（`thinkingLevel: high`）导致空输出**：日志里 `思考档位 high … 就近下发 on` 为正常行；
+  且同档位下其它模型能正常出正文。
+- **历史上限 / 需要压缩**：见上，换模型即通。
+- **会话被残留锁占住**：`inuse.*.lock` 的持有者 `copilot-runtime.exe` 存活且属正常状态，
+  删锁不会解决问题（别去删）。
+- **`clientPluginsChanged` 刷新导致模型变更丢失**：**不成立** ——
+  统计全部 9 个 `agenthost.log`，成功与失败的 `Changing model` 旁边 refresh 都出现
+  （10-28 三次成功全有，10-30 失败也有），无区分力。
+- **`TypeError: Cannot read properties of undefined (reading 'session')` 是元凶**：不成立 ——
+  它的堆栈落在 `_syncPermissionModeAfterConfigChange`（权限同步），与模型无关。
+
+### 涉及文件（均在本机，不属本仓库）
+
+`%APPDATA%\Code\agentSessionData\<sid>\session.db`、
+`%APPDATA%\Code\logs\<ts>\agenthost.log`、
+`~/.copilot/session-state/<sdk-sid>/events.jsonl`、
+`~/.copilot/oaicopilot/logs/oaicopilot-<date>.log`、
+`~/.dsh/channel-pack/state.json`、
+`~/.vscode/extensions/johnny-zhao.oai-compatible-copilot-0.4.2/out/openai/openaiApi.js`、
+`~/.dsh/our-free-model/upgrade-stage/src/forward.js`。
