@@ -47,11 +47,15 @@ PATCH_BLOCK = (
     f"            {MARK_BEGIN} (repo: scripts/diag/apply_oaicopilot_model_alias.py)\n"
     "            // Only the name sent upstream is replaced; the Copilot-side model id is\n"
     "            // untouched so per-model settings (baseUrl / apiMode / context) still apply.\n"
+    "            // Resolution is transitive (bounded, cycle-safe) so a dead channel can be\n"
+    "            // pointed at a fallback that is itself pointed at a healthier one.\n"
     '            const __aliasMap = config.get("oaicopilot.modelAliases", {}) || {};\n'
-    "            const wireModelId = typeof __aliasMap[parsedModelId.baseId] === \"string\"\n"
-    "                && __aliasMap[parsedModelId.baseId] !== \"\"\n"
-    "                ? __aliasMap[parsedModelId.baseId]\n"
-    "                : parsedModelId.baseId;\n"
+    "            let wireModelId = parsedModelId.baseId;\n"
+    "            for (let __hop = 0; __hop < 5; __hop++) {\n"
+    "                const __next = __aliasMap[wireModelId];\n"
+    "                if (typeof __next !== \"string\" || __next === \"\" || __next === wireModelId) break;\n"
+    "                wireModelId = __next;\n"
+    "            }\n"
     f"            {MARK_END}\n"
 )
 

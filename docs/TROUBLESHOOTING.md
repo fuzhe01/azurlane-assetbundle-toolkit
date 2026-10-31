@@ -9555,6 +9555,61 @@ A/B 实测：
   必须 `Start-Process -Wait`（或 Python `subprocess`）才拿得到真实退出码。
 - 语法检查必须配阴性对照：故意写坏的副本**必须**报错，否则「exit 0」可能只是没跑到。
 
+### 第二次复发（2026-10-31 10:41）：换成了另一个通道，且这次补丁表现正确
+
+用户重试时看到：
+
+```
+Failed to get response from the AI model; retried 5 times (total retry wait time: 15.57 seconds)
+Last error: 502 Upstream refused the request: [502] UNKNOWN unreachable
+```
+
+**这段文案本身就是补丁在起作用的证据**：`Upstream refused the request: [502]`
+正是 `sseErrorFromFrame` 造出来的，而且确实触发了 5 次自动重试。
+如果没有补丁，这里又会是那句假的「exceeds the model's context window」。
+
+这次的真因不是 workbuddy，而是**会话被换到了 `qodercn/dfmodel`**：
+
+- `events.jsonl` 里有一条真实切换 `10-30 09:50:00 workbuddy → qodercn/dfmodel`。
+- `copilot.model`（= trae）与 `configValues…current`（= qodercn）**又一次分裂**，
+  实际生效的仍是后者 ⇒ 再次印证「两个字段不一致 = 改了没生效」。
+
+**`qodercn/dfmodel` 的硬上限**（用真实请求体做规模扫描测得，不是猜）：
+
+| 消息条数 | 结果 |
+|---|---|
+| 5 / 20 / 50 / 100 / 200 | 200 OK |
+| 400 / 533（该会话真实规模） | **502 `UNKNOWN unreachable`，0.1 秒内即时拒绝** |
+
+⇒ 它是**小请求通道**，不适合长会话。同一份 533 条请求体在
+`workbuddy/deepseek-v4.1-flash`（14.2 s）与 `…-sg`（9.3 s）上都是 200。
+
+处理：
+1. 把该会话两个字段都改成 `workbuddy/deepseek-v4.1-flash`（已一致，`integrity_check ok`）。
+2. 别名改为**可传递解析**（有界 5 跳、防自环、防环），于是可以叠加兜底：
+
+   ```json
+   "oaicopilot.modelAliases": {
+     "workbuddy/deepseek-v4.1-flash": "workbuddy/deepseek-v4.1-flash-sg",
+     "qodercn/dfmodel": "workbuddy/deepseek-v4.1-flash",
+     "qoder/dfmodel":   "workbuddy/deepseek-v4.1-flash"
+   }
+   ```
+
+   即 `qodercn/dfmodel` → `workbuddy/deepseek-v4.1-flash` → `…-sg`。
+   以后某个通道再挂，只改**一个**指向即可，不必回头改会话。
+3. 端到端复核：用该会话真实的 533 条请求体，经**从文件原样抽出**的补丁代码解析后再发：
+   `qodercn/dfmodel`、`qoder/dfmodel`、`workbuddy/deepseek-v4.1-flash` 三条均 200。
+   另有 9 例单元用例覆盖单跳/两跳/不在表内/空表/空值/自环/环/null 表。
+
+**影响面**：全机所有会话里，除这一个之外**没有**任何会话在用 qoder 系列，
+所以加别名不会误伤别处（已逐个会话扫 `configValues…current` 确认）。
+
+**教训**：这条排查链一共出现过 4 个不同的「上游拒绝」原因——
+raccoon 429 频率、workbuddy 配额、qodercn 体积上限、以及通道切换本身。
+**每次都表现为同一句 422**。所以「报错文案」永远不能当结论，
+必须落到 `~/.copilot/oaicopilot/logs/*.log` 里看 `modelId` 到底是谁。
+
 ### 涉及文件（均在本机，不属本仓库）
 
 `%APPDATA%\Code\agentSessionData\<sid>\session.db`、
