@@ -9610,6 +9610,82 @@ raccoon 429 频率、workbuddy 配额、qodercn 体积上限、以及通道切�
 **每次都表现为同一句 422**。所以「报错文案」永远不能当结论，
 必须落到 `~/.copilot/oaicopilot/logs/*.log` 里看 `modelId` 到底是谁。
 
+### 为什么「对话失败后连手动切模型都切不回去」（2026-10-31 追问）
+
+这是用户直接问的问题，答案是**三个独立原因叠加**，每一个单独都能让切换看起来无效。
+
+#### 原因 1：切换动作根本没发到会话上（UI 侧静默）
+
+同一个会话的模型被持久化在**两个地方**，而 UI 的选中项又是第三处：
+
+| 位置 | 谁写 |
+|---|---|
+| `agentSessionData/<sid>/session.db` → `session_metadata` 的 `copilot.model` | 宿主 `setModel()` **RPC 成功后**才写 |
+| 同上 → `configValues` 里 `vscode.modelConfiguration.<chatUri>.current.id` | 实际派发用 |
+| `workspaceStorage/.../state.vscdb` → `ChatSessionStore.index` 的 `inputState.selectedModel` | 纯 UI 记忆 |
+
+实测（2026-10-31）：那个卡住的会话，UI 里 `selectedModel` 已经变成
+`workbuddy/deepseek-v4.1-flash-sg`，`session.db` 两个字段也都已对齐，
+**但 `agenthost.log` 里 10-31 全天对该会话的 `Changing model to` 记录为 0 条**
+（历史上一共 75 条，10-31 一条都没有）。日志缺失说明 `setModel()` 压根没被调用到
+——UI 只更新了自己的记忆项，没把动作送到宿主。
+
+对比对照组：健康会话（`2e70aac0`）在 10:51:00 有一次 `Changing model to`，
+紧接着就 `sendMessage` 并成功 ⇒ **切换机制本身是好的**，坏的是这个会话的切换通道。
+
+#### 原因 2：就算发到了，也只会写一半（RPC 落在正在销毁的实例上）
+
+`setModel()` 的顺序是「先打日志 → 再 `await session.setModel(...)` → finally 刷新配置」。
+而会话一旦出错，宿主会走
+`Session configuration changed, refreshing session` → `disconnect` → `resume`，
+日志里能看到：
+
+```
+10:40:37.136 Session configuration changed, refreshing session: operation=resumeTurn
+10:40:37.139 SDK session disconnect RPC started
+10:40:37.181 Failed to apply SDK sandboxConfig ... Session not found for sessionId
+10:40:37.193 Preparing SDK session: kind=resume     ← 重建
+```
+
+RPC 落在正在销毁的实例上 → 报 `Session not found` → 那一次写盘只完成了
+`copilot.model` 这一半，`configValues.current` 留在旧值 ⇒ **字段分裂**。
+
+#### 原因 3：恢复会话根本不看这两个字段
+
+恢复时模型来自 SDK 自己的事件日志
+`~/.copilot/session-state/<sdk-sid>/events.jsonl` 的**最后一条 `session.model_change`**。
+实测该文件：真实切换只有 5 条，最后一条是 `10-30 09:50 workbuddy → qodercn/dfmodel`；
+之后全是 `previousModel == newModel` 的 no-op，**10-31 一条真实切换都没有**。
+所以 resume 每次都回放成 qodercn，UI 记住什么都没用。
+
+⇒ 三者叠加的表现就是用户看到的那句：「我手动切了，配置里还是坏模型」。
+
+#### 能修到什么程度（诚实边界）
+
+- **能修**：让两个字段重新一致，并把请求路由到健康通道（上一节的别名补丁）。
+  这能立刻让会话恢复可用。
+- **不能修**：`session.model_change` 由 SDK 二进制在 `setModel` 成功时写入，
+  我们没法凭空造一条让 resume 认账；UI 侧为什么不发那个 RPC 也不在可控范围
+  （VS Code 内置代码）。所以「切过去」这条路在没有官方修复前不可靠，
+  **可靠的路径是「不用切」**——用别名让坏名字指向好通道。
+
+#### 附带产出：可复用的诊断/对齐工具
+
+`scripts/diag/sync_session_model.py`
+
+```
+py -3 scripts/diag/sync_session_model.py --list          # 全机会话，标出 SPLIT / NO-CUR / OK
+py -3 scripts/diag/sync_session_model.py --check b05ca5fd
+py -3 scripts/diag/sync_session_model.py --set b05ca5fd --model oaicopilot/xxx
+py -3 scripts/diag/sync_session_model.py --sync-from-copilot-model b05ca5fd
+```
+
+**判据陷阱（本工具第一版就踩了）**：最初把「`current` 为 `None`」也算成分裂，
+于是全机报出 6 个分裂会话——其中 5 个是**假阳性**：`current` 缺失只表示这个会话
+从没在 UI 里切过模型，恢复时会回落 `copilot.model`，两边并不打架。
+修正后真实分裂只有 1 个。⇒ **「不一致」必须定义成「两边都有值且不同」**，
+缺值不是不一致。
+
 ### 涉及文件（均在本机，不属本仓库）
 
 `%APPDATA%\Code\agentSessionData\<sid>\session.db`、
@@ -9621,7 +9697,8 @@ raccoon 429 频率、workbuddy 配额、qodercn 体积上限、以及通道切�
 `~/.vscode/extensions/johnny-zhao.oai-compatible-copilot-0.4.2/out/provider.js`（**本次打补丁处**）、
 `~/.dsh/our-free-model/upgrade-stage/src/forward.js`、
 本仓库 `scripts/diag/apply_oaicopilot_model_alias.py`（别名重定向补丁，可重复执行）、
-`scripts/diag/patch_oaicopilot_sse_error.py`（**根治补丁：SSE 流内错误转真异常**）。
+`scripts/diag/patch_oaicopilot_sse_error.py`（**根治补丁：SSE 流内错误转真异常**）、
+`scripts/diag/sync_session_model.py`（**两个模型字段的诊断与对齐**）。
 
 ## §175. 判定区（HitAreas）生成规则与全库审计：59 条真遗漏已修（2026-10-30）
 
