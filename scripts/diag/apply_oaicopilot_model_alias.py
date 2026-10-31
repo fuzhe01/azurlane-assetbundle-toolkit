@@ -18,8 +18,17 @@ Copilot 侧的模型 id 不变 ⇒ `um`（按模型配的 baseUrl / apiMode / co
 
 用法:
   py -3 scripts/diag/apply_oaicopilot_model_alias.py --check
+  py -3 scripts/diag/apply_oaicopilot_model_alias.py --probe A --probe B     # 先实测再改
   py -3 scripts/diag/apply_oaicopilot_model_alias.py --alias A=B [--alias C=D]
+  py -3 scripts/diag/apply_oaicopilot_model_alias.py --unalias A             # 删掉拖后腿的一跳
   py -3 scripts/diag/apply_oaicopilot_model_alias.py --revert
+
+⚠️ 别名链是**单点**：终点通道一旦也限流，整条链一起死。所以
+  1. 改之前先用 `--probe` / 查 `~/.dsh/channel-pack/state.json` 确认终点真的能用；
+  2. 只在**必要**时留一跳（把没有出口的模型名接出来），不要为了让某个名字"绕过限流"
+     而给本来正常的模型再加一跳 —— 那一跳会成为新的单点。
+  实测案例（2026-10-31）：`flash -> flash-sg` 这一跳本是为了避开 `flash` 的限流，
+     而 `flash` 先解禁、`-sg` 还在限流，于是整条链被这一跳反向拖死。删掉即恢复。
 
 注意：改完必须让扩展重新加载（VS Code「开发人员: 重新加载窗口」）才生效。
 """
@@ -42,6 +51,81 @@ ANCHOR = "const parsedModelId = (0, utils_1.parseModelId)(model.id);"
 WIRE_OLD = "model: parsedModelId.baseId,"
 WIRE_NEW = "model: wireModelId,"
 SETTINGS_KEY = "oaicopilot.modelAliases"
+
+
+def selftest(provider: Path, sp: Path) -> int:
+    """把文件里**原样抽出**的补丁代码跑行为用例（不是"看代码对不对"）。
+
+    判据见 docs/TROUBLESHOOTING.md §175 验证链第 3 条。这条判据是被三次假绿灯逼出来的：
+    `node --check` 通过 ≠ 逻辑对，`--check` 的计数也会骗人，所以必须真跑。
+    """
+    src = read(provider) if provider.exists() else ""
+    m = re.search(re.escape(MARK_BEGIN) + r"[^\n]*\n(.*?)" + re.escape(MARK_END), src, re.S)
+    if not m:
+        print("[FAIL] provider.js 里没有别名补丁块，先跑一次补丁（不加 --check）")
+        return 1
+    block = m.group(1)
+    print("--- 原样抽出的补丁代码 ---")
+    print(block.rstrip())
+    print("--------------------------\n")
+
+    def resolve(alias_map: dict, model: str):
+        js = (
+            "function run(config, parsedModelId) {\n" + block + "\n  return wireModelId;\n}\n"
+            "return run({ get: (k, d) => (k === 'oaicopilot.modelAliases' ? __MAP__ : d) },"
+            " { baseId: __MODEL__ });"
+        ).replace("__MAP__", json.dumps(alias_map)).replace("__MODEL__", json.dumps(model))
+        node = shutil.which("node")
+        if node:
+            cmd, env = [node, "-e"], None
+        else:
+            code = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Microsoft VS Code" / "Code.exe"
+            if not code.is_file():
+                sys.exit("既没有 node 也找不到 Code.exe，无法执行行为用例")
+            cmd, env = [str(code), "-e"], dict(os.environ, ELECTRON_RUN_AS_NODE="1")
+        wrapper = "console.log(JSON.stringify((function(){" + js + "})()));"
+        r = subprocess.run(cmd + [wrapper], capture_output=True, text=True, env=env)
+        if r.returncode != 0:
+            sys.exit(f"解析代码执行失败: {(r.stderr or '').strip()[:400]}")
+        return json.loads(r.stdout.strip())
+
+    try:
+        live = (json.loads(read(sp)) if sp.exists() else {}).get(SETTINGS_KEY) or {}
+    except json.JSONDecodeError:
+        live = {}
+
+    cases = [
+        ("命中一跳", live, sorted(live)[0] if live else "x", live.get(sorted(live)[0] if live else "x")),
+        ("未命中", live, "trae/deepseek-v4.1-flash", "trae/deepseek-v4.1-flash"),
+        ("空表", {}, "qodercn/dfmodel", "qodercn/dfmodel"),
+        ("空值（不该当别名）", {"a": ""}, "a", "a"),
+        ("自环", {"a": "a"}, "a", "a"),
+        ("环（必须停下）", {"a": "b", "b": "a"}, "a", None),
+        ("多跳（有界 5 跳）", {"a": "b", "b": "c", "c": "d"}, "a", "d"),
+    ]
+    fail = 0
+    for name, table, model, expected in cases:
+        got = resolve(table, model)
+        if expected is None:
+            ok, shown = got in table.values(), f"<表内任一值，实际 {got}>"
+        else:
+            ok, shown = got == expected, expected
+        print(f"[{'PASS' if ok else 'FAIL'}] {name:18s} {model} -> {got}  (期望 {shown})")
+        fail += 0 if ok else 1
+
+    if live:
+        print("\n单点自检：拿真实的别名表，逐条确认链终点没被别的跳再重定向")
+        for k in live:
+            chain = resolve_chain(live, k)
+            tail = chain[-1]
+            if tail in live:
+                print(f"[FAIL] {k} -> {' -> '.join(chain)}  终点 {tail} 自己还在表里，会继续被重定向")
+                fail += 1
+            else:
+                print(f"[PASS] {k} -> {' -> '.join(chain)}")
+
+    print(f"\n{'全部通过' if fail == 0 else f'{fail} 条失败'}")
+    return 0 if fail == 0 else 1
 
 PATCH_BLOCK = (
     f"            {MARK_BEGIN} (repo: scripts/diag/apply_oaicopilot_model_alias.py)\n"
@@ -135,13 +219,15 @@ def revert_provider(p: Path) -> str:
     return "reverted"
 
 
-def set_aliases(p: Path, aliases: dict[str, str]) -> str:
+def set_aliases(p: Path, aliases: dict[str, str], unaliases: list[str] | None = None) -> str:
     text = read(p)
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:
         sys.exit(f"settings.json 不是纯 JSON（{e}），请手工添加 {SETTINGS_KEY}")
     merged = dict(data.get(SETTINGS_KEY) or {})
+    for k in unaliases or []:
+        merged.pop(k, None)
     merged.update(aliases)
     value = json.dumps(merged, ensure_ascii=False)
     line = f'"{SETTINGS_KEY}": {value},'
@@ -161,6 +247,59 @@ def set_aliases(p: Path, aliases: dict[str, str]) -> str:
     return f"aliases={json.dumps(merged, ensure_ascii=False)}"
 
 
+def resolve_chain(aliases: dict[str, str], model: str) -> list[str]:
+    """按补丁同款规则（有界 5 跳、防自环）展开别名链，用于打印最终落到谁。"""
+    chain = [model]
+    cur = model
+    for _ in range(5):
+        nxt = aliases.get(cur)
+        if not isinstance(nxt, str) or nxt == "" or nxt == cur:
+            break
+        chain.append(nxt)
+        cur = nxt
+    return chain
+
+
+def relay_probe(model: str, base_url: str, api_key: str, timeout: float = 120.0) -> tuple:
+    """经中转层打一发最小请求，返回 (status, 摘要)。
+
+    台账（state.json 的 modelRateLimits）只记「上游告诉过我们它在限流」，
+    解禁后条目仍会留着，所以它**不能**当「能不能用」的判据 —— 实测才是。
+    """
+    import urllib.error
+    import urllib.request
+
+    body = {"model": model, "messages": [{"role": "user", "content": "回复两个字：可用"}],
+            "stream": False, "max_tokens": 8}
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/chat/completions",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + api_key},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            j = json.loads(r.read().decode("utf-8", "replace"))
+            c = ((j.get("choices") or [{}])[0].get("message") or {}).get("content")
+            return r.status, f"content={c!r}"
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace")[:200].replace("\n", " ")
+    except Exception as e:  # 网络/超时一律当不可用，不要吞成「未知」
+        return "ERR", repr(e)[:200]
+
+
+def default_base_url() -> str:
+    return "http://127.0.0.1:8326/v1"
+
+
+def default_api_key() -> str | None:
+    """中转层的 key 由 DSH 写在 ~/.dsh/openai-gateway/api-key。"""
+    kp = Path.home() / ".dsh" / "openai-gateway" / "api-key"
+    if kp.is_file():
+        return kp.read_text(encoding="utf-8").strip()
+    return None
+
+
 def report(provider: Path, sp: Path) -> int:
     src = read(provider) if provider.exists() else ""
     patched = MARK_BEGIN in src and WIRE_NEW in src
@@ -175,6 +314,8 @@ def report(provider: Path, sp: Path) -> int:
     print(f"  node --check   : {node_check(provider)}")
     print(f"settings.json    : {sp}")
     print(f"  {SETTINGS_KEY}: {json.dumps(aliases, ensure_ascii=False)}")
+    for k in aliases:
+        print(f"    {k}  ->  {' -> '.join(resolve_chain(aliases, k))}")
     ok = patched and wire_ok and bool(aliases)
     print(f"\n[{'OK' if ok else 'FAIL'}] 补丁与别名都在位" if ok else "\n[FAIL] 补丁或别名缺失")
     return 0 if ok else 1
@@ -184,7 +325,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="oai-compatible-copilot 上游模型名别名补丁")
     ap.add_argument("--alias", action="append", default=[], metavar="A=B",
                     help="把上游模型名 A 换成 B（可重复）")
+    ap.add_argument("--unalias", action="append", default=[], metavar="A",
+                    help="删除一条别名（可重复）")
+    ap.add_argument("--probe", action="append", default=[], metavar="MODEL",
+                    help="经本机中转层实测该模型是否可用（可重复；先探再改，别只信台账）")
     ap.add_argument("--revert", action="store_true", help="撤销 provider.js 补丁")
+    ap.add_argument("--selftest", action="store_true",
+                    help="把文件里原样抽出的补丁代码跑行为用例（判据见文档 §175 验证链第 3 条）")
     ap.add_argument("--check", action="store_true", help="只报告状态，不写盘")
     ap.add_argument("--ext-dir", type=Path, help="扩展根目录（默认 ~/.vscode/extensions）")
     a = ap.parse_args()
@@ -194,6 +341,9 @@ def main() -> int:
 
     if a.check:
         return report(provider, sp)
+
+    if a.selftest:
+        return selftest(provider, sp)
 
     if a.revert:
         print(revert_provider(provider))
@@ -208,10 +358,25 @@ def main() -> int:
         k, v = item.split("=", 1)
         aliases[k.strip()] = v.strip()
 
+    if a.probe:
+        base_url = os.environ.get("OAICOPILOT_BASE_URL") or default_base_url()
+        api_key = default_api_key()
+        if not api_key:
+            sys.exit("找不到中转层 key（~/.dsh/openai-gateway/api-key），无法实测")
+        print(f"实测（{base_url}）:")
+        bad = []
+        for m in a.probe:
+            st, detail = relay_probe(m, base_url, api_key)
+            mark = "OK  " if st == 200 else "FAIL"
+            print(f"  [{mark}] {st}  {m}  {detail}")
+            if st != 200:
+                bad.append(m)
+        print()
+
     print(patch_provider(provider))
     print(f"node --check   : {node_check(provider)}")
-    if aliases:
-        print(set_aliases(sp, aliases))
+    if aliases or a.unalias:
+        print(set_aliases(sp, aliases, a.unalias))
     print("\n⚠️ 需要让扩展重新加载才生效：VS Code「开发人员: 重新加载窗口」")
     return report(provider, sp)
 

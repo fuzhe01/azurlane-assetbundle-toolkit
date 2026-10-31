@@ -1,6 +1,7 @@
 # 碧蓝航线 AssetBundles 解包项目 — 进度总结
 
-> **生成时间**: 2026-10-30 傍晚（**本轮追加：判定区全库审计修 59 条真遗漏 + 分屏拖动界限**。① 判定区规则已读源码并审计：`fix_model3.py` 两段规则（占位替换 + 补登记）；`benningdun_2` 因**下划线形态**（`Touch_Idle6` 被拼成 `touch__idle6`）漏登记 59 条，修后判定区 **217 → 277** 条，前端可用 78 条、**退化 0 条**，其它 4 模型**逐字段零回退**，见 §175 / WF-59；② 分屏拖动加了**界限**（遮罩边界必须落在画布内）：`vMin=4.57 / vMax=15.32`，两端左右内容占比均 >99%，拖到画布外被夹住；③ **否证**：`Param373` 只做遮罩**裁切**，内容位移**恒为 0**（一维互相关 5 档全 0、842 件可见性变化 0、25 个 fan-out 内容件 0 件移动、842 drawable 无重名）⇒ 该模型不存在「右侧画面跟随拖动平移」的机制，用户描述的游戏行为在解包数据里没有对应参数，见 §176；④ 仪器修正：探针必须关浏览器缓存（`model3.json` 被缓存会让「改了不生效」伪装成产品缺陷）。上一轮（同日）：双脚联动 + 分屏线拖动，流水逐字外迁 `docs/archive/PROJECT_STATUS_headline_2026-10-30.md`）
+> **生成时间**: 2026-10-31 中午（**本轮追加：修好「别名链自己成了单点」导致的会话 502 复发**。① 用户报「修好后又报错」，真因**不是**上下文超限、**不是** SSE 补丁失效，而是上一轮为躲 `flash` 限流加的那一跳 `flash → -sg`：`flash` 先解禁（10:43）、`-sg` 仍在限流（13:18 才解禁），于是别名链**反向把请求引到唯一挂掉的通道**。判据 = 同一份真实 607 条请求体（1.03 MB）重放：`flash` 200 / 8.2 s / 31 字符 vs `-sg` **502 QUOTA_EXCEEDED / 0 字符**（阴性对照有效）；② 修法 = `--unalias` 删掉有害那一跳 + `--alias -sg=flash` 补漏网会话 `b05ca5fd`。最终别名 **3 条、全 1 跳**，复测 200；③ 新增纪律：「**别名链是单点**」——加跳前必须 `--probe` 实测终点、改完必须 `sync_session_model.py --list` 交叉核对（**不在别名表里 = 请求直接失败**）、**台账 `state.json` 的限流条目解禁后不消失，不可当判据**；④ 新增 `scripts/diag/probe_relay_models.py`（中转层通道实测，穿透「HTTP 200 + 流内 error」假绿灯）；`apply_oaicopilot_model_alias.py` 加 `--unalias/--probe/--selftest`（行为用例 7+3 全 PASS）。⚠️ **别名改动需重载窗口才生效**；⑤ 工作树两处来源不明的回退（`TROUBLESHOOTING.md` 少 78 行、`sync_session_model.py` 被删）已 `git checkout --` 无损复原。详见 §175「第三次复发」）
+> **上一轮（2026-10-30 傍晚）**：判定区全库审计修 59 条真遗漏 + 分屏拖动界限。① 判定区规则已读源码并审计：`fix_model3.py` 两段规则（占位替换 + 补登记）；`benningdun_2` 因**下划线形态**（`Touch_Idle6` 被拼成 `touch__idle6`）漏登记 59 条，修后判定区 **217 → 277** 条，前端可用 78 条、**退化 0 条**，其它 4 模型**逐字段零回退**，见 §175 / WF-59；② 分屏拖动加了**界限**（遮罩边界必须落在画布内）：`vMin=4.57 / vMax=15.32`，两端左右内容占比均 >99%，拖到画布外被夹住；③ **否证**：`Param373` 只做遮罩**裁切**，内容位移**恒为 0**（一维互相关 5 档全 0、842 件可见性变化 0、25 个 fan-out 内容件 0 件移动、842 drawable 无重名）⇒ 该模型不存在「右侧画面跟随拖动平移」的机制，用户描述的游戏行为在解包数据里没有对应参数，见 §176；④ 仪器修正：探针必须关浏览器缓存（`model3.json` 被缓存会让「改了不生效」伪装成产品缺陷）。上一轮（同日）：双脚联动 + 分屏线拖动，流水逐字外迁 `docs/archive/PROJECT_STATUS_headline_2026-10-30.md`）
 > **环境安装（换机器复刻先做）**：
 >   1. 装 Python **3.15**（2026-10-23 起本机约定；UnityPy 1.25.4 无 cp315 预编译轮子，需源码编译，见 §2 Python 行）。⚠️ 本机同时装着 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（现固定 3.15），**跑之前先 `py -3 scripts/diag/check_env.py`** 确认实际解释器与依赖
 >   2. 仓库根 `py -3 -m pip install -r requirements-v2.txt`（3.15 上必须走阿里云/腾讯云源，清华源连 sdist 都没有；需 MSVC BuildTools 编译 UnityPy + lz4）
@@ -143,6 +144,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 | ALPA | 1.0.5.1 | 立绘注入/预览（参考真值） | ✅ 需 Java 17 |
 | AssetStudio | v2.4.1 | 可视化预览/导出 | ✅ |
 | spine-all.js | 3.8 | Spine 运行时（gallery 复用） | ✅（2026-10-18 换官方上游 3.8 构建；`fetch --check` 4/4 + 版本 3.8.75 + 前端符号 9/9 全覆盖，见 WF-36/§122） |
+| **本机 VS Code 侧**（不属本仓库） | oaicopilot 0.4.2 | 会话通道 | ⚠️ 已打两枚补丁（**路径别名重定向** + **SSE 流内错误转真异常**）；别名链**是单点**，加跳前必须 `--probe` 实测终点，改完必须 `sync_session_model.py --list` 核对，见 §175「第三次复发」 |
 
 ---
 
@@ -155,7 +157,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 **文档**（导航见根目录 `README.md`，写入路由见 `AGENTS.md`）：
 - `docs/DEV_LOG.md` 操作手册 · `docs/WORKFLOWS.md` 可复用工作流 · `docs/TROUBLESHOOTING.md` 踩坑 · `docs/ERRORS.log` 错误流水
 - `docs/tools/` ALPA、AssetStudio 使用说明
-- **项目技能库 `.agents/skills/`**（8 个，入库）：`live2d-web-runtime-integration`(新建)、`unity-assetbundle-painting-restore`、`headless-chrome-cdp-batch-export`、`safe-pipeline-fix-targeted-rerun`、`windows-hardlink-dedup-verify`、`windows-local-server-launcher`、`cn-blocked-resource-mirror-fetch`、`project-doc-governance`——做同类任务前先查这里，别从零摸索
+- **项目技能库 `.agents/skills/`**（16 个，入库；具体以目录为准）：`live2d-web-runtime-integration`、`live2d-motion-extraction-audit`、`unity-assetbundle-painting-restore`、`spine-web-runtime-integration`、`headless-chrome-cdp-batch-export`、`safe-pipeline-fix-targeted-rerun`、`windows-hardlink-dedup-verify`、`windows-local-server-launcher`、`windows-long-running-batch-detach`、`cn-blocked-resource-mirror-fetch`、`project-doc-governance`、`shared-worktree-takeover-commit`、`enforce-project-rule-as-git-hook`、`decision-brief`、`binary-container-vs-crypto`、`llm-relay-channel-alias-triage`(★2026-10-31 新建：中转层通道排障 + 别名链单点)——做同类任务前先查这里，别从零摸索
 - `docs/archive/` 历史归档（含 `PROJECT_STATUS_历史归档.md`、旧目录审计报告、旧 Spine 交接）
 
 **数据**：`asset_manifest.json`、`Output/dependency_manifest.json`(86,398 条官方依赖表)、`Output/WikiData/ship_data.json`、`Output/gallery_v2/index.json`。

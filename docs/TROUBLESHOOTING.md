@@ -9610,6 +9610,102 @@ raccoon 429 频率、workbuddy 配额、qodercn 体积上限、以及通道切�
 **每次都表现为同一句 422**。所以「报错文案」永远不能当结论，
 必须落到 `~/.copilot/oaicopilot/logs/*.log` 里看 `modelId` 到底是谁。
 
+### 第三次复发（2026-10-31 12:0x）：别名链自己成了新的单点
+
+⚠️ **上一节那段 JSON 示例里的第一跳（`workbuddy/deepseek-v4.1-flash` → `…-sg`）
+已在本次复发后被删除**。示例只保留「可传递解析能做到什么」的教学意义，
+**当前真实配置不是它**（真实形态见下面的「修法」）。
+
+#### 症状
+
+第二次复发修完后用户重试，仍是同一句：
+
+```
+Failed to get response from the AI model; retried 5 times
+Last error: [502] QUOTA_EXCEEDED
+```
+
+#### 判据（逐条实测，全部带阴性对照）
+
+1. **不是上下文超限**：真实请求体（该会话 607 条消息 / 1.03 MB）
+   在两个候选通道上重放，一个 200 一个 502 —— 同一份体积，说明体积本身没到限。
+2. **SSE 补丁仍然有效**：`-sg` 的表现是 **HTTP 200 + `choices: []` + 流内 `error` + `[DONE]`**，
+   最终 0 字符正文。补丁把这个流内错误抛成了 `[502] QUOTA_EXCEEDED`
+   —— **这句文案第二次复发时那段「Upstream refused…」的兄弟**，它出现即证明补丁在跑。
+   如果没有补丁，这里又会退回那句假的「exceeds the model's context window」。
+3. **真因是限流**：
+
+   | 通道（同一份 607 条请求体） | 结果 |
+   |---|---|
+   | `workbuddy/deepseek-v4.1-flash` | **200 / 8.2 s / 31 字符** |
+   | `workbuddy/deepseek-v4.1-flash-sg` | **502 `QUOTA_EXCEEDED` / 0 字符** |
+
+   阴性对照有效：同体积下健康通道正常返回，说明不是请求体问题。
+
+#### 根因：为了躲限流而加的那一跳，反过来把健康通道拖死了
+
+第二次复发时为躲 `flash` 的限流，加了 `flash → -sg` 这一跳。之后：
+
+- `flash` 于 10-31 10:43 先行解禁 → 恢复可用；
+- `-sg` 仍在限流（解禁时间 13:18:50）；
+- 于是别名链 `qoder/dfmodel → flash → -sg` **反向把请求引到了唯一挂掉的那个通道**，
+  健康的 `flash` 反而再也没被用到。
+
+**⇒ 纪律（已写进 `scripts/diag/apply_oaicopilot_model_alias.py` 的 docstring）：
+别名链是单点（single point of failure）。**
+跳一次就等于把终点变成唯一致命点；给一个**本来就能用**的名字加跳，
+等于主动放弃它的可用性。三条：
+
+1. **加别名前先实测终点**（`--probe`），不要按「名字看起来更稳」猜。
+2. **只在「某模型名根本没有出口」时才留一跳**（如 qoder 系列），
+   不要给已经 200 的名字再套一层。
+3. 必然要兜底时才用可传递链，并且**每次改完都要复核链终点没有又被别的跳重定向**
+   （`--selftest` 会拿真实表逐条打印并判这一点）。
+
+#### 修法
+
+1. `--unalias workbuddy/deepseek-v4.1-flash` —— 删掉有害那一跳（先 `--probe` 再动手，阴性对照在位）。
+2. `--alias workbuddy/deepseek-v4.1-flash-sg=workbuddy/deepseek-v4.1-flash`
+   —— 补上一个**漏网会话**。`sync_session_model.py --list` 显示 `b05ca5fd`
+   （「恢复上次中断的会话」）的 `copilot.model` 仍是 `-sg`，因为第二次复发只加了
+   `qodercn` / `qoder` 两条，**不在别名表里的模型名 = 请求直接失败**。
+3. 最终形态（**3 条、全部 1 跳、链长不变**）：
+
+   ```json
+   "oaicopilot.modelAliases": {
+     "qodercn/dfmodel":                   "workbuddy/deepseek-v4.1-flash",
+     "qoder/dfmodel":                     "workbuddy/deepseek-v4.1-flash",
+     "workbuddy/deepseek-v4.1-flash-sg":  "workbuddy/deepseek-v4.1-flash"
+   }
+   ```
+
+4. 复测：`flash` 200 / 4.5 s / 28 字符；`-sg` 状态 200 + 流内 `QUOTA_EXCEEDED` + 0 字符
+   （再次确认「假 422」机制）。行为用例 7 例 + 真实表单点自检 3 例全部 PASS
+   （`apply_oaicopilot_model_alias.py --selftest`）。
+
+#### 已排除的假设（附反证，别再重跑）
+
+| 假设 | 反证 |
+|---|---|
+| 上下文超限 | 同一份 607 条请求体在 `flash` 上 200 / 8.2 s |
+| SSE 补丁失效/被覆盖 | 报错文案是补丁自己的格式 `[502] QUOTA_EXCEEDED`；`--check` 全绿 |
+| 工作树被回退导致脚本又变旧 | 已核对：两处回退（`TROUBLESHOOTING.md` 少 78 行、`sync_session_model.py` 被删）与本次故障**无关**，且已 `git checkout --` 无损复原 |
+| `loomy/deepseek-v4.1-flash` 可替代 | 402（积分不足） |
+| `trae/kimi-k3.1-pro` 可替代 | 502 |
+| `our-free-model/z-ai/glm-5.3-flash` 可替代 | 502（egress 不服务） |
+| 台账 `~/.dsh/channel-pack/state.json` 可当判据 | **不能**。`accounts[].modelRateLimits` 只记「上游曾说过在限流」，**解禁后条目不自动消失**（`workbuddy-5c5e1aba` 的 `deepseek-v4.1-flash` 停在 10-31 10:43 已过期，条目还在）。判据必须是**实测一发** |
+
+#### 两条附带纪律
+
+- **改完别名必须 `sync_session_model.py --list` 交叉核对**：确认每个会话用到的模型名
+  都在别名表里（`OK` / `NO-CUR` / `SPLIT` 三种标记）。
+  注意 `NO-CUR` **不算**分裂 —— 它只表示从没在 UI 里切过，恢复时回落 `copilot.model`；
+  「不一致」必须定义成「两边都有值且不同」。
+- **限流是「假 422」**：上游限流时中转层返回 **HTTP 200 + `choices: []` + 流内 `error`**，
+  因为 SSE 头早已写出、状态行改不了。所以流式探针**必须解析流内 error**，
+  只看状态行会得到假绿灯（`scripts/diag/probe_relay_models.py` 已按此实现，
+  并在「一个都没报错」时警告可能缺阴性对照）。
+
 ### 为什么「对话失败后连手动切模型都切不回去」（2026-10-31 追问）
 
 这是用户直接问的问题，答案是**三个独立原因叠加**，每一个单独都能让切换看起来无效。
@@ -9696,9 +9792,11 @@ py -3 scripts/diag/sync_session_model.py --sync-from-copilot-model b05ca5fd
 `~/.vscode/extensions/johnny-zhao.oai-compatible-copilot-0.4.2/out/openai/openaiApi.js`、
 `~/.vscode/extensions/johnny-zhao.oai-compatible-copilot-0.4.2/out/provider.js`（**本次打补丁处**）、
 `~/.dsh/our-free-model/upgrade-stage/src/forward.js`、
-本仓库 `scripts/diag/apply_oaicopilot_model_alias.py`（别名重定向补丁，可重复执行）、
+本仓库 `scripts/diag/apply_oaicopilot_model_alias.py`（别名重定向补丁，可重复执行；
+`--alias/--unalias/--probe/--selftest`，`--probe` 是「先实测终点再动手」的强制前置）、
 `scripts/diag/patch_oaicopilot_sse_error.py`（**根治补丁：SSE 流内错误转真异常**）、
-`scripts/diag/sync_session_model.py`（**两个模型字段的诊断与对齐**）。
+`scripts/diag/probe_relay_models.py`（**中转层通道可用性实测**，支持真实请求体重放与流内 error 解析）、
+`scripts/diag/sync_session_model.py`（**两个模型字段的诊断与对齐**；改完别名必须用 `--list` 交叉核对）。
 
 ## §175. 判定区（HitAreas）生成规则与全库审计：59 条真遗漏已修（2026-10-30）
 
