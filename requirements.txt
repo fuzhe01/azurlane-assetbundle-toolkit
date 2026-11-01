@@ -1,0 +1,26 @@
+# 碧蓝航线 AssetBundles 解包工具链 — 运行时依赖
+#
+# 装法（本项目用 py -3，Python 3.11 起，实测 3.15 也能跑）：
+#     py -3 -m pip install -r requirements.txt
+#
+# ⚠️ 只有前 5 个是"跑管线必需"；剩下的按要用到的功能装。
+#    以前 README 只写了 UnityPy + Pillow 两条，实际全库 import 到的是 7 个第三方包，
+#      clone 后按 README 装完会在跑语音/画廊页时才炸 —— 那是"装少了"，不是代码坏了。
+
+# --- 跑管线必需 ---
+UnityPy>=1.25.0,<1.26      # AssetBundle 解析。⚠️ 必须设 FALLBACK_UNITY_VERSION="2022.3.62f3"：
+                           # 新版 bundle header 把 unity_version 伪装成 5.x.x，不设就全部解析失败
+Pillow>=10.0               # 立绘合成 / 缩略图 / 画布包围盒
+numpy>=1.24                # 立绘层像素运算（alpha 缩放、包围盒扫描）
+requests>=2.28             # wiki 抓取、配置表拉取
+
+# --- 按功能需要 ---
+websocket-client>=1.6      # 无头 Chrome CDP 探针（scripts/diag 里大量探针依赖它）
+                           # 注意：import 名是 websocket，PyPI 包名是 websocket-client，
+                           # 装错成 `websocket` 那个包会 shadow 掉真实现
+
+# --- 可选（外部工具，不在 pip 里；paths.py 会按 env → PATH → 已知位置找）---
+# ffmpeg          BGM/语音转码      环境变量 AL_FFMPEG
+# vgmstream-cli   CRIWARE .b 解码    环境变量 AL_VGMSTREAM
+# adb             模拟器同步         环境变量 AL_ADB
+# chrome          画廊页无头探针     环境变量 AL_CHROME

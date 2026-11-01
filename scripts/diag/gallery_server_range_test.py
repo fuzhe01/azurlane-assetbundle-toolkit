@@ -23,6 +23,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, 'gallery_src'))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+
+from _precheck import require  # noqa: E402
+require(os.path.join(ROOT, 'Output', 'gallery_v2'),
+        note='这个回归要在真实的运行目录上起一份服务器，Output/ 不存在时无从下手')
+
 import _gallery_server as GS   # noqa: E402
 
 FAIL = []

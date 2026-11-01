@@ -132,7 +132,10 @@ CATEGORY_MAP = {
     "furnitures":      "furniture_other", # 其他家具
 
     # --- 地图系统 ---
-    "bg":              "map_bg",         # 地图背景
+    # ⚠️ `bg` 已经在上面「背景系统」里定过 = background（场景背景）。这里曾经又写了一次
+    #    `"bg": "map_bg"`，Python 字典后写覆盖前写 ⇒ 实际生效的是 map_bg，与注释、
+    #    与 PROJECT_STATUS 的「背景族 bg/helpbg/…」口径都对不上。2026-11-01 去重时
+    #    保留 background：全库没有消费方按 map_bg 取值，而 background 与文档口径一致。
     "chapter":         "chapter",        # 章节地图
     "map":             "map",            # 地图数据
     "levelmap":        "level_map",      # 关卡地图

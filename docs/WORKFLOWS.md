@@ -387,7 +387,7 @@
 - 最初方案：翻转纹理 + 翻转 UV V 坐标 → 复杂且易出错
 - 最终方案：unflipped 纹理 + 原始 UV + 最终翻转输出 → 简洁正确
 
-**涉及文件**: `scripts/synthesize_paintings.py`, `TROUBLESHOOTING.md`
+**涉及文件**: `scripts/synthesize_paintings.py`（**v1 脚本，已退役**；v2 用 `scripts/compose_paintings_v2.py`，见 WF-12 / WF-29）, `TROUBLESHOOTING.md`
 
 ---
 
@@ -399,7 +399,7 @@
 
 **步骤**:
 1. 识别 .skel/.atlas/.png 三件套格式（spine 3.8.99 二进制，非标准 4.x）
-2. 编写 `extract_spine.py` 用 UnityPy 提取 TextAsset（.skel/.atlas）和 Texture2D（.png）
+2. 编写 `extract_spine.py` 用 UnityPy 提取 TextAsset（.skel/.atlas）和 Texture2D（.png）（**v1 脚本，已退役**；v2 用 `extract_spine_v2.py`，见 WF-12）
 3. 处理多变体命名：`{name}B.skel`、`{name}M.skel`、`{name}T.skel`
 4. 从 GitHub 下载 spine 3.8 runtime 源码（`3.8_spine-core.js` + `3.8_spine-webgl.js`）
 5. 构建 WebGL Viewer：`ManagedWebGLRenderingContext` + `SceneRenderer` + `OrthoCamera`
@@ -418,7 +418,7 @@
 - 部分 `_hx` 变体无独立 `_res` bundle → 资源在父 bundle 中
 - `talin_4` 只有 png 无 skel/atlas → 异常数据
 
-**涉及文件**: `scripts/extract_spine.py`, `tools/spine-viewer/index.html`, `tools/spine-viewer/spine-runtime/`
+**涉及文件**: `scripts/extract_spine.py`（v1，已退役；现用 `extract_spine_v2.py`）, `tools/spine-viewer/index.html`, `tools/spine-viewer/spine-runtime/`
 
 ---
 
@@ -2714,3 +2714,120 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 `face_gate_flip_scan` / `face_overlay_cmp` / `painting_swap_in`。
 相关：**§114**（本轮取证全过程）、WF-15（备份换入 runbook）、WF-27（层序取引擎层级）、
 §48（判据演进必须配带标签回归集）、§85（两份语义必然漂移）。
+
+---
+
+### WF-30: 换机器 / 重新 clone 后的"接手自检"三件（2026-11-01）
+
+适用：拿到一个装好代码但没有资产的新克隆，或者换盘符/换用户名之后。目标不是"能跑全量"，
+而是**先分清三类红**：真缺陷 / 环境缺件 / 闸门根本没装。照 AGENTS.md 收尾清单一上来就跑
+`test_pipeline_gating.py`，很容易把后两类当第一类，花半天去"修"一个没坏的脚本。
+
+#### 第 0 步：先证明闸门自己在位（否则后面所有"绿灯"都不算数）
+
+```powershell
+py -3 scripts/install_git_hooks.py --check    # 退出码即结论
+```
+
+`.git/hooks/` 不受版本控制，**重新 clone 后必然为空**。不装 hooks 时，AGENTS.md 里那两道闸
+（提交必须带文档 / 提交信息必须带 `技能:` 行）**完全不存在**，而 `git commit` 成功会让人以为
+"规范已被强制执行过"。装：`py -3 scripts/install_git_hooks.py`（幂等，非 Windows 自动加 exec 位）。
+
+> 判据：`--check` 必须打 `[PASS] 4/4 与正本一致`。看到 `[FAIL] 缺失` 就别往下走——
+> 这时的"提交成功"不能当任何东西的证据。
+
+#### 第 1 步：把"缺资产"和"代码坏了"分开
+
+```powershell
+py -3 scripts/diag/check_inputs.py     # 权威输入（inputs/azdata / inputs/gamecfg）
+py -3 scripts/diag/check_paths.py       # 脚本里有没有失效的路径引用
+```
+
+自测统一走 `scripts/diag/_precheck.py`：
+
+```python
+from _precheck import require
+require('Output/dependency_manifest.json', 'inputs/gamecfg/character_voice.json',
+        note='语音/Spine 自测需要先跑第 2、5 阶段')
+```
+
+缺件时它打 `[SKIP] MISSING <路径>` + `→ py -3 scripts/xxx.py` 恢复配方，然后 **exit 0**。
+
+> **⚠️ `SKIP` 不等于绿。** `exit 0` 是刻意的（串行 runner 不该因为"这台机器没资产"整体判红），
+> 但结论是**这一轮没验到任何东西**。要真验，先把 `SKIP` 的那几行逐条消掉；
+> 汇报时必须原样说出"这几项是 SKIP，不是 PASS"，否则等于拿环境不足当验收通过。
+> 反向测试（`scripts/diag/precheck_red_test.py`）用"照收连接回 200 但 0 字节"的桩证明闸门真会红。
+
+#### 第 2 步：自测夹具**必须自建**它断言的东西，别指望盘上恰好有
+
+`test_pipeline_gating.t_stems()` 断言的 `stems_for()` 是**按磁盘裁判**的
+（`update_pipeline.py`：`if os.path.isdir(d) and not (isfile(join(d,stem)) or isdir(...)): continue`
+—— 目录**不存在**时不滤，**存在但不含该包**时才滤）。所以在没有源包的机器上，
+"目录不存在"这一支被走到，4 条断言全空 → 假红。修法是**同时**建目录并放入声明的文件：
+
+```python
+tmpab = tempfile.mkdtemp()
+os.makedirs(os.path.join(tmpab, 'painting'))
+for n in ('painting/2b', 'painting/2b_tex', 'painting/a2_n_bj1_tex'):
+    open(os.path.join(tmpab, n), 'w').close()
+os.makedirs(os.path.join(tmpab, 'ui'))
+# 临时改 up.AB，finally 里复原并 rmtree
+```
+
+> 只建目录不建文件 = 仍然滤空（那一支被走到时要求文件存在）。
+> 只建文件不建目录 = 目录不存在，**不滤**，断言在测空气。
+> 两条缺一不可——这是本轮唯一一处"夹具差一行就全绿是假的"。
+
+#### 踩坑记录
+
+- **`Copy-Item` 用相对路径会把 hooks 复制到仓库根**（Windows 下相对路径按当前工作目录解析，
+  而 PowerShell 的初始 CWD 不是脚本所在目录）。必须 `-LiteralPath` + 绝对路径；
+  装完用 `Get-FileHash` 逐字节比对正本，别只看"命令没报错"。
+- **自测 hook 要真的 `git add` 一个代码文件到临时 index**：`commit-msg` 闸的判据是
+  暂存区里有没有 `scripts/**` / `gallery_src/**`，空 index 会让它 `has_code=0` 直接 exit 0 —— 假绿。
+  用 `GIT_INDEX_FILE=$env:TEMP\xxx` 隔离，并显式 `git add scripts/xxx.py`。
+- **`$TEMP` 在 git 的 sh 里映射成 `/tmp`**，把 PowerShell 的 Windows 路径拼进 sh 命令会指向不同文件，
+  于是"消息文件写了但闸门读不到"→ 假绿或假红。要么全用 PowerShell 做、要么全用 sh 做，别混。
+- **`bash` 不在 PATH 时用 git 自带的** `C:\Program Files\Git\bin\sh.exe`（hook 的 shebang 是 `#!/bin/sh`）。
+
+#### 判据（三条都要过才叫"接手完成"）
+
+| 判据 | 说明 |
+|---|---|
+| `install_git_hooks.py --check` exit 0 | 闸门在位，且与 `scripts/git-hooks/` 逐字节相同 |
+| 所有自测输出里 `FAIL` 为 0，且 SKIP 的条目能逐条报出原因 | "没验"和"验过了"必须当场分开 |
+| `check_lint_baseline.py` exit 0 | 真缺陷类（undefined name / redefinition / 重复键）必须 0 |
+
+**涉及文件**：`scripts/install_git_hooks.py`（新增）、`scripts/git-hooks/{pre-commit,commit-msg}`、
+`scripts/diag/_precheck.py`（新增）、`scripts/diag/check_lint_baseline.py`（新增 + `lint_baseline.json`）、
+`scripts/diag/test_pipeline_gating.py`、`requirements.txt`。相关：AGENTS.md「阶段收尾必做清单」、
+WF-16（回归六件套）、§115。
+
+---
+
+### WF-31: 给"永远红的检查"装基线闸门，而不是逼人清零（2026-11-01）
+
+适用：某个 lint / 静态检查有几十上百条存量告警，其中只有少数会咬人。三种常见错误做法：
+① 全清零（成本极高且收益为零）② 不管（真缺陷淹没在噪声里）③ 加 `# noqa` 逐个压制（噪声还在，只是看不见）。
+
+**正确做法：把存量冻成基线，只拦新增。**
+
+1. **先分类，别先修。** 全量跑一遍，按**会不会造成运行时错误**分两组：
+   - 硬红线（必须为 **0**，不进基线）：`undefined name`（跑到就 `NameError`）、
+     `redefinition of unused`（后者覆盖前者）、字典字面量 `repeated with different values`
+     （后写静默覆盖前写，**最隐蔽**：不报错、只是行为变了）。
+   - 软噪声（进基线）：unused import、无占位符 f-string、一次性探针的未用局部变量。
+2. **只修硬红线**，然后把软噪声条数写进基线 JSON。
+3. **闸门必须自带阴性对照**（`--selftest`）：喂四条样本（三条硬 + 一条软），断言正则分类正确。
+   没有这一步，正则写漏了要等到真缺陷出现才发现——而那时它已经进仓库了。
+4. **基线文件缺失必须判红**，不能"没有基线就当全绿"。同理 pyflakes 没装要打 `[SKIP]` 并说清缺什么。
+
+> 为什么不做成 git hook：存量 84 条是全库性质、与单次提交无关；闸门的价值在**阶段收尾**和
+> **接手自检**，挂在 pre-commit 会让每次小改都被无关噪声拦住（同 §71 的教训）。
+
+**踩坑记录（本轮真踩）**：清完硬红线后基线从 96 掉到 84，但有 4 条在 `scripts/` 之外的
+一次性探针里也被计入了 —— 扫描范围必须与基线生成时**完全同源**（同一个 `os.walk` 起点、
+同一份 `__pycache__`/`_archive` 排除表），否则第二次跑数出来的数和基线对不上，闸门天天假红。
+
+**涉及文件**：`scripts/diag/check_lint_baseline.py`（新增）、`scripts/diag/lint_baseline.json`（新增，入库）。
+相关：§115。

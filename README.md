@@ -9,16 +9,22 @@
 - Clone 后需自备游戏 AssetBundle 放到 `files/AssetBundles/`，脚本按此路径读取。
 - 仅供个人学习研究，请遵守游戏服务条款与相关版权。
 
+> **没有游戏资产时**：大部分自测与探针会打印 `[SKIP] MISSING <路径>` + 恢复方法后以 **退出码 0** 结束
+> （`scripts/diag/_precheck.py` 统一处理）。看到 `SKIP` 意味着**这一轮其实没验到**，不是"验过了、通过"——
+> 别把 SKIP 当绿。真需要全跑，先按 `py -3 scripts/diag/check_inputs.py` 把权威输入补齐。
+
 ## 成果概览
 
 | 资产 | 数量 | 说明 |
 |---|---|---|
-| 静态立绘 | 4,486 张 | v2 数据驱动合成，零手调 |
-| Spine 动态立绘 | 232 主包 | 多部件骨骼分层 |
-| 全屏 CG | 231 张 | Spine setup pose 浏览器端批量导出（长边 2400，`Output/CG_v2`） |
-| Live2D | 256 模型 | 纹理/物理/motion |
-| 语音 | 4,370 WAV | BGM/CV/Other/SE |
+| 静态立绘 | 4,496 张 | v2 数据驱动合成，零手调（2026-10-06 全量重渲换入） |
+| Spine 动态立绘 | 232 主包（234 目录） | 多部件骨骼分层 |
+| 全屏 CG | 234 张 | Spine setup pose 浏览器端批量导出（长边 2400，`Output/CG_v2`；2026-09-26 按 `animFrame=1` 全量重导） |
+| Live2D | 269 模型 | 纹理/物理/motion，全库 HitAreas 已补登真判定区 |
+| 音频 | 4,370 条 | BGM 536 已转 FLAC 无损（省 41.5%），其余 CV/Other/SE 为 WAV |
 | 背景族 | ~1,900 张 | bg/helpbg/commonbg/loadingbg 等 |
+
+> 上表的权威口径与逐项取证都在 [`PROJECT_STATUS.md`](PROJECT_STATUS.md) 的 `### 2.X` 各节，本表只是门面摘要；两处不一致时以状态文档为准。
 
 另有一个本地资产浏览平台 `Output/gallery_v2`（由脚本生成，产物不入库）。完整进度见 [`PROJECT_STATUS.md`](PROJECT_STATUS.md)。
 
@@ -46,9 +52,9 @@ docs/                # 操作手册 / 工作流 / 踩坑 / 工具说明 / 归档
 | `scan_assets.py` | 扫描 AssetBundles 生成清单 |
 | `export_assets.py` | UnityPy 批量导出纹理/网格（背景族等） |
 | `export_cue_audio.py` | CRIWARE `.b` → WAV 音频导出 |
-| `export_dependency_manifest.py` | 导出 86k 条官方依赖表 |
+| `export_dependency_manifest.py` | 导出官方依赖表（`Output/dependency_manifest.json`） |
 | `compose_paintings_v2.py` | ★ 静态立绘 v2 合成（数据驱动） |
-| `extract_spine_v2.py` | ★ Spine 动态立绘 v2 提取 |
+| `extract_spine_v2.py` | ★ Spine 动态立绘 v2 提取（同时也产出 CG 用的 `parts.json`） |
 | `run_v2_full.py` | v2 全量批跑编排 |
 | `reconstruct_live2d.py` / `fix_model3.py` / `extract_motions.py` / `apply_live2d_motions.py` | Live2D 还原与动作重建（流程见 `docs/WORKFLOWS.md` WF-7） |
 | `build_gallery_index.py` / `make_thumbs.py` | 生成本地浏览平台数据与缩略图（含 CG_v2） |
@@ -60,13 +66,15 @@ docs/                # 操作手册 / 工作流 / 踩坑 / 工具说明 / 归档
 ## 快速上手
 
 ```bash
-pip install UnityPy Pillow          # 依赖（UnityPy 1.25.x）
-python scripts/scan_assets.py       # 生成资产清单
-python scripts/export_dependency_manifest.py
-python scripts/compose_paintings_v2.py <皮肤名>   # 合成单张样本
+py -3 -m pip install -r requirements.txt   # 依赖（UnityPy 1.25.x + Pillow/numpy/requests/websocket-client）
+py -3 scripts/install_git_hooks.py --check # 换机器/重新 clone 后第一步：确认提交闸门装好了
+py -3 scripts/scan_assets.py               # 生成资产清单
+py -3 scripts/export_dependency_manifest.py
+py -3 scripts/compose_paintings_v2.py <皮肤名>   # 合成单张样本
 ```
 
-> 环境为 Windows + Python 3.11/3.13。批量脚本遵循「先样本确认后全量」原则。
+> 环境为 Windows + Python 3.11 起（3.13 / 3.15 实测可用，统一用 `py -3`）。批量脚本遵循「先样本确认后全量」原则。
+> 外部工具（ffmpeg / vgmstream-cli / adb / chrome）不在 pip 里，见 [`requirements.txt`](requirements.txt) 末尾的清单与对应环境变量。
 
 ## 文档导航（`docs/`）
 

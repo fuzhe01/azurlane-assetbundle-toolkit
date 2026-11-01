@@ -12,6 +12,13 @@ import contextlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+# 缺资产就 SKIP：以前直接在 import 时抛 FileNotFoundError，看起来像产品坏了，
+# 实际只是这台机器没跑过导出阶段（判据一条都没跑到）。
+from _precheck import require, ROOT  # noqa: E402
+require(os.path.join(ROOT, 'Output', 'dependency_manifest.json'),
+        note='extract_spine_v2 在 import 时就要读官方依赖表，没有它连被测模块都进不去')
+
 import extract_spine_v2 as E  # noqa: E402
 
 CASES = []

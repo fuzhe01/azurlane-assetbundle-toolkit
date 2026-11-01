@@ -349,7 +349,7 @@ return Image.fromarray(out_arr).transpose(Image.FLIP_TOP_BOTTOM)
 
 **Key insight**: ALPA (AzurLanePaintingAnalysis-Kt) 的 `rebuildPainting()` 使用 `tex.getDecompressedData()`（unflipped BGRAB）+ mesh UV，拼完后再翻转输出。我们的 MeshHandler 方案等价。
 
-**Files**: `scripts/synthesize_paintings.py`
+**Files**: `scripts/synthesize_paintings.py`（**v1，已退役**；现用 `scripts/compose_paintings_v2.py`）
 **Scope**: 5,859 个 _tex bundle，修复后 5,847 个成功（12 个为 UI/背景等非标准格式）
 
 
@@ -6440,3 +6440,98 @@ git show 12eb0db^:scripts/compose_paintings_v2.py > .diag/oldpipe/compose_painti
 `painting_three_probe` / `baixue2_seam_probe`。
 相关：**WF-29**（这类改动怎么验）、§9.3 第 6 条（mesh 越框）、§48（叠脸门控判据演进）、
 §55（激活位过滤）、§110（层序按名字猜翻车）、WF-15（备份换入）、WF-28。
+
+
+---
+
+## §115 一批"沉默型"缺陷：局部导入、未初始化变量、import 即执行、永远红的检查（2026-11-01 全库体检）
+
+本轮对全库 156 个 py 文件（36,444 行）做了一次静态体检 + 自测实跑，抓到的**全部属于同一族**：
+**不报错、不崩溃、只是结论变了或整段静默不执行**。它们能活很久的原因是每次都有"看起来正常"的输出。
+
+### 115.1 函数内 `import importlib` 只写了一半 ⇒ 整个功能块永久跳过
+
+`scripts/pipeline_panel.py` 的 `_scope_units()` 里用了 `importlib.util.find_spec(...)`，
+但模块顶部没有 `import importlib`，函数内也**只写了 `from ... import` 形式的其它导入**。
+后果：`NameError` 被外层的 `except Exception` 吃掉 ⇒ 该函数**永远返回 `{}`**，
+面板上的"可执行范围"下拉框**一直是空的**，而界面一切正常、日志一行不报。
+
+- **发现方式（可复用）**：不要只看 lint 的"undefined name"总数（会被 90 多条噪声淹没）——
+  用 `pyflakes 输出 | Select-String 'undefined name'` 单独捞这一类，它是**唯一能直接指出运行时崩溃点**的信号。
+- **修法**：把 `import importlib` 提到模块级；删掉函数内的局部导入。
+- **验证不能只看"没报错"**：调用一次 `_scope_units()` 并断言返回值非空（修复后 3 项，修复前 `{}`）。
+  ⚠️ "函数返回空字典"这件事**不抛异常**，所以任何"跑一遍没崩"的验证都是无效的。
+
+### 115.2 计数器只在循环内赋值 ⇒ 首个失败就 `UnboundLocalError` 把"中止判据"废掉
+
+`scripts/diag/spine_framing_scan.py` 的 `main()` 用 `dead += 1` 统计连续失败目录，
+但 `dead = 0` 从未初始化。**若第一个目录就失败，`dead += 1` 抛 `UnboundLocalError`**，
+于是"连续 3 次中止"这条保护**在最需要它的时刻失效**（第一次就失败恰恰是最该中止的场合）。
+
+- **判据形态**：凡在循环里累加的计数器，初始化必须与循环**同一个作用域**，且要在循环之前。
+  `for` 里第一次写、`except` 里读，是最容易漏的两处。
+- **验证**：构造"第一个样本就失败"的输入（不是"全部失败"——后者可能在第二个样本才开始累加，
+  反而不会触发 bug）。这类 bug 的正确阴性对照是**首个样本失败**。
+
+### 115.3 探针没有 `__main__` 保护 ⇒ import 一次就跑一遍全量
+
+`scripts/probe_matching.py` 原本是纯脚本：模块级直接读 `AssetBundles`、解析 prefab、打印 8 行结论。
+任何 `import probe_matching`（哪怕是 lint 工具、哪怕只是想复用其中一个函数）都会**跑一遍完整探测**，
+在缺资产的机器上直接抛异常，在有的机器上则静默产生几秒副作用。
+
+- **修法**：把 19 行之后的模块级代码整体缩进进 `def main(name)`，末尾加
+  `if __name__ == '__main__': main(sys.argv[1] if len(sys.argv) > 1 else '2b')`。
+  路径常量同时提成模块级（`AB_ROOT = P.AB`），让函数内不依赖"执行时的全局状态"。
+- **判据**：`py -3 -c "import probe_matching"` 必须**零输出**；`py -3 scripts/probe_matching.py 2b`
+  必须仍有 8 行输出。两条都跑，缺一条就是在拿"import 没崩"当"没执行"。
+- **可复用的检查**：全库 grep `^[A-Za-z_]` 开头的模块级"可执行语句"（读文件 / 开 bundle / 打印），
+  比 lint 更直接。这一类缺陷 pyflakes **完全看不见**。
+
+### 115.4 自测在缺资产的机器上"假红"或钝性抛异常 ⇒ 等于没接闸
+
+4 个自测的状态：`test_pipeline_gating` 假红（断言被滤空）、`test_spine_exit_code` /
+`test_voice_owner` / `gallery_server_range_test` 直接 `FileNotFoundError` 抛栈。
+两种都让"跑一遍自测"这件事失去信息量：前者让人去修没坏的代码，后者让人直接跳过整个文件。
+
+- **统一修法**：`scripts/diag/_precheck.py` 的 `require(*paths, note=...)` —— 缺件打
+  `[SKIP] MISSING <路径>` + `→ 恢复方法` 后 **exit 0**；有件就什么都不做。
+- **为什么默认 exit 0 而不是非零**：缺资产是"这台机器没装东西"（环境问题），不是"代码判据失败"。
+  串行 runner 不该因此整体判红，否则**整条回归链都不敢跑**。代价是必须靠人看 `SKIP` 行。
+  ⇒ **汇报口径**：`SKIP` 条目必须原样说出来，不许合并进"通过"。
+- **夹具类假红**（`t_stems()`）不能靠预检消掉，必须**自建夹具**：见 WF-30 第 2 步
+  （目录与文件缺一不可，`stems_for()` 的"目录存在才滤"分支决定了这一点）。
+
+### 115.5 同一份语义有两个定义 ⇒ 后写的静默覆盖前写的
+
+`scripts/scan_assets.py` 的 `CATEGORY_MAP` 里 `"bg"` 出现**两次**（第 54 行 `background`、
+第 135 行 `map_bg`）。Python 字典字面量后者覆盖前者，**不报错、不警告**，115 个键里坏掉 1 个。
+`gallery_motion_probe.py` 末尾重复定义的 `_m_ty`（1,132 行，与 126 行同内容）同理——纯死代码，
+改上面那份时下面那份还在，排查时会指向错误的位置。
+
+- **判据**：pyflakes 报 `dictionary key repeated with different values` 与
+  `redefinition of unused` 这两类，**必须为 0**（已收进 `check_lint_baseline.py` 的硬红线）。
+- **去重时的取舍**：`bg` 到底归 `background` 还是 `map_bg`？全库 grep **无任何消费方按这两个值取值**
+  ⇒ 按"与 PROJECT_STATUS 背景族口径一致"选 `background`，并在原位写注释说明为什么这样选。
+  ⚠️ 若日后有消费方依赖 `map_bg`，回滚这一行即可（注释里没写"唯一正确"，只写了"与文档口径一致"）。
+
+### 已排除的假设（别重走）
+
+- **"96 条 pyflakes 全都要修"** —— 否证。逐条看过：除上述 5 个真缺陷外，其余全是
+  unused import / 无占位符 f-string / 一次性探针的未用局部变量，**清它们没有任何行为收益**，
+  唯一效果是把真信号埋得更深。正确做法是冻基线 + 只拦新增（WF-31）。
+- **"自测抛 `FileNotFoundError` 就是代码坏了"** —— 否证。这 3 个自测都依赖 `Output/` 或
+  `inputs/gamecfg/`，本机没有这些资产；它们在装好资产的机器上是能跑的。判据应该是"缺件要说 SKIP"，
+  而不是"改成不读文件"。
+- **"`Copy-Item` 相对路径能复制到 `.git/hooks/`"** —— 否证。Windows 下按 PowerShell 的当前
+  CWD 解析，实际复制到了仓库根。必须 `-LiteralPath` + 绝对路径，并用 `Get-FileHash` 逐字节核对。
+- **"hook 装完自测一次绿就是装好了"** —— 否证。第一次自测是**假绿**：临时 index 没真 `git add`
+  代码文件 ⇒ `commit-msg` 的 `has_code=0` 直接 exit 0。闸门自测必须**先让被测前提成立**
+  （真的暂存一个 `scripts/**` 文件），否则绿的是"没触发"，不是"放行了"。
+
+**涉及文件**：`scripts/pipeline_panel.py`（`import importlib` 提升）、
+`scripts/diag/spine_framing_scan.py`（`dead = 0`）、`scripts/probe_matching.py`（`main()` + `__main__`）、
+`scripts/diag/_precheck.py`（新增）、`scripts/diag/test_pipeline_gating.py`（自建夹具）、
+`scripts/diag/{test_spine_exit_code,test_voice_owner,gallery_server_range_test}.py`（接预检）、
+`scripts/scan_assets.py`（`bg` 去重）、`scripts/diag/{gallery_motion_probe,ship_meta_authority_diff}.py`（死代码）、
+`scripts/install_git_hooks.py`（新增）、`scripts/diag/check_lint_baseline.py`（新增）。
+相关：WF-30（接手自检）、WF-31（基线闸门）、§71（"永远红的检查必然被绕过"）。

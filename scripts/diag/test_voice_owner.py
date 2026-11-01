@@ -17,6 +17,10 @@ ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 sys.stdout.reconfigure(encoding='utf-8')
 
+from _precheck import require  # noqa: E402
+require(os.path.join(ROOT, 'inputs', 'gamecfg', 'character_voice.json'),
+        note='语音归属判据要读游戏配置表（character_voice.json 是 load_table() 的入口）')
+
 import extract_cv_voice as E      # noqa: E402
 
 # 合成：painting → [(语音包号, 包内档位, 表行主键)]（与 `load_skin_rows()` 的三元组同形）。

@@ -277,6 +277,7 @@ def main():
 
     allrec = []
     proc = ev = close_fn = None
+    dead = 0                     # 连续"拿不到 spine 运行时"的目录数；下面的中止判据要用
     t_start = time.time()
     try:
         for idx, folder in enumerate(folders):

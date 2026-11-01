@@ -73,27 +73,42 @@ def t_stems():
     print('\n[1] 范围清单 → 各阶段 stem 的映射')
     # ⚠️ 用**盘上真实存在**的包名：主皮肤与否最终由磁盘裁判（见 stems_for 的注释），
     # 编出来的名字会被正确地滤掉，那样测试就只是在测自己的假设。
-    paths = ['AssetBundles/painting/2b', 'AssetBundles/painting/2b_tex',
-             'AssetBundles/painting/a2_n_bj1_tex',          # 部件包：painting/ 下没有 a2_n_bj1 主包
-             'AssetBundles/painting/zzz_not_a_skin_tex',    # 根本不存在
-             'AssetBundles/painting/mat_ship_x', 'AssetBundles/painting/x_dark_shadow',
-             'AssetBundles/spinepainting/2b_2', 'AssetBundles/spinepainting/adaerbote_4_res',
-             'AssetBundles/live2d/abeikelongbi_3', 'AssetBundles/ui/icon_a',
-             'AssetBundles/cue/bgm-airraidalarm.b', 'AssetBundles/painting/sub/dir/deep']
-    p = up.stems_for('painting', paths, main_only=True)
-    ck('painting：_tex 归并到主皮肤', p == ['2b'], str(p))
-    ck('painting：带编号的部件包（_bj1）不算一张立绘', 'a2_n_bj1' not in p, str(p))
-    ck('painting：磁盘上没有主包的名字一律不进来（防渲染报 ✗ 判红停线）',
-       'zzz_not_a_skin' not in p, str(p))
-    ck('painting：mat_*/_dark_shadow/跨目录都被滤掉',
-       all('mat' not in x and 'shadow' not in x and 'deep' not in x for x in p), str(p))
-    ck('spine：只吃 spinepainting/ 且 _res 归并',
-       up.stems_for('spinepainting', paths) == ['2b_2', 'adaerbote_4'],
-       str(up.stems_for('spinepainting', paths)))
-    ck('live2d：只吃 live2d/', up.stems_for('live2d', paths) == ['abeikelongbi_3'],
-       str(up.stems_for('live2d', paths)))
-    ck('cue 的包不会混进立绘清单，ui 的包谁都不混',
-       up.stems_for('cue', paths) == ['bgm-airraidalarm.b'] and not up.stems_for('ui', paths))
+    # ⇒ 2026-11-01 起自带一份最小 AB 夹具：以前这台机器没有 files/AssetBundles，
+    #    磁盘裁判把整份清单滤空，四条断言全红 —— 红的是"没备料"，不是判据。
+    #    夹具只提供测试**声明要用到**的那几个目录，判据逻辑一行没改。
+    tmpab = tempfile.mkdtemp(prefix='abfix_')
+    real_ab = up.AB
+    try:
+        os.makedirs(os.path.join(tmpab, 'painting'))
+        for rel in ('painting/2b', 'painting/2b_tex', 'painting/a2_n_bj1_tex'):
+            open(os.path.join(tmpab, *rel.split('/')), 'w').close()
+        os.makedirs(os.path.join(tmpab, 'ui'))       # 空目录：icon_a 不在盘上 ⇒ 必须被滤掉
+        up.AB = tmpab
+
+        paths = ['AssetBundles/painting/2b', 'AssetBundles/painting/2b_tex',
+                 'AssetBundles/painting/a2_n_bj1_tex',          # 部件包：painting/ 下没有 a2_n_bj1 主包
+                 'AssetBundles/painting/zzz_not_a_skin_tex',    # 根本不存在
+                 'AssetBundles/painting/mat_ship_x', 'AssetBundles/painting/x_dark_shadow',
+                 'AssetBundles/spinepainting/2b_2', 'AssetBundles/spinepainting/adaerbote_4_res',
+                 'AssetBundles/live2d/abeikelongbi_3', 'AssetBundles/ui/icon_a',
+                 'AssetBundles/cue/bgm-airraidalarm.b', 'AssetBundles/painting/sub/dir/deep']
+        p = up.stems_for('painting', paths, main_only=True)
+        ck('painting：_tex 归并到主皮肤', p == ['2b'], str(p))
+        ck('painting：带编号的部件包（_bj1）不算一张立绘', 'a2_n_bj1' not in p, str(p))
+        ck('painting：磁盘上没有主包的名字一律不进来（防渲染报 ✗ 判红停线）',
+           'zzz_not_a_skin' not in p, str(p))
+        ck('painting：mat_*/_dark_shadow/跨目录都被滤掉',
+           all('mat' not in x and 'shadow' not in x and 'deep' not in x for x in p), str(p))
+        ck('spine：只吃 spinepainting/ 且 _res 归并',
+           up.stems_for('spinepainting', paths) == ['2b_2', 'adaerbote_4'],
+           str(up.stems_for('spinepainting', paths)))
+        ck('live2d：只吃 live2d/', up.stems_for('live2d', paths) == ['abeikelongbi_3'],
+           str(up.stems_for('live2d', paths)))
+        ck('cue 的包不会混进立绘清单，ui 的包谁都不混',
+           up.stems_for('cue', paths) == ['bgm-airraidalarm.b'] and not up.stems_for('ui', paths))
+    finally:
+        up.AB = real_ab
+        shutil.rmtree(tmpab, ignore_errors=True)
 
 
 

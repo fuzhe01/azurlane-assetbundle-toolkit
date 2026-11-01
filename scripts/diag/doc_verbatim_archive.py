@@ -34,8 +34,20 @@ def git(*args):
     return r.stdout
 
 
+def norm(b):
+    """把行尾归一化后再比字节。
+
+    为什么需要它（2026-11-01 实测）：本仓库 `core.autocrlf=true` 且**没有 `.gitattributes`**，
+    于是 `git show base:doc` 取出的是 **LF** 版本，而工作树里是 **CRLF**。
+    直接比 md5 ⇒ 每次都报「磁盘与基线不一致，并行会话可能刚落盘」，这条**永远是假红**
+    （同一个形状的教训见 §115：判据自身写错，比缺陷更难发现）。
+    归一化只针对行尾，内容任何差异仍会被 md5 抓住。
+    """
+    return b.replace(b'\r\n', b'\n')
+
+
 def md5(b):
-    return hashlib.md5(b).hexdigest()
+    return hashlib.md5(norm(b)).hexdigest()
 
 
 REF_RE = re.compile(r'`([A-Za-z0-9_.\u4e00-\u9fff/-]+/[A-Za-z0-9_.\u4e00-\u9fff/-]+\.[A-Za-z0-9]+)`')

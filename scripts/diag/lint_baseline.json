@@ -1,0 +1,4 @@
+{
+ "pyflakes_findings": 84,
+ "note": "见 check_lint_baseline.py 的 docstring"
+}

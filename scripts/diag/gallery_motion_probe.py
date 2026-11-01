@@ -1129,16 +1129,5 @@ def main():
           '减少动效退化 全部落到位')
 
 
-def _m_ty(mat):
-    """从 matrix(a,b,c,d,e,f) / matrix3d(...) 里取平移 Y（名称条滑出是否贴底）。"""
-    try:
-        nums = [float(x) for x in mat.replace('matrix3d(', '').replace('matrix(', '').replace(')', '').split(',')]
-    except Exception:
-        return 0.0
-    if mat.startswith('matrix3d'):
-        return nums[13]
-    return nums[5] if len(nums) >= 6 else 0.0
-
-
 if __name__ == '__main__':
     main()

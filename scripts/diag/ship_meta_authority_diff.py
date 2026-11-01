@@ -25,7 +25,6 @@
 """
 import argparse
 import collections
-import collections
 import importlib.util
 import json
 import os

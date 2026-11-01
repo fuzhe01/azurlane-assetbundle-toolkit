@@ -21,6 +21,7 @@
 """
 import argparse
 import glob
+import importlib
 import json
 import os
 import re
@@ -89,7 +90,6 @@ def stage_keys():
     update_pipeline 有 __main__ 保护，import 它没有副作用。"""
     sys.path.insert(0, HERE)
     import update_pipeline as up
-    import importlib
     importlib.reload(up)          # 改了流水线脚本后不用重启面板
     return [{'key': s.key, 'title': s.title, 'tier': s.tier, 'judge': s.judge_desc,
              'step': s.step, 'writes': s.writes,

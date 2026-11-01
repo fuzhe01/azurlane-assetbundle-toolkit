@@ -1,8 +1,12 @@
 # 碧蓝航线 AssetBundles 解包与整理 — 完整操作手册
 
-> **版本**: v1.1  
-> **日期**: 2026-06-21  
-> **状态**: 可执行
+> **版本**: v1.1
+> **日期**: 2026-06-21（**v1 时代文档，2026-11-01 追加退役声明**）
+> **状态**: 历史参考 —— ⚠️ 本文描述的 `synthesize_paintings.py` / `extract_spine.py` / `compose_paintings.py`
+> **三个脚本已全部退役**（v1 逐角色手调路线）。当前主线是 v2 数据驱动管线：
+> `compose_paintings_v2.py` / `extract_spine_v2.py`，流程见 `docs/WORKFLOWS.md` WF-12 / WF-14 / WF-29。
+> **本文仍值得读的只有第 4 节「核心难点分析」与第 8 节「故障排除」里的坑**（PPtr→externals 解析、
+> Unity 伪装版本号等），那些与 v1/v2 无关。**别按第 5、6 节的命令照着跑。**
 
 ---
 
