@@ -273,12 +273,14 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 新会话发送：
 ```
 我在做碧蓝航线 AssetBundles 解包项目。
-进度: D:\Azur Lane Assets\PROJECT_STATUS.md
-规则: D:\Azur Lane Assets\AGENTS.md（含文档写入路由表）
+进度: D:\azurlane-assetbundle-toolkit\PROJECT_STATUS.md
+规则: D:\azurlane-assetbundle-toolkit\AGENTS.md（含文档写入路由表）
 当前主线: v2 数据驱动管线（§9）+ gallery_v2（§10）
 下一步: [具体任务]
 ```
 要点：**画廊视觉（Q 轮）的待用户拍板项与待办在 §6 顶部 ★ 块，接手先读它**。静态立绘 / Spine 已由 v2 全量收官，Live2D 动作层已于 2026-09-21 按权威映射重建完毕，**2026-09-23 网页交互层三个根因（命中包含判定 / idle 循环 / V-P 坐标系）已修并回归**。接手前先读 §9 理解「游戏数据自洽、不要猜坐标/不要按位置猜参数名」这一核心结论。**验动效一律看内容**（曲线条数、Id 是否命中参数表、值是否随时间变化），不要只看 `currentGroup`/组名标签——空壳也能"启动"，这个坑已踩过一次（`docs/TROUBLESHOOTING.md` §17、`docs/WORKFLOWS.md` WF-7）。**验交互一律用独立锚点**——合成点击若与被测映射同源会自洽闭环、全绿也说明不了对齐（§20、WF-16）。历史 v1 调试见 `docs/archive/`，一般无需再读。
+
+**远端拓扑（2026-11-01 起）**：`origin` = `MrKLLM/azurlane-assetbundle-toolkit`（本地领先 100 个提交，**未推送**）；`fork` = `fuzhe01/azurlane-assetbundle-toolkit`（**已对齐**，`rev-list --left-right --count fork/master...HEAD` = `0 0`）。`fork` 侧曾有 97 个独立提交（分叉点 `149053b`），已全部并入且**从未 force push**；备份 ref `backup/local-master-before-fork-merge` / `backup/fork-master-1c16cea` 保留可回滚。⚠️ 以后同步 fork 只能合并、不能强推 —— 那份 97 提交是真实工作量。
 
 ---
 
