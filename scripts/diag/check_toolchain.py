@@ -1,1 +1,148 @@
-# -*- coding: utf-8 -*-"""check_toolchain.py — 换新设备/新机器第一步的体检：把"跑不起来"的每一种原因当场指出来。为什么要有它：换盘符、换用户名、重装 MuMu、升级 MuMu（adb 从 `nx_main\\adb.exe` 挪到`nx_device\\<版本>\\shell\\adb.exe`）都会让管线在某一步炸，而**炸在深处**（第 3 阶段某张立绘）比炸在入口难查得多。这里把入口条件一次性列清，且**判据是机械的**：必需项缺一即非零退出。分档（缺了怎么办一目了然）：  [必需] 仓库根 / `files/AssetBundles` / Python 依赖(UnityPy,Pillow) —— 缺了什么都做不了  [阶段] 各阶段专属的外部工具与数据（vgmstream=音频、ffmpeg=转码、adb=同步、Chrome=CG 导出、         AssetStudioModCLI=可选对照基准、inputs/* 台账、vendor 运行时库）  [提示] 版本与规模信息（源包目录数、Output 各产物目录大小）用法:  py -3 scripts/diag/check_toolchain.py            # 人看的体检报告  py -3 scripts/diag/check_toolchain.py --json     # 机器可读  py -3 scripts/diag/check_toolchain.py --adb      # 额外真的去连一次模拟器（要模拟器开着）退出码: 0 = 必需项齐（阶段项缺失只报不拦）; 1 = 必需项缺"""import argparseimport jsonimport osimport subprocessimport sysHERE = os.path.dirname(os.path.abspath(__file__))S = os.path.dirname(HERE)ROOT_ = os.path.dirname(S)sys.path.insert(0, S)sys.stdout.reconfigure(encoding='utf-8', errors='replace')import paths as P  # noqa: E402def _count(d):    try:        return sum(1 for _ in os.scandir(d))    except OSError:        return -1def _size(d, cap_files=200000):    """目录总字节（超多文件时可能慢，所以给上限；-1 = 不存在）。"""    if not os.path.isdir(d):        return -1    total = n = 0    for base, _dirs, files in os.walk(d):        for f in files:            try:                total += os.path.getsize(os.path.join(base, f))            except OSError:                pass            n += 1            if n >= cap_files:                return total    return totaldef human(n):    if n is None or n < 0:        return '—'    for u in ('B', 'KB', 'MB', 'GB', 'TB'):        if abs(n) < 1024:            return f'{n:.1f}{u}' if u != 'B' else f'{int(n)}B'        n /= 1024    return f'{n:.1f}PB'def deps():    out = {}    for mod in ('UnityPy', 'PIL'):        try:            m = __import__(mod)            out[mod] = getattr(m, '__version__', 'ok')        except Exception as e:            out[mod] = f'MISSING ({type(e).__name__})'    return outdef main():    ap = argparse.ArgumentParser()    ap.add_argument('--json', action='store_true')    ap.add_argument('--adb', action='store_true', help='真的去连一次模拟器')    a = ap.parse_args()    ab = P.AB    d = deps()    required = []    stage = []    required.append(('仓库根', P.ROOT, os.path.isdir(os.path.join(P.ROOT, 'scripts'))))    required.append(('源包根 files/AssetBundles', ab, os.path.isdir(ab)))    for mod, ver in d.items():        required.append((f'Python 依赖 {mod}', ver, not str(ver).startswith('MISSING')))    for name, path, hint in (            ('vgmstream（音频解码）', P.VGMSTREAM, 'AL_VGMSTREAM 或放到 %LOCALAPPDATA%\\vgmstream'),            ('ffmpeg（BGM 转码）', P.FFMPEG, 'AL_FFMPEG 或放到 %LOCALAPPDATA%\\ffmpeg\\bin'),            ('adb（模拟器同步）', P.MUMU_ADB, 'AL_ADB 或装 MuMu（新版在 nx_device\\<ver>\\shell）'),            ('MuMuManager（读真实端口）', P.MUMU_MANAGER, '随 MuMu 装在 nx_main'),            ('Chrome（CG 批量导出）', P.CHROME, 'AL_CHROME'),            ('AssetStudioModCLI（可选对照基准）', P.ASSETSTUDIO, 'AL_ASSETSTUDIO；只用于 A/B 取证'),    ):        stage.append((name, path or '（未找到）', bool(path), hint))    subdirs = {k: _count(os.path.join(ab, k)) for k in               ('painting', 'spinepainting', 'live2d', 'sharecfgdata', 'cue', 'dependencies')} \        if os.path.isdir(ab) else {}    outs = {k: _size(v) for k, v in (('Paintings_v2', P.PAINT_OUT), ('Spine_v2', P.SPINE_OUT),                                     ('Live2D', P.LIVE2D_OUT), ('CG_v2', P.CG_OUT),                                     ('Audio', P.AUDIO_OUT), ('gallery_v2', P.GALLERY_OUT))}    inputs = [os.path.join(P.ROOT, 'inputs', 'azdata'),              os.path.join(P.ROOT, 'inputs', 'gamecfg')]    inputs_ok = {p: os.path.isfile(os.path.join(p, 'MANIFEST.json')) for p in inputs}    inputs_n = {os.path.basename(p): _count(p) for p in inputs}    vendor_ok = os.path.isfile(os.path.join(ROOT_, 'gallery_src', 'vendor', 'MANIFEST.json'))    adb_out = None    if a.adb and P.MUMU_ADB:        try:            r = subprocess.run([sys.executable, os.path.join(S, 'mumu_adb.py'), 'info'],                               capture_output=True, text=True, encoding='utf-8',                               errors='replace', timeout=600)            adb_out = (r.returncode, (r.stdout or '').strip().splitlines()[:6])        except Exception as e:            adb_out = (-1, [f'{type(e).__name__}: {e}'])    bad = [n for n, _v, ok in required if not ok]    if a.json:        print(json.dumps({'required': [{'name': n, 'value': v, 'ok': ok} for n, v, ok in required],                          'stage': [{'name': n, 'path': p, 'ok': ok, 'hint': h} for n, p, ok, h in stage],                          'required_missing': bad, 'ab_subdirs': subdirs, 'outputs': outs,                          'inputs': inputs_n, 'adb': adb_out,                          'env': {'AL_ASSETS_ROOT': bool(os.environ.get('AL_ASSETS_ROOT')),                                  'drives': P._DRIVES}},                         ensure_ascii=False, indent=1))        return 1 if bad else 0    print('=' * 74)    print('工具链体检 — 换新设备第一步跑这个')    print('=' * 74)    print(f'仓库根      : {P.ROOT}' + ('   （来自 AL_ASSETS_ROOT）' if os.environ.get('AL_ASSETS_ROOT')                                        else '   （由 scripts/paths.py 推导）'))    print(f'Python      : {sys.version.split()[0]}  @ {sys.executable}')    print(f'盘符        : {P._DRIVES or "（非 Windows）"}')    print('\n[必需] 缺一项就跑不起来')    for n, v, ok in required:        print(f'  {"OK " if ok else "XX "} {n:<34} {v}')    print('\n[阶段] 缺了只影响对应阶段')    for n, p, ok, hint in stage:        print(f'  {"OK " if ok else ".. "} {n:<34} {p}')        if not ok:            print(f'      ↳ {hint}')    if subdirs:        print('\n[规模] files/AssetBundles 顶层目录文件数')        for k, v in subdirs.items():            print(f'  {k:<14} {v if v >= 0 else "（无此目录）"}')    print('\n[规模] Output 产物（GiB 口径见 scripts/diag/check_disk_footprint.py）')    for k, v in outs.items():        print(f'  {k:<14} {human(v)}')    print('\n[数据] inputs 台账（数据本体不入库，见 inputs/*/MANIFEST.json）')    for p in inputs:        ok = inputs_ok[p]        print(f'  {"OK " if ok else "XX "} {p}: 台账 {"在" if ok else "缺"}'              f'，目录内文件 {inputs_n.get(os.path.basename(p), "?")} 个')    print('      （台账 + 数据本体都要在；校验 py -3 scripts/diag/check_inputs.py）')    print(f'  {"OK " if vendor_ok else "XX "} gallery_src/vendor/MANIFEST.json'          f'（运行库台账；补齐 py -3 scripts/fetch_gallery_vendor.py）')    if adb_out is not None:        print(f'\n[模拟器] adb info 退出码 {adb_out[0]}')        for ln in adb_out[1]:            print(f'  {ln}')    print('-' * 74)    if bad:        print(f'结论: XX 必需项缺 {len(bad)} 个 → {"；".join(bad)}')        print('     装依赖: py -3 -m pip install UnityPy Pillow')        return 1    print('结论: OK 必需项齐备。接着可以跑一键重建：')    print('     py -3 scripts/bootstrap_rebuild.py --plan     # 先看要做什么')    print('     py -3 scripts/bootstrap_rebuild.py --yes      # 真跑（写 Output/）')    return 0if __name__ == '__main__':    sys.exit(main())
+# -*- coding: utf-8 -*-
+"""Check required inputs and optional tools before rebuilding project outputs."""
+import argparse
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SCRIPTS = os.path.dirname(HERE)
+sys.path.insert(0, SCRIPTS)
+
+import paths as P  # noqa: E402
+
+
+def _directory_size(path):
+    total = 0
+    files = 0
+    errors = []
+    if not os.path.isdir(path):
+        return {'exists': False, 'files': 0, 'bytes': 0, 'errors': errors}
+    def on_walk_error(error):
+        errors.append(f'{error.filename}: {type(error).__name__}: {error}')
+
+    for dp, _, names in os.walk(path, onerror=on_walk_error):
+        for name in names:
+            try:
+                total += os.path.getsize(os.path.join(dp, name))
+                files += 1
+            except OSError as e:
+                errors.append(f'{os.path.join(dp, name)}: {type(e).__name__}: {e}')
+                continue
+    return {'exists': True, 'files': files, 'bytes': total, 'errors': errors}
+
+
+def inspect(adb=False):
+    required = []
+    if not os.path.isdir(os.path.join(P.ROOT, 'scripts')):
+        required.append(f'项目脚本目录不存在：{P.ROOT}')
+    if not os.path.isdir(P.AB):
+        required.append(f'源包目录不存在：{P.AB}')
+
+    packages = {}
+    for package in ('UnityPy', 'PIL'):
+        try:
+            packages[package] = importlib.util.find_spec(package) is not None
+        except (ImportError, ValueError):
+            packages[package] = False
+        if not packages[package]:
+            required.append(f'缺 Python 依赖：{package}')
+
+    inputs = {
+        'azdata': os.path.join(P.ROOT, 'inputs', 'azdata', 'MANIFEST.json'),
+        'gamecfg': os.path.join(P.ROOT, 'inputs', 'gamecfg', 'MANIFEST.json'),
+    }
+    outputs = {
+        name: _directory_size(path)
+        for name, path in (
+            ('Paintings_v2', P.PAINT_OUT),
+            ('Spine_v2', P.SPINE_OUT),
+            ('Live2D', P.LIVE2D_OUT),
+            ('CG_v2', P.CG_OUT),
+            ('Audio', P.AUDIO_OUT),
+        )
+    }
+    optional = {
+        'vgmstream': bool(P.VGMSTREAM),
+        'ffmpeg': bool(P.FFMPEG),
+        'adb': bool(P.MUMU_ADB),
+        'chrome_or_edge': bool(P.CHROME),
+        'dependency_manifest': os.path.isfile(P.MANIFEST_PATH),
+        'vendor_manifest': os.path.isfile(
+            os.path.join(P.ROOT, 'gallery_src', 'vendor', 'MANIFEST.json')),
+        'inputs_azdata_manifest': os.path.isfile(inputs['azdata']),
+        'inputs_gamecfg_manifest': os.path.isfile(inputs['gamecfg']),
+    }
+    adb_result = None
+    if adb:
+        if not P.MUMU_ADB:
+            adb_result = {'returncode': 127, 'output': '找不到 adb；设置 AL_ADB 或安装 Android 工具'}
+        else:
+            try:
+                result = subprocess.run(
+                    [P.MUMU_ADB, 'devices'], capture_output=True, text=True,
+                    encoding='utf-8', errors='replace', timeout=15, check=False)
+                adb_result = {'returncode': result.returncode,
+                              'output': (result.stdout + result.stderr).strip()}
+            except (OSError, subprocess.TimeoutExpired) as e:
+                adb_result = {'returncode': 127, 'output': f'{type(e).__name__}: {e}'}
+
+    return {
+        'root': P.ROOT,
+        'required_missing': required,
+        'packages': packages,
+        'optional': optional,
+        'inputs': inputs,
+        'outputs': outputs,
+        'adb': adb_result,
+    }
+
+
+def _human(report):
+    print(f"项目根目录: {report['root']}")
+    print('\n[必需项]')
+    print('  OK 项目脚本目录' if os.path.isdir(os.path.join(P.ROOT, 'scripts'))
+          else '  XX 项目脚本目录')
+    print(f"  {'OK' if os.path.isdir(P.AB) else 'XX'} AssetBundles: {P.AB}")
+    for package, available in report['packages'].items():
+        print(f"  {'OK' if available else 'XX'} Python 依赖: {package}")
+    print('\n[阶段工具/数据]（缺失不拦截其他阶段）')
+    for name, available in report['optional'].items():
+        print(f"  {'OK' if available else '提示'} {name}")
+    print('\n[规模] Output')
+    for name, item in report['outputs'].items():
+        if item['exists']:
+            print(f"  {name:<14} {item['files']:>8} 文件  {item['bytes'] / 2**30:.2f} GiB")
+            for error in item['errors']:
+                print(f'    [提示] 无法统计：{error}')
+        else:
+            print(f"  {name:<14}（目录不存在）")
+    if report['adb'] is not None:
+        print(f"\n[模拟器] adb devices exit={report['adb']['returncode']}")
+        print(report['adb']['output'] or '（无输出）')
+    if report['required_missing']:
+        print(f"\n结论：必需项缺失 {len(report['required_missing'])} 项")
+        for item in report['required_missing']:
+            print(f'  - {item}')
+        print('安装 Python 依赖：py -3 -m pip install -r requirements-v2.txt')
+    else:
+        print('\n结论：必需项齐备。阶段专属工具/数据请按需补齐。')
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='新机器/新设备的项目工具链体检')
+    parser.add_argument('--json', action='store_true', help='输出机器可读 JSON')
+    parser.add_argument('--adb', action='store_true', help='额外运行 adb devices 检查模拟器连接')
+    args = parser.parse_args(argv)
+    report = inspect(adb=args.adb)
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False))
+    else:
+        _human(report)
+    return 1 if report['required_missing'] else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

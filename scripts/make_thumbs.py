@@ -48,3 +48,4 @@ if __name__ == '__main__':
     if errs:
         open(os.path.join(TDIR, '_err.txt'), 'w', encoding='utf-8').write('\n'.join(errs))
     print(f'完成 ok={ok} skip={skip} err={err}', flush=True)
+    sys.exit(1 if err else 0)

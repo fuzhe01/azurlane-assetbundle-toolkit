@@ -11,6 +11,7 @@
 
 > 历轮会话流水（2026-09-20 ~ 10-17 逐轮记录）已逐字外迁 `docs/archive/PROJECT_STATUS_2026-10-17_逐字外迁.md`（A30 段）；本文只留当前状态。
 > **本轮（2026-11-01）**：① 全库路径迁移 —— 43 个 `.py` + 2 个 `.bat` 收进 `scripts/paths.py`，闸门由软档改默认全判红并补 `.bat`/`.ps1` 盲区（**§178** / **WF-62**），逐轮流水逐字外迁 A26 段。② **合并 fork `fuzhe01/…` 的 97 个提交**（分叉点 `149053b`，`git merge-tree` 干跑出 15 处冲突，全部并集解、两边零丢弃）：编号让号 `WF-30/31/32 → WF-60/61/62`、`§115/§116 → §177/§178`；三道闸门因「对方的存量」变红，改为**冻结基线 + 只拦新增**（`check_paths` 89 文件、`check_lint_baseline` 160 条指纹、`check_doc_numbering` 21 个缺号 —— 后者的「必须 1..N 连续」判据已**废弃**，闭环条目逐字外迁产生的缺号是正确的归档结果）；新增 `scripts/diag/check_merge_numbering.py`（三方 `§N`/`WF-N` 撞车比对，合并产物自检用 `--worktree`）。5 道闸门全 PASS，`PROJECT_STATUS.md` 414 → 359 行（0c 段 62 行逐字外迁）。见 **WF-63 / §179**。③ **收尾自查又抓出两个缺陷**：`check_merge_numbering` 的判据把标题形态钉死（只认 `^## §N` 与 `^### WF-N:`），漏掉 `### §136.` 与 `## WF-42 标题` 两种真实写法 ⇒ 得出「WORKFLOWS 44 正篇无重复」的**假绿灯**（真实 64 篇且有重复，漏检 19 篇 WF + 7 篇 §）；另发现 `§133` 同号重复两份，**前一份的反引号被整体剥离**（`play(g) 里 played.add(g)` 退化成 `里  先执行`，28 → 0 个反引号），删坏留全（`TROUBLESHOOTING.md` 10128 → 10106 行）。见 **§180**。
+> **本轮当前修复（2026-11-01）**：恢复 4 个被压成单行注释、运行即静默 exit 0 的诊断/打包工具与一键重建入口；补上依赖扫描错误报告、截图包围盒坐标、更新计划单次指纹计算、MuMu 默认范围/非空目录保护，并让批处理检查最终汇总与失败数（**WF-64 / §181**）。只跑了计划、合成夹具和静态验证；本机缺少 `files/AssetBundles`，**未执行 `--yes`、未连模拟器、未跑真实资产全量重建**。
 > **用途**: 跨会话对接。**v1 时代历史已外迁 `docs/archive/PROJECT_STATUS_历史归档.md`**，本文只保留当前状态与主线。当前待办见 §6。
 >
 > **【其它待办】**~~§6.11 HitAreas 生成规则漏了 `touch_*` 组名~~ **已于 2026-09-22 修复落地**（13 模型真实判定区、全库 806/807）｜**剧情 CG 混进 `Paintings_v2/`** 的识别与分离（用户指出"脸黑的基本都是剧情 CG"，与缺脸是两类问题，见 §6.8）｜**结构隐患**：~~`azdata_*.json` 权威元数据源仍住在可被清理的 `.diag/`~~（**2026-09-24 已迁 `inputs/azdata/` + sha256 台账 `MANIFEST.json` + 校验 `scripts/diag/check_inputs.py`；数据本体仍不入库**，理由：9.2MB 游戏配置属资产、zlib 后 0.67MB 虽小但仓库原则是「只承载可复现的工具与知识」）——**该项：21 个脚本硬编码 `D:\Azur Lane Assets` / `C:\Users\KLLM` 绝对路径**，其中 **13 阶段调用链上 9 个**
@@ -171,6 +172,7 @@ vgmstream/ffmpeg 钉在 `C:\Users\KLLM\AppData\Local`）⇒ **换盘符或换用
 **核心脚本**：`scan_assets.py`、`export_assets.py`、`export_cue_audio.py`、`reconstruct_live2d.py`/`fix_model3.py`/`extract_motions.py`(★2026-09-21 权威映射重写)/`apply_live2d_motions.py`(★临时目录→备份换入)、`compose_paintings_v2.py`(★v2)、`extract_spine_v2.py`(★v2)、`export_dependency_manifest.py`、`build_gallery_index.py`、`make_thumbs.py`、`deploy_gallery.py`(gallery_src↔Output 硬链/漂移检查)、`fetch_gallery_vendor.py`(★2026-10-18 补 spine-all.js 官方上游源; 按 vendor 台账 sha256 补齐第三方库)、`mumu_sync.py`(★2026-10-18 同步范围放开为整棵 `files/`，`ONLY_TOP=[]`，`il2cpp` 等缺了可 sync 补，见 WF-35)、`ship_name_map.py`、`scrape_wiki_fast.py`、**`run_v2_full.py`**(两阶段全量驱动)、**`update_pipeline.py`**(★2026-09-29 新增：WF-15 那条 runbook 的阶段机，一条命令跑到待确认、第二条命令签字换入，见 **WF-23**)。
 
 **可复用诊断/验证工具 `scripts/diag/`**：承重工具清单已逐字外迁至 `docs/archive/PROJECT_STATUS_diag-tools_2026-10-29.md`（原第 165 行）；具体清单以目录为准（该清单的计数已过期）。
+**MuMu 同步当前默认**：`mumu_sync diff/sync` 仅枚举 `AssetBundles`；全 `files/` 必须显式加 `--all`。非空同名目录会报错保留，不递归删除（详见 WF-64；WF-35 记录的是 2026-10-18 的旧默认）。
 
 **文档**（导航见根目录 `README.md`，写入路由见 `AGENTS.md`）：
 - `docs/DEV_LOG.md` 操作手册 · `docs/WORKFLOWS.md` 可复用工作流 · `docs/TROUBLESHOOTING.md` 踩坑 · `docs/ERRORS.log` 错误流水

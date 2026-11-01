@@ -1075,8 +1075,9 @@ STAGES = [
 
 
 def cmd_plan(full):
-    print(f'\n输入指纹: {fingerprint()}')
-    mode, payload = scope_state(full)
+    fp = fingerprint()
+    print(f'\n输入指纹: {fp}')
+    mode, payload = scope_state(full, fp)
     if mode == 'full':
         scope = '**全量**（--full）——所有产物重算，Paintings/Spine/Live2D/CG/Audio 全部覆写'
     elif mode == 'ok':

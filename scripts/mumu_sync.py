@@ -54,11 +54,9 @@ HOST = None
 REMOTE_ROOT = "/sdcard/Android/data/com.bilibili.azurlane/files"
 LOCAL_ROOT = P.FILES
 
-# 顶层白名单：空 = 同步整个 files/ 全部顶层（默认，含 il2cpp/imgCache/Unity）。
-# 历史只同步 AssetBundles/hashes/version，导致 files/il2cpp/... 缺文件时 sync 拉不回
-# （2026-10-18 用户要求「整个 files 都能靠模拟器下载/更新」，据此放开为整棵树）。
-# 需要收窄时在此列出顶层名；或运行期用 --only 做类型级过滤。
-ONLY_TOP = []
+# 默认只同步游戏 AssetBundles；涉及整个 files/ 的补齐必须显式加 --all。
+DEFAULT_TOP = ['AssetBundles']
+ONLY_TOP = DEFAULT_TOP.copy()
 
 
 def run(args, timeout=300):
@@ -150,7 +148,11 @@ def connect():
     return False
 
 
-def remote_files(root):
+def _include_top(name, only_top):
+    return not only_top or name in only_top
+
+
+def remote_files(root, only_top=None):
     """获取模拟器内全部文件的 {相对路径: 大小} 字典。
 
     adb shell stdout 会被 buffer 截断（实测 ~20KB），所以不能一次 ls -lR。
@@ -163,10 +165,10 @@ def remote_files(root):
     rc, out, err = run(["shell", f"ls -1 '{root}' 2>/dev/null"], timeout=60)
     if rc != 0:
         raise RuntimeError(f"ls 顶层失败: {err.strip()}")
-    top_names = [n.strip() for n in out.split() if n.strip()]
+    all_top_names = [n.strip() for n in out.split() if n.strip()]
 
     # 2. 一次 adb 调用：用 for 循环 stat 顶层（避免 ARG_MAX）
-    if top_names:
+    if all_top_names:
         rc, out, _ = run(
             ["shell",
              f"cd '{root}' && for f in *; do stat -c '%F|%s' \"$f\"; done 2>/dev/null"],
@@ -174,20 +176,22 @@ def remote_files(root):
         )
         if rc == 0:
             lines = out.splitlines()
-            for name, line in zip(top_names, lines):
+            for name, line in zip(all_top_names, lines):
                 line = line.strip()
                 if '|' not in line:
                     continue
                 ftype, sz = line.split('|', 1)
                 # 目录本身不记录，它下面的文件由第 3 步 find 收集
-                if 'directory' in ftype:
+                if 'directory' in ftype or not _include_top(name, only_top):
                     continue
                 if sz.isdigit():
                     sizes[name] = int(sz)
 
     # 3. 对每个顶层目录递归拿所有文件
     #    adb shell stdout 会被 buffer 截断，所以子项过多时分块拉取
-    for name in top_names:
+    for name in all_top_names:
+        if not _include_top(name, only_top):
+            continue
         sub_root = f"{root}/{name}"
         rc, _, _ = run(["shell", f"[ -d '{sub_root}' ] && echo Y"], timeout=10)
         if rc != 0:
@@ -226,14 +230,23 @@ def remote_files(root):
     return sizes
 
 
-def local_files(root):
+def local_files(root, only_top=None):
     """获取本地全部文件的 {相对路径: 大小} 字典。"""
     sizes = {}
     root_p = Path(root)
     if not root_p.exists():
         return sizes
-    for dirpath, _, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(root):
         dp = Path(dirpath)
+        if dp == root_p:
+            if only_top:
+                dirnames[:] = [name for name in dirnames if _include_top(name, only_top)]
+                filenames = [name for name in filenames if _include_top(name, only_top)]
+        elif only_top:
+            top = dp.relative_to(root_p).parts[0]
+            if not _include_top(top, only_top):
+                dirnames[:] = []
+                continue
         for fn in filenames:
             fp = dp / fn
             try:
@@ -319,11 +332,11 @@ def cmd_diff(args):
         return 1
 
     print("读取模拟器文件列表...")
-    r_files = remote_files(REMOTE_ROOT)
+    r_files = remote_files(REMOTE_ROOT, ONLY_TOP)
     print(f"  模拟器: {len(r_files)} 个文件")
 
     print("扫描本地文件...")
-    l_files = local_files(LOCAL_ROOT)
+    l_files = local_files(LOCAL_ROOT, ONLY_TOP)
     print(f"  本地  : {len(l_files)} 个文件")
 
     # 三类差异：新增 / 大小不一致（同名但本地旧）/ 本地独有
@@ -383,7 +396,8 @@ def cmd_diff(args):
         print("\n== 本地独有: 0 个 ==")
 
     if added or size_diff:
-        print(f"\n下一步：python mumu_sync.py sync --apply   # 同步新增+更新")
+        all_flag = " --all" if not ONLY_TOP else ""
+        print(f"\n下一步：python mumu_sync.py sync{all_flag} --apply   # 同步新增+更新")
     return 0
 
 
@@ -428,8 +442,8 @@ def cmd_sync(args):
               f"请先启动 MuMu 再试")
         return 1
 
-    r_files = remote_files(REMOTE_ROOT)
-    l_files = local_files(LOCAL_ROOT)
+    r_files = remote_files(REMOTE_ROOT, ONLY_TOP)
+    l_files = local_files(LOCAL_ROOT, ONLY_TOP)
 
     # 同步 = 新增 ∪ 大小不一致
     added = sorted(x for x in r_files.keys() - l_files.keys() if wanted(x, ONLY_TOP))
@@ -457,19 +471,26 @@ def cmd_sync(args):
         print("[dry-run] 加 --apply 才会真正下载")
         return 0
 
-    print(f"开始下载 {len(targets)} 个文件 → {LOCAL_ROOT}")
+    scope = "整个 files/" if not ONLY_TOP else ", ".join(ONLY_TOP)
+    print(f"开始下载 {len(targets)} 个文件（范围：{scope}）→ {LOCAL_ROOT}")
     ok, fail = 0, 0
     t0 = time.time()
     for i, rel in enumerate(targets, 1):
         local_path = Path(LOCAL_ROOT) / rel
-        # 本地若误建了同名空目录（旧版同步的 bug），尝试清掉；
-        # 沙箱环境下删除可能被安全策略拒绝，失败就跳过，不影响 pull 覆盖文件
+        # 旧版可能误建同名目录。只移除确认为空的目录；非空目录不得递归删除。
         if local_path.is_dir():
             try:
-                import shutil
-                shutil.rmtree(local_path)
-            except Exception:
-                pass
+                next(local_path.iterdir())
+            except StopIteration:
+                local_path.rmdir()
+            except OSError as e:
+                fail += 1
+                print(f"  ✗ {rel}: 不能安全检查本地同名目录：{e}")
+                continue
+            else:
+                fail += 1
+                print(f"  ✗ {rel}: 本地存在非空同名目录，未删除；请先检查/备份：{local_path}")
+                continue
         _ensure_dir_only(local_path.parent)
         # 不预先删除本地旧文件：adb pull 会直接覆盖，删除反而可能被安全策略拦截
         rc, out, err = run(["pull", "-a", f"{REMOTE_ROOT}/{rel}", str(local_path)], timeout=900)
@@ -489,7 +510,7 @@ def cmd_sync(args):
 
 
 def main():
-    global REMOTE_ROOT, LOCAL_ROOT
+    global REMOTE_ROOT, LOCAL_ROOT, ONLY_TOP
     p = argparse.ArgumentParser(description="增量同步模拟器碧蓝航线资源到本地")
     p.add_argument("--remote", default=REMOTE_ROOT, help="模拟器源目录")
     p.add_argument("--local", default=LOCAL_ROOT, help="本地目标目录")
@@ -503,10 +524,14 @@ def main():
     dp.add_argument("--only", default="",
                     help="只比对这些类型（逗号分隔，如 painting,cue,spinepainting；"
                          "不带 = 全部）。**与 --list-out 互斥**：带过滤的比对不能当重跑范围")
+    dp.add_argument("--all", action="store_true",
+                    help="扩展到整个 files/（含 il2cpp/imgCache/Unity；默认仅 AssetBundles）")
     dp.set_defaults(func=cmd_diff)
 
     sp = sub.add_parser("sync", help="同步新增文件")
     sp.add_argument("--apply", action="store_true", help="实际下载（默认 dry-run）")
+    sp.add_argument("--all", action="store_true",
+                    help="扩展到整个 files/（含 il2cpp/imgCache/Unity；默认仅 AssetBundles）")
     sp.add_argument("--limit", type=int, default=0, help="只处理前 N 个，0=全部")
     sp.add_argument("--only", default="",
                     help="只拉这些类型（逗号分隔，如 painting,cue）；不带 = 全部")
@@ -515,6 +540,7 @@ def main():
     args = p.parse_args()
     REMOTE_ROOT = args.remote
     LOCAL_ROOT = args.local
+    ONLY_TOP = [] if args.all else DEFAULT_TOP.copy()
     if getattr(args, "only", ""):
         set_only(args.only)
     # 带类型过滤的 diff 是**部分**比对，拿它当范围清单会让流水线以为"别处都没变"

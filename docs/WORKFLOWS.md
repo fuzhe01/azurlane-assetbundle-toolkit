@@ -2924,6 +2924,8 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 
 ### WF-35: `mumu_sync` 的同步范围（`ONLY_TOP` 顶层白名单 vs 整棵 `files/` — 2026-10-18）
 
+> **后续默认变更（2026-11-01）**：本条记录的是当时按需放开全树的历史策略；当前默认只枚举/同步 `AssetBundles`，扩展到整个 `files/` 必须显式加 `--all`。非空同名目录不递归删除。判据与安全验证见 WF-64。
+
 **场景**：想让 `files/` 下的**任何**文件（不只 `AssetBundles`）都能靠模拟器 `sync` 下载/更新；
 缺 `files/il2cpp/Metadata/global-metadata.dat` 这类关键文件时也能从设备拉回。本条是范围怎么定的判据。
 
@@ -4608,3 +4610,26 @@ WF-16（回归六件套）、§177。
 `scripts/diag/check_paths.py` + `paths_baseline.json`、`scripts/diag/check_lint_baseline.py` + `lint_baseline.json`、
 `docs/WORKFLOWS.md`（本文件，编号让号后 WF-60/61/62）、`docs/TROUBLESHOOTING.md`（§177/§178 让号）。
 相关：§179、WF-61（基线闸门）、WF-60（接手自检三件）。
+
+### WF-64: 空壳工具恢复、同步范围收窄与批处理真完成判定（2026-11-01）
+
+**适用**：诊断/打包脚本或一键入口运行后没有结果、却返回 0；同步工具可能扫到或覆盖超出本次需要的数据；或父级编排器依赖若干子脚本却只凭通用「完成」字样判定成功。
+
+#### 判据
+
+1. **先验证入口而非文件存在**：脚本 `--help`、只读 `--plan` 必须产生明确输出；静态扫描或命令返回 0 不能证明脚本真的执行了工作。可用临时夹具验证实际输出形状、闭包及 dry-run 不落盘。
+2. **成功判定要落在终态摘要**：摘要应含处理总数与失败计数；编排器要求唯一终态匹配且失败数为 0。超时、手动停止、摘要缺失、失败数非零都要返回非零。文件存在/mtime 更新只作附加证据；缺工具而跳过阶段也要让总任务非零，不能把部分重建报成成功。
+3. **同步默认范围最小化**：`mumu_sync diff/sync` 默认只扫描 `AssetBundles`；全 `files/` 明确使用 `--all`。顶层过滤要在远端递归查询与本地 walk 前生效，而不只是最后过滤下载列表。
+4. **类型冲突不得静默删数据**：远端文件与本地非空同名目录冲突时应报告失败并保留目录内容；只有确认空目录后才可移除。
+5. **Motion3 结构检查只断言格式不变量**：按 Cubism 运行时计数，起始点 1 个；Linear/Stepped/InverseStepped 各加 1 点，Bezier 加 3 点；Bezier 控制值可合法超出端点值域，不应据此判坏。没有真实资产时只能报告夹具验证，不能宣称全库通过。
+
+#### 踩坑记录
+
+- **压成一行注释的“恢复脚本”可能从未运行过**：本轮四个 Python 工具和 `.bat` 入口原来只有超长注释，Python 仍会以 exit 0 静默结束。其可执行逻辑是按内嵌说明重建，不是从 Git 恢复到原实现；不能声称与历史版本逐字等价。
+- **安全默认要体现在枚举入口**：只在 diff 结果末端过滤，远端仍会递归遍历整棵设备目录、本地仍会 walk 全盘；把 top-level 过滤传到两侧的枚举函数才会同时缩小网络请求和本地扫描。
+- **成功标记太宽会产生假绿灯**：例如 `完成`、`DONE`、目标文件存在都可能与失败计数并存；匹配最终摘要，并让子脚本把内部失败映射为非零退出码。
+- 本轮只用 `--plan`、帮助命令、合成小文件/图片与临时 MuMu 结构验证；无 `files/AssetBundles`，未连接模拟器、未运行真实资产全量重建。
+
+#### 涉及文件
+
+`scripts/bootstrap_rebuild.py`、`scripts/diag/check_toolchain.py`、`scripts/diag/l2d_segment_selfcheck.py`、`scripts/diag/pack_samples.py`、`scripts/diag/scan_build_deps.py`、`scripts/diag/shot_budget.py`、`scripts/diag/run_cg_export.py`、`scripts/mumu_sync.py`、`scripts/paths.py`、`scripts/update_pipeline.py`、`scripts/run_v2_full.py`、`scripts/extract_cv_voice.py`、`scripts/export_cue_audio.py`、`scripts/make_thumbs.py`、`一键重建画廊.bat`。相关：WF-35（同步范围历史）、§181（空壳工具与假绿灯）。

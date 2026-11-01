@@ -133,7 +133,8 @@ def main():
 
     # 清理临时目录
     shutil.rmtree(TEMP_DIR, ignore_errors=True)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

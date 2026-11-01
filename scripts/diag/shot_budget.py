@@ -34,6 +34,7 @@
 """
 import argparse
 import glob
+import math
 import os
 import sys
 
@@ -125,11 +126,21 @@ def _bbox(im):
 def summarize(path, n=3):
     """返回可打印的文本行列表。--text-only 与 fit 之后都调用它。"""
     im = _open(path, TEXT_MAX_EDGE)
-    src = Image.open(path)
+    with Image.open(path) as src:
+        src_size = src.size
     lines = ['%s  %dx%d  %.0f KB'
-             % (os.path.basename(path), src.size[0], src.size[1], _kb(path))]
+             % (os.path.basename(path), src_size[0], src_size[1], _kb(path))]
     box, desc = _bbox(im)
-    lines.append('  非透明包围盒: %s' % desc)
+    if box is None:
+        lines.append('  非透明包围盒: %s' % desc)
+    else:
+        sx, sy = src_size[0] / im.width, src_size[1] / im.height
+        x0, y0, x1, y1 = box
+        original_box = (int(x0 * sx), int(y0 * sy),
+                        min(src_size[0], math.ceil(x1 * sx)),
+                        min(src_size[1], math.ceil(y1 * sy)))
+        lines.append('  非透明包围盒: 缩略图 %dx%d 坐标 %s；原图估算像素框 %s'
+                     % (im.width, im.height, box, original_box))
     grid = _grid_stats(im, n)
     lines.append('  分块（%dx%d，行=上中下，列=左中右）: 平均色/alpha覆盖率' % (n, n))
     for gy, row in enumerate(grid):

@@ -14,6 +14,7 @@
 判据：`py -3 scripts/diag/check_paths.py`（不许再有脚本里出现写死的盘符）。
 """
 import os
+import glob
 import shutil
 import sys
 
@@ -77,13 +78,26 @@ FFMPEG = tool('AL_FFMPEG', 'ffmpeg',
               os.path.join(_USER, 'AppData', 'Local', 'ffmpeg', 'ffmpeg.exe'),
               os.path.join(_USER, 'AppData', 'Local', 'ffmpeg', 'bin', 'ffmpeg.exe'),
               os.path.join(_USER, 'AppData', 'Local', 'Microsoft', 'WinGet', 'Links', 'ffmpeg.exe'))
-MUMU_ADB_CANDIDATES = [
-    # 2026-10-17 用户本机：MuMu 15（nx_device 版式，16.x 版 adb 在
-    # nx_device/<ver>/shell/ 下，与 MuMu12 的 nx_main 不同）→ 放首位优先命中
-    'D:' + os.sep + 'Program Files' + os.sep + 'Netease' + os.sep + 'MuMu' + os.sep + 'nx_device' + os.sep + '15.0' + os.sep + 'shell' + os.sep + 'adb.exe',
-    'C:' + os.sep + 'Program Files' + os.sep + 'Netease' + os.sep + 'MuMu' + os.sep + 'nx_main' + os.sep + 'adb.exe',
-    'C:' + os.sep + 'Program Files' + os.sep + 'Netease' + os.sep + 'MuMuPlayer' + os.sep + 'nx_main' + os.sep + 'adb.exe',
-]
+
+def _mumu_adb_candidates():
+    """MuMu install roots from Windows environment, including versioned layouts."""
+    roots = []
+    for key in ('ProgramFiles', 'ProgramFiles(x86)', 'LOCALAPPDATA'):
+        value = os.environ.get(key)
+        if value and value not in roots:
+            roots.append(value)
+    candidates = []
+    for root in roots:
+        candidates.extend(glob.glob(os.path.join(
+            root, 'Netease', 'MuMu', 'nx_device', '*', 'shell', 'adb.exe')))
+        candidates.extend([
+            os.path.join(root, 'Netease', 'MuMu', 'nx_main', 'adb.exe'),
+            os.path.join(root, 'Netease', 'MuMuPlayer', 'nx_main', 'adb.exe'),
+        ])
+    return sorted(set(candidates), reverse=True)
+
+
+MUMU_ADB_CANDIDATES = _mumu_adb_candidates()
 MUMU_ADB = tool('AL_ADB', 'adb', *MUMU_ADB_CANDIDATES) or next(
     (p for p in MUMU_ADB_CANDIDATES if os.path.isfile(p)), '')
 MUMU_MANAGER = (os.path.join(os.path.dirname(MUMU_ADB), 'MuMuManager.exe')

@@ -2,7 +2,7 @@
 """无头 Chrome + CDP 驱动 cg_export.html 导出 Spine setup-pose CG。
 用法: py -3 scripts/diag/run_cg_export.py [--only a,b,c] [--size 2400] [--timeout 1800] [--extra 'k=v&k2=v2']
 """
-import sys, os, json, time, subprocess, urllib.request, threading
+import sys, os, json, time, subprocess, urllib.request, threading, re
 sys.stdout.reconfigure(encoding='utf-8')
 import websocket
 import sys as _p_sys, os as _p_os
@@ -21,7 +21,7 @@ for _p in (_HERE, os.path.join(_HERE, '..')):
 
 
 def _chrome_fallback():
-    raise SystemExit("找不到 Chrome：设环境变量 AL_CHROME 指向 chrome.exe 再跑")
+    raise SystemExit("找不到 Chrome/Edge：设环境变量 AL_CHROME 指向 chrome.exe 或 msedge.exe 再跑")
 
 ROOT = _AL_ROOT
 CHROME = P.CHROME.replace(os.sep, "/") or _chrome_fallback()
@@ -86,6 +86,7 @@ def ev(expr):
 
 t0 = time.time()
 last = ''
+terminal = ''
 while time.time() - t0 < timeout:
     prog = ev("document.querySelector('#prog').textContent") or ''
     tail = ev("(function(){var l=document.querySelectorAll('#log div');return l.length?l[l.length-1].textContent:''})()") or ''
@@ -93,9 +94,23 @@ while time.time() - t0 < timeout:
     if line != last:
         print(f'[{int(time.time()-t0):4d}s] {line}', flush=True)
         last = line
-    if ('全部结束' in tail) or ('已停止' in tail):
+    if ('全部结束：' in tail) or ('已停止：' in tail):
+        terminal = tail
         break
     time.sleep(2)
-print('DONE, rc check')
 ws.close()
 proc.terminate()
+if not terminal:
+    print('[FAIL] CG 导出超时；未读到最终汇总行')
+    sys.exit(2)
+match = re.search(r'完成(\d+)\s+跳过(\d+)\s+失败(\d+)', terminal)
+if not match:
+    print(f'[FAIL] CG 导出汇总格式异常：{terminal}')
+    sys.exit(2)
+done, skipped, failed = map(int, match.groups())
+if terminal.startswith('已停止：'):
+    print(f'[SUMMARY] CG 已停止：完成{done} 跳过{skipped} 失败{failed}')
+    sys.exit(1)
+print(f'[SUMMARY] CG 全部结束：完成{done} 跳过{skipped} 失败{failed}')
+if failed:
+    sys.exit(1)

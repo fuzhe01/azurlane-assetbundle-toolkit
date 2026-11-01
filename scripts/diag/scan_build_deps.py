@@ -33,10 +33,14 @@ def main():
         own.add(os.path.splitext(os.path.basename(p))[0])
 
     mods = set()
+    errors = []
     for p in files:
         try:
-            t = ast.parse(open(p, encoding="utf-8").read(), filename=p)
-        except Exception:
+            with open(p, encoding="utf-8") as f:
+                source = f.read()
+            t = ast.parse(source, filename=p)
+        except (OSError, UnicodeError, SyntaxError) as e:
+            errors.append((p, e))
             continue
         for n in ast.walk(t):
             if isinstance(n, ast.Import):
@@ -52,6 +56,11 @@ def main():
     for m in thirds:
         print(m)
     print("--- 共 %d 个第三方顶层模块 ---" % len(thirds))
+    if errors:
+        print(f"--- 解析失败 {len(errors)} 个文件 ---", file=sys.stderr)
+        for path, error in errors:
+            print(f"  {path}: {type(error).__name__}: {error}", file=sys.stderr)
+        return 1
     return 0
 
 

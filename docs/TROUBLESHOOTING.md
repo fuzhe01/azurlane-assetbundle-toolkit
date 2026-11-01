@@ -10182,3 +10182,30 @@ py -3 scripts/diag/sync_session_model.py --sync-from-copilot-model b05ca5fd
 `docs/TROUBLESHOOTING.md`（删除 `§133` 的降级副本，10128 → 10106 行；纯 CRLF，bareLF 0）。
 相关：§179（存量不是你的债、编号撞车不是内容冲突）、§71（常亮的闸门等于没有闸门）、§177（一批沉默型缺陷）。
 
+## §181. 注释壳工具静默 exit 0、同步越界与批处理假绿灯（2026-11-01）
+
+**现象**：诊断/打包脚本或“一键重建”看似正常结束，却没有计划、报告或产物；MuMu 同步可能默认遍历 `files/` 整树，且把本地同名目录递归删除；批处理即使子任务失败也可能凭通用完成字样继续。
+
+**根因**：
+
+1. 四个诊断/打包 Python 文件及一个 `.bat` 入口被压成单行注释/无效命令。Python 只执行注释会正常 exit 0，因此“命令成功”是空转假绿灯。它们没有可恢复的真实实现历史；本轮按文件内嵌说明与相邻工具契约重建，不能宣称是原实现的逐字恢复。
+2. `mumu_sync` 的全树默认与末端过滤让不相关目录也被枚举；遇到远端文件 / 本地非空同名目录类型冲突时递归删除会造成数据丢失。
+3. 编排器曾使用宽泛标记和子脚本退出码；若子脚本只打印“完成”或内部失败仍退出 0，就会把失败包装成成功。CG 批处理还可能超时或被停止后仍打印固定收尾文本。
+4. Motion3 的自检若把 Bezier 控制值限制在端点值域内，会把合法过冲误判为格式错误；计数应与运行时实际点消费规则对齐。
+
+**修法**：
+
+- 重建 `bootstrap_rebuild.py` 的只读计划、显式 `--yes` 执行、工具预检与摘要判定；让 Spine/立绘、语音、缩略图与 CG 子流程显式报告失败，CG 超时/停止/失败均非零退出，缺工具跳过阶段也不再返回“完整成功”。
+- MuMu 默认只扫描并同步 `AssetBundles`；全 `files/` 显式 `--all`。遇本地非空同名目录直接保留并报错，空目录才移除。
+- Motion3 检查只验证记录布局、有限数、终点单调与 Meta 计数；不把控制点值域当成有效性判据。
+- AST 扫描遇读取/语法错误返回非零；截图 bbox 输出缩略图坐标及映射回原图的估算框；`update_pipeline --plan` 只计算一次指纹；样本打包器拒绝清单路径越界并回读验证归档。
+
+**验证与边界**：Python 3.15 载荷级环境检查、`compileall`、Motion3 阳性/阴性自测、依赖扫描、bootstrap `--plan`、MuMu/打包器/截图工具临时夹具均通过。体检显示本机缺少 `files/AssetBundles`，所以未运行 `--yes`、未连模拟器、未对真实资产做全量验证；重建工具不应据此标成“真实数据已验收”。
+
+**已排除的假设**：
+
+- ~~“脚本存在且 exit 0 就代表已实现”~~ → 注释壳脚本可正常 exit 0；必须检查可观察输出并用夹具证明执行路径。
+- ~~“Bezier 控制值越过端点值域就是坏数据”~~ → 该限制不是通用 Cubism 格式不变量；本检查不再作此断言。
+- ~~“只在同步目标列表过滤就能缩小扫描范围”~~ → 远端递归和本地 walk 仍会遍历全树；过滤必须传入枚举入口。
+
+**涉及文件**：`scripts/bootstrap_rebuild.py`、`scripts/diag/check_toolchain.py`、`scripts/diag/l2d_segment_selfcheck.py`、`scripts/diag/pack_samples.py`、`scripts/diag/scan_build_deps.py`、`scripts/diag/shot_budget.py`、`scripts/diag/run_cg_export.py`、`scripts/mumu_sync.py`、`scripts/paths.py`、`scripts/update_pipeline.py`、`scripts/run_v2_full.py`、`scripts/extract_cv_voice.py`、`scripts/export_cue_audio.py`、`scripts/make_thumbs.py`、`一键重建画廊.bat`。相关：WF-64（入口与批处理真完成判定）、WF-35（MuMu 同步范围历史）。

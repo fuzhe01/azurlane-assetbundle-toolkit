@@ -541,6 +541,7 @@ def run(skin_keys, mode, out_audio, map_path, jobs, skip_done=False):
     rel = lambda cv, n: 'Audio/CV2/cv-%d/%s.ogg' % (cv, n)
 
     cue_sets = {}
+    fail = 0
     if mode == 'probe':
         for cv in need:
             with tempfile.TemporaryDirectory(dir=DIAG) as tmp:
@@ -553,7 +554,7 @@ def run(skin_keys, mode, out_audio, map_path, jobs, skip_done=False):
                          if os.path.isdir(os.path.join(out_audio, 'cv-%d' % cv)))
             print('增量：复用已解包 %d / %d，只新解 %d 个'
                   % (reused, len(need), len(need) - reused), flush=True)
-        done = fail = 0
+        done = 0
         with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
             futs = [ex.submit(process_bank, cv, banks[cv], out_audio, skip_done) for cv in need]
             for f in futs:
@@ -672,7 +673,8 @@ def run(skin_keys, mode, out_audio, map_path, jobs, skip_done=False):
         p = os.path.join(DIAG, '_cv_voice_miss.json')
         json.dump(sorted(miss), open(p, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print('无解清单: %s（%d）' % (p, len(miss)))
-    return 0
+    print(f'[SUMMARY] CV 语音包处理失败数：{fail}')
+    return 1 if fail else 0
 
 
 if __name__ == '__main__':

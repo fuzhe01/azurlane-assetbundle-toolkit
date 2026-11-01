@@ -95,21 +95,30 @@ def run_spine():
     # 但仍然要给 --bak：MANIFEST 就是"无前身可备份"的当场证据（写正式区不给 --bak 会被直接拒）。
     spine_bak = os.path.join(ROOT, "Output", "_OLD_bak",
                              "spine_full_" + time.strftime("%Y%m%d_%H%M"))
+    failed_batches = 0
     for i in range(0, len(todo), 25):
         batch = todo[i:i + 25]
         p = subprocess.run([PY, os.path.join(HERE, "extract_spine_v2.py")] + batch
                            + ["--bak", spine_bak],
                            capture_output=True, text=True, encoding="utf-8",
                            errors="replace", env=_SUBPROC_ENV)
+        batch_failed = p.returncode != 0
         for ln in (p.stdout or "").splitlines():
             if ln.startswith("✗"):
+                batch_failed = True
                 with open(ERROR_LOG, "a", encoding="utf-8") as f:
                     f.write(f"[spine] {ln}\n")
+        if p.returncode and p.stderr:
+            with open(ERROR_LOG, "a", encoding="utf-8") as f:
+                f.write(f"[spine] batch exit={p.returncode}: {p.stderr.strip()}\n")
+        failed_batches += int(batch_failed)
         done = min(i + 25, len(todo))
         if done % 100 < 25 or done == len(todo):
             el = time.time() - t0
             log(f"spine 进度 {done}/{len(todo)}  用时 {el:.0f}s")
     log("Spine 阶段完成")
+    log(f"Spine 阶段完成：失败批次 {failed_batches}")
+    return failed_batches
 
 
 def run_static(out_dir=None, redo=False, manifest=None, limit=0):
@@ -170,6 +179,7 @@ def run_static(out_dir=None, redo=False, manifest=None, limit=0):
         mf.close()
     log(f"静态阶段完成：ok={ok} fail={fail}")
     log("STATIC-DONE")        # 完成哨兵：崩溃/截断时这行不会出现
+    return fail
 
 
 def main():
@@ -180,13 +190,18 @@ def main():
     ap.add_argument("--manifest", default=None, help="逐张取景事实 TSV 的输出路径")
     ap.add_argument("--limit", type=int, default=0, help="只跑前 N 张（样本先行用）")
     args = ap.parse_args()
+    failed = 0
     if args.only != "static":
-        run_spine()
+        failed += run_spine()
     if args.only != "spine":
-        run_static(out_dir=args.out, redo=args.redo, manifest=args.manifest,
-                   limit=args.limit)
+        failed += run_static(out_dir=args.out, redo=args.redo, manifest=args.manifest,
+                             limit=args.limit)
+    if failed:
+        log(f"== 完成但失败 {failed} 项 ==")
+        return 1
     log("== 全部完成 ==")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
