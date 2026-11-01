@@ -14,7 +14,11 @@ import sys, os, json, time, subprocess, urllib.request
 
 sys.stdout.reconfigure(encoding='utf-8')
 import websocket
-import chrome_tree
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
@@ -22,7 +26,7 @@ import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_
 CHROME = P.chrome_or_die()
 PORT = 9345
 DEBUG_DIR = os.path.join(ROOT, '.diag', 'chrome_voice_v2')
-BASE = 'http://127.0.0.1:8777/gallery_v2/index.html'
+BASE = os.environ.get('GALLERY_URL') or 'http://127.0.0.1:8778/gallery_v2/index.html'
 
 HOOK = r"""
 window.__AUD = [];
@@ -93,7 +97,9 @@ CASE = r"""(async(key, tab)=>{ try{
     res.withVoice=[...sel.options].filter(o=>/（语音）/.test(o.textContent)).map(o=>o.value);
     const pickv=res.withVoice[0];
     if(!pickv) return JSON.stringify(Object.assign(res,{err:'没有带（语音）标记的组'}));
-    for(let i=0;i<80 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
+      /* 预算 200×500ms=100s：按**最坏情形**（连跑多模型 / 冷启 / 排在批处理最后）定，
+     不按单跑实测拍（2026-10-27 §156 形态三；l2d_inspector_verify 早已是 150s）。 */
+  for(let i=0;i<200 && !(l2State&&l2State.app&&l2State.app.stage.children[0]);i++) await t(500);
     sel.value=pickv; sel.dispatchEvent(new Event('change'));
     await t(1500);
     res.group=pickv;
@@ -142,7 +148,7 @@ NOVOICE = r"""(async(key)=>{
 
 def main():
     args = sys.argv[1:]
-    proc = subprocess.Popen([
+    proc = chrome_tree.launch([
         CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
         '--remote-allow-origins=*', f'--user-data-dir={DEBUG_DIR}',
         '--window-size=1400,900', '--autoplay-policy=no-user-gesture-required',

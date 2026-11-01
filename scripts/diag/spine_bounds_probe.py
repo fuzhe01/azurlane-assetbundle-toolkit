@@ -8,13 +8,19 @@ import websocket
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import cdp_slot            # 端口不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
 import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
+
 CHROME = P.chrome_or_die()
 PORT = cdp_slot.port('bounds')
 FOLDER = sys.argv[1] if len(sys.argv) > 1 else 'aluomangshi_2'
 SKIN = sys.argv[2] if len(sys.argv) > 2 else '1'
 PROFILE = cdp_slot.profile(ROOT, 'bounds')   # 每次全新 profile：复用会把上一次的 chrome 当本页
-proc = subprocess.Popen([
+proc = chrome_tree.launch([
     CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
     '--remote-allow-origins=*', f'--user-data-dir={PROFILE}',
     '--no-first-run', '--no-default-browser-check', '--enable-unsafe-swiftshader',

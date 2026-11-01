@@ -44,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 OUT = os.environ.get("L2D_OUT_DIR") or os.path.join(ROOT, "Output", "Live2D")
 PROD = os.path.join(ROOT, "Output", "Live2D")   # 只重导 motion 时，model3.json 仍从这里取
 DIAG = os.path.join(ROOT, ".diag")
-BASE = "https://static.l2d.su/azurlane/live2d"
+BASE = os.environ.get("L2D_REF_BASE", "https://static.l2d.su/azurlane/live2d")
 TIMEOUT = 25
 # urlopen(timeout=25) 只约束**单次 socket 操作**：慢滴式响应能让整轮挂住（2026-09-24 实测
 # 206/269 处 25 分钟零输出），所以每个 URL 还要一道墙钟硬上限。见 TROUBLESHOOTING §26。
@@ -68,15 +68,31 @@ REF_SUBDIRS = ("motions", "motion")
 
 
 def _raw(url):
-    """真实取一次。返回 bytes / b"MISS"(404、403) / None(其它失败)。"""
+    """真实取一次。返回 bytes / b"MISS"(不存在或无权) / None(其它失败)。
+
+    ⚠️ 必须同时支持 http(s):// 与 file:// 两种源（2026-10-27 起 L2D_REF_BASE 可指向本地参考库）：
+      · `urlopen("file://...")` 返回对象的 `.status` 是 **None** 而不是 200 —— 用 `!= 200`
+        做判据会把**每一个**本地读取都判成 MISS，整个换源白做。
+      · `file://` 缺文件抛 `URLError(code=None, reason=FileNotFoundError/WinError 2/3)`，
+        `code` 不是 404 ⇒ 会落进"其它失败"污染 STATS。必须显式映射成 MISS。
+    """
     try:
         with urllib.request.urlopen(url, timeout=TIMEOUT) as r:
-            if r.status != 200:
+            st = getattr(r, "status", None)
+            if st not in (None, 200):
                 return b"MISS"
             return r.read()
     except Exception as e:
         code = getattr(e, "code", None)
         if code in (404, 403):
+            return b"MISS"
+        reason = getattr(e, "reason", None)
+        if isinstance(reason, BaseException):
+            if isinstance(reason, (FileNotFoundError, NotADirectoryError, PermissionError)):
+                return b"MISS"      # file:// 缺文件 / 缺目录 / 无权限
+            if getattr(reason, "winerror", None) in (2, 3, 5):
+                return b"MISS"
+        if isinstance(e, (FileNotFoundError, NotADirectoryError)):
             return b"MISS"
         return None
 

@@ -72,9 +72,26 @@ def load_key():
     d = open(MD, 'rb').read()
     fo, fsz = struct.unpack_from('<ii', d, 8 + 8 * 7)
     bo, bsz = struct.unpack_from('<ii', d, 8 + 8 * 8)
-    c = struct.unpack_from('<iii', d, fo + 12 * 17654)[2]
-    nx = struct.unpack_from('<iii', d, fo + 12 * 17655)[2]
-    return list(struct.unpack('<19I', d[bo + c:bo + nx]))
+    nfields = fsz // 12
+    print(f"字段表偏移={fo} 字段数={nfields} 默认值堆偏移={bo} 堆大小={bsz}")
+    candidates = []
+    for i in range(nfields - 1):
+        c  = struct.unpack_from('<iii', d, fo + 12 * i)[2]
+        nx = struct.unpack_from('<iii', d, fo + 12 * (i + 1))[2]
+        if nx - c == 76:
+            candidates.append((i, c))
+    print(f"=== 相邻字段偏移差=76 的候选: {len(candidates)} ===")
+    for i, c in candidates:
+        key = list(struct.unpack('<19I', d[bo + c:bo + c + 76]))
+        print(f"  字段索引 {i} 偏移 {c}  key[:4]={key[:4]}")
+        try:
+            if one('scripts64', key, verbose=False) is not None:
+                print(f"✓ 命中: 字段索引 {i}")
+                return key
+        except Exception:
+            pass
+    print("未命中")
+    return None
 
 
 def runs_stat(b):

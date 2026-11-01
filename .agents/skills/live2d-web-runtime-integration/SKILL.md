@@ -1,7 +1,7 @@
 ---
 name: live2d-web-runtime-integration
-description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
-version: 1.6.1
+description: 在网页里集成 Live2D Cubism Web 运行时做模型渲染与动作播放（pixi 6.5.2 + live2dcubismcore 5.1.0 + pixi-live2d-display 0.4.0 组合），覆盖 model3.json 加载、动作触发（startMotion 传参陷阱）、按部位点击触发（HitAreas 命中判定）、模型尺寸与 fit 基准、交互层反模式、内存销毁与无头 CDP 验证判据，**以及"点模型说话 + 台词字幕"层（§9：语音被下一条动作 dispose、首播竞态、按皮肤序号取词、正文与音频同源、字幕要在全屏目标内、开关验收要反向证据、"这一格没声"要先分清是没接上还是上游没下发）**，**以及逐帧探针的仪器体检前置（§25：十三条仪器 bug，含「手动 `im.update` 步进不能代替自然播放」与「冻结后首帧 extract 仍会推进一次，必须先丢弃一帧」、出帧源解耦、采样点挂 `coreModel.update` 入口、保活必须周期重发、坐标只许用页面出口、`stringify` 丢 undefined 键、pins 对比须先让渡）**，**以及「模型少了一个部件」的定性流程（§27：不透明度绑定反查必须带阳性对照、几何镜像配对区分「有件但关着」与「真的缺件」、真实播放态不冻结审计回答观感、像素差分不能当缺件证据、canvas rect 只许问页面、`getParameterId` 不存在、`getParameterIndex` 越界返回 count）**。当需要让 .moc3/.model3 模型在浏览器里"真的动起来"、或反馈"模型不动/乱抖/点不出动作/显示不全/少一只鞋少一条腿/某个部位消失"、或要在国内网络下载 Live2D 运行时库时使用。触发词：Live2D 网页播放、Cubism 运行时、pixi-live2d-display、Live2DModel 动作、模型点不动、idle 不播、HitAreas 点击、播完动作就卡死、判定区全丢、参数残留复位、模型画面是碎片堆、部件乱叠在一起、贴图错绑、Textures 顺序、加载成功但画面错乱、话没说完就被掐、一点声音都没有、台词字幕、点立绘出声、全屏没字幕、有声没字幕、audio 播放器看不见、逐帧探针、出帧源、1Hz 节流、fps 假绿、探针仪器坏了、部位消失、少一只鞋、少一条腿、部件是不是丢了、参数反查、不透明度绑定、镜像配对、参数效果测量、冻眨眼、相对阈值、整模重建。不适用于 Live2D 模型文件的 AssetBundle 逆向还原（那是 unity-assetbundle-painting-restore）与纯截图导出（headless-chrome-cdp-batch-export）。
+version: 1.10.31
 ---
 
 # Live2D 网页运行时集成
@@ -378,6 +378,47 @@ handler 缺失时探针要**显式报错**，绝不回落到 `mm.startMotion` �
 验收判据（工具 `scripts/diag/l2d_touchidle_probe.py`）：before 出画 53 → mid 57（clip 生效）→
 after **53（与 before 相等）**，且位移 >0.3 的判定区数 = **0**。
 
+### 7.3 CDP 就绪必须三件同时成立——`about:blank` 的 `readyState` 天生就是 `'complete'`
+
+**症状**（会被误判成产品坏了）：探针一连上就报
+`ERR openShip is not defined` / `openShip is undefined` /
+`Cannot read properties of undefined (reading 'internalModel')` / `Execution context was destroyed`。
+
+**根因**：CDP 连上 tab 的瞬间，执行上下文可能还是 `about:blank`，而
+`about:blank` 的 `document.readyState` **天生就是 `'complete'`**。于是
+
+```js
+while (document.readyState !== 'complete') sleep();   // ✗ 第一次判就放行
+```
+
+这个门槛形同不存在，后续所有 `Runtime.evaluate` 都打在空白页上。
+
+**实测指纹**（空白上下文 vs 真实页面）：
+
+| 判据 | `about:blank` | 真实页面 |
+|---|---|---|
+| `document.URL` | `about:blank` | 目标 URL |
+| `document.scripts.length` | 0 | 多个 |
+| `document.documentElement.outerHTML.length` | 39 | 数十万 |
+| `window.GALLERY` | `false`/undefined | 对象 |
+| 时间线 | 连上即刻 | **41~43 秒**才 complete（263KB html + vendor + 索引） |
+
+**正确判据（三件同时成立，缺一不可）**：
+
+1. `location.href` 真的等于目标（含 query / `#` 差异归一）
+2. `document.readyState === 'complete'`
+3. **业务标志在**（如 `typeof window.GALLERY === 'object'`）—— 这一条才是真正区分
+   「页面加载完了」与「执行上下文还没换过去」的判据
+
+固化实现：`scripts/diag/cdp_wait.py` 的 `wait_ready(ev, want_url, budget, flag)`，
+返回 `ok` + 实际耗时，超时给出最后观测到的三项状态。踩坑补充：
+
+- 等待中的 `continue` **不要计入重试预算**，否则慢页面（本项目 41s）会被判超时。
+- 连 `/json` 列表时 `chrome-extension` 的 `background_page` 会混进来，
+  **必须按目标 URL 子串过滤 tab**（如 `gallery_v2`），不能取列表第 0 个。
+- 页面级就绪 ≠ 模型级就绪：本项目点完 live2d tab 后模型进舞台还要更久，
+  「45s 内模型未进入舞台」是模型级超时，别拿它反推页面没加载好。
+
 ## 8. 落地检查清单
 
 - [ ] 三件套版本成对且按序加载；vendor 相对路径在页面上下文里 `fetch` 验证过
@@ -420,3 +461,1356 @@ after **53（与 before 相等）**，且位移 >0.3 的判定区数 = **0**。
    造假。分开它要用**两条互相独立的事实**：表里那一行的主键（→ 包号）逐号去源包目录与已解码目录各查一次。
    ⚠️ 两个代理指标都不许当证据：`voice_actor=-1` 在剧情/变体实体上是哨兵值（不等于无 CV）；"整个号段都不在"是
    按前缀归纳，同一个大段里往往有别的号是下发的 ⇒ 只能**逐包号**判。
+
+## 10. 单模型目视页（l2d_visual.html）的 motion 播放 与 model3 资源重写（2026-10-16，version 1.7.0）
+
+- **动画组来源**：model3 的 **`FileReferences.Motions`**（`{组名:[{url}]}`）**不在顶层 `motions`**；运行时读
+  `motionManager.definitions`（键即组名）。
+- **选组只认键集存在性**（`clip in definitions`）。⚠️ **`definitions[g].length` 懒加载前恒 0**，拿它当
+  「组存在」判据会误杀真实组（`main_1`/`idle3`）→ fallback 播成 `idle6`/`idle2` → 表现成「动作不对应
+  所请求 clip」。**切勿用 length/返回值判「组是否存在」，只看键在不在。**
+- **播放直呼** `model.motion(group, idx)`（priority 默认 2）；不要遍历候选组 / 定时重试 / 自选 idx。
+  **不要 FORCE(3)**：强制打断当前动作、整体换行为，常被用户拒。
+- **资源 404 → 黑屏**：pixi 把 model3 **完整 URL（含文件名）当资源 base 目录**，请求
+  `<dir>/<name>.model3.json/<res>`；server 需 rewrite 回 `<dir>/<res>` + 尾斜杠兜底（`scripts/diag/serve_live2d.py`）。
+- **验证走页面启动路径**：`scripts/diag/vis_auto_l2d.py` 不手动调 play，只等页面 `setTimeout` 自动播、
+  再轮询参数振幅；**headless 过 ≠ 实机过**，中间只差缓存（实机硬刷/无痕后再判）。
+- 完整根因、排除假设与三链接验收见 `docs/TROUBLESHOOTING.md` §117、操作流程见 WORKFLOWS WF-30。
+
+## 11. 画质：渲染分辨率（DPR）怎么提、怎么验（2026-10-17，version 1.8.0）
+
+场景：Live2D/Spine 在高 DPI 屏糊了，要把渲染 buffer 从 1x 提到 ≥2x。判据量 **canvas buffer**，
+不靠截图（headless DPR=1 看不出 2x）。
+
+- **Live2D**：`new PIXI.Application({..., resolution:Math.max(2, dpr), autoDensity:true})`。
+  vendored pixi `RESOLUTION` 默认 **1**，不显式传 resolution 就是 1x；`autoDensity` 必须成对
+  （只加 resolution 会让 canvas CSS 尺寸撑垮布局）。P1440/4K 屏 dpr>2 时取 dpr 倍率。
+- **Spine**：`resize()` 里 `cv.width = round(wrap.clientWidth*dpr)`；且帧循环**每帧**比对
+  `buffer vs CSS×DPR` 偏差即重建（拖动跨 DPR 显示器、全屏进出会变，用事件监听会漏）。
+- **命中/取景不受影响**：Live2D 命中走 `mdl.toLocal(clientX-rect.left, clientY-rect.top)`
+  （pixi 官方坐标转换自动处理 resolution），取景用 CSS `clientWidth/Height`——跟渲染 buffer 解耦，
+  所以 resolution/autoDensity **不会**破坏命中几何。Spine `fit()/pixelFit()` 用 `cv.width`
+  自身乘 DPR 内部自洽，构图不变。
+- **验收探针**：`scripts/diag/l2d_spine_dpr_verify.py`（真实点击路径读 `app.view.width` /
+  `spcwrap canvas.width` 对比 CSS×DPR，4 样本：live2d=2x、spine=CSS×DPR 全 PASS）。
+- **⚠️ 无头只验到「≥2x 成立」**（dpr=1 时 `want=max(2,1)=2`）；真实高 DPI 观感须用户真机确认。
+- **踩坑**：本机可能没 Chrome（只有 Edge），项目多数无头脚本硬编码 Chrome 路径 →
+  `FileNotFoundError [WinError 2]`（wf16 全挂）。**别当成产品缺陷**；自建探针带 Chrome/Edge 候选列表。
+- 完整判据/步骤/排除假设见 `docs/TROUBLESHOOTING.md` §118、操作流程见 WORKFLOWS WF-31。
+
+## 12. 动作回落语义：idle 变体判定与映射表（2026-10-17，version 1.9.0）
+
+场景：非 idle 动作播完，想回落「最衔接的待机变体」（方案 B），而不是固定回落 idle。要点在三层回落语义 +
+idle 变体判定。
+
+- **idle 待机变体 = 只认 `^(idle\d*)$`**。home/main_*/login 是**场景长动画**（宿舍/主界面滑/登录），
+  **不是**循环站姿变体——别把它们塞进 idleSet：用户实测播 home/main_1/2/3 会「无限自循环停不下来」。
+  数据侧 `scripts/build_motion_chain_map.py` 的 `IDLE_RE` 决定此判定，写进 `motion_chain.json` 的
+  `idle_groups`，前端 `idleSet = new Set(idle_groups)` 直接用。
+- **三层回落语义**（在 `mm.startRandomMotion` 接管回调里，按 `lastGroup` 分类）：
+  ① `touch_drag*` → 回落 drag 自身（配合 `createMotion` 对 idle/drag 组 `setIsLoop` 持续循环）；
+  ② 长动画（`!idleSet.has(lg) && !/^touch_idle/`）→ 2026-10-19 前是固定回 `idleGroup`；**新语义见 §12.1**；
+  ③ `touch_idle*` → 查 `chainModel.chain[lg].best`（末帧 vs 待机首帧差异度，口径见 WF-32）。
+  回落目标确定后同步更新 bar 的 `#l2Curr` 动态标签（播动作显示动作名、回落后显示待机组名）。
+- **回落必须直接 `mm.startMotion(best, idx, IDLE优先级)`**，**不能**调库 `startRandomMotion`：它只在
+  「已加载进 motionGroups」的条目里筛（见 §3），变体组从未播过 → motionGroups 空 → 静默返回 false，
+  回落永不触发，currentGroup 卡在动作组。
+- **`.includes` 空数组恒 false**：全量启用闸若写成 `SAMPLE_ONLY.includes(sk.key)`，在 `SAMPLE_ONLY=[]`
+  时**全库禁用**（`[].includes(x)` 恒 false → chainSrc=null → idleSet 只剩 idleGroup，所有 touch_idle
+  退化成默认 idle）。正确写法 `SAMPLE_ONLY.length===0 || SAMPLE_ONLY.includes(sk.key)`。
+- **启发式 best 会随候选集漂移**：idle_groups 候选数一变（如剔除 home/main_*/login），norm 重排后 best
+  可能改变（aersasi_2 touch_idle1：idle3→idle）。因此**验证探针的 expected 必须从表动态读 best**，
+  别手写一个会漂的值。
+- **无头验证回落**：headless 软渲染帧率低（1~2fps），长动画墙钟播不完 → `isFinished` 永不 true →
+  自然回落不触发（**非产品 bug**，真机 60fps 正常）。探针用 `mm.queueManager.stopAllMotions()` 模拟
+  动作结束，触发与自然播完**完全一致**的 complete→shouldRequestIdleMotion→startRandomMotion 回调链。
+- 完整判据/踩坑：docs/TROUBLESHOOTING.md §120、操作流程见 WORKFLOWS WF-33。
+
+### 12.1 2026-10-19 追加：best 要加「明显更优」闸门；黑屏/无候选回默认（version 1.9.1）
+
+只按 `chainModel.chain[lg].best` 无条件回落，会在两种情况下害人：best 只比默认 idle 好 1~2%（伪最优，
+等于在两帧几乎一样的姿态里抛硬币）；或 best 组没加载/条目是 fallback（静默失败 ⇒ 画面停在空状态，
+用户看到「黑屏」）。落成前端 `_pickFallback`：
+
+1. 条目不存在 / `fallback:true`（无待机候选）→ 默认 `idleGroup`；
+2. best 组不在 `definitions` 或长度为 0（懒加载前）→ 默认；
+3. 默认 `idleGroup` 也在 `runners_up` 时，必须 `best_norm < 0.85 × default_norm`，否则回默认；
+4. 默认组不在候选（没有共同驱动参数）→ 允许 best（如 `zhenzhuhao_2 touch_idle25` nb=0 → idle20）；
+5. **`touch_idle*` 例外：即使只差 1% 也必须回 best**（用户 2026-10-19 判据：别把 `touch_idleN` 吞回 `idle`）。
+   全库 1,945 个 touch_idle 条目，其中 148 个因此从默认 idle 切到对应变体（aersasi_2 touch_idle2→idle5、
+   aersasi_3 touch_idle31→idle1）。
+
+**判据/数据**：aersasi_2 touch_head 的 best=idle5 只比 idle 好 2% → 回 idle；jianye_4 mail 的 best=idle3
+（nb 0.0145 vs idle 8866.9）→ 必须走 idle3；z46_4 mission 是 fallback → 回 idle。全库 3,688 个长动作、
+810 个 best≠默认，只有明显更优的才采用。**探针 expected 必须用同一套闸门动态算**（旧版把「长动作=idle」
+写死，14 条全 PASS 却掩盖了 810 个动作）。
+
+**「黑屏」取证**：全库 8,051 个 motion3 中 0 条以「所有 PartOpacity 归零」结束、1,033 条 Model/Opacity
+曲线也 0 条以 0 结束 ⇒ 数据层没有「淡出到黑」的 clip；黑屏更像回落到未加载组后 startRandomMotion
+静默失败。无头 ~2fps 不足以判高频观感，需真机对照。
+
+**回落竞态（2026-10-19 实修）**：目标变体未预加载时 `startMotion` 要 fetch，期间库每帧再请求随机待机，
+默认 idle 会抢先（label 已是 idle2、currentGroup 仍是 idle）。三件套：回落前 `mm.state.complete()`；
+`startMotion(..., NORMAL=2)` 压过正在播的 IDLE(1)；记 pending 目标、最多 10s 内拒绝后续 `startRandomMotion`。
+探针 `forceEnd` 也要先 `state.complete()` 再 `stopAllMotions()`，否则优先级残留 = 假 FAIL。完整判据：§124 / WF-37。
+
+
+## 13. MultiplyColor / ScreenColor：0.4.0 运行时会整层丢色（2026-10-19，version 1.9.2）
+
+moc3 4.2+ 给每个 drawable 存了 `MultiplyColor` 与 `ScreenColor`。游戏里大量用它们做：
+- **multiply=[0,0,0,1]**：阴影/描边/分屏遮罩层（应压黑）；
+- **screen=[1,1,1,1]**：白色填充的剪影（本例倒酒的白瓶白杯）。
+
+`pixi-live2d-display 0.4.0` 的 Cubism 渲染器**只认模型级 u_baseColor**，全文搜 `multiplyColor` 0 命中；颜色数组其实在 `coreModel._model.drawables.multiplyColors / .screenColors`（`Float32Array`）。丢弃的后果：该黑的层被画成原色 → **分割线虚影/白边**；该白填充的层被画成贴图 → **和游戏画面不一致**。
+
+**修法（最小补丁，别换栈）**：三个 fragment shader 加 `u_multiplyColor/u_screenColor`，`setupShaderProgram` 按 `renderer._drawableIndex` 取色，`doDrawModel` 每次 `drawMesh` 前记索引。公式：
+
+```
+texColor.rgb = texColor.rgb * u_multiplyColor.rgb;
+texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb * u_screenColor.rgb);
+```
+
+**红线**：颜色数组缺失时必须回落 `multiply=[1,1,1,1] / screen=[0,0,0,1]`，否则默认模型整块变黑（首版实测）。读色层级是 `renderer.getModel()._model.drawables`，不是 `renderer.getModel().drawables`。
+
+**不要升 0.5.0-beta**：它支持颜色但要 Pixi 7；当前栈 6.5.2，换上后 `Live2DModel.from` 不 resolve。补丁版要入库（`gallery_src/vendor/live2d/...-patched.js`）+ MANIFEST `local` 源，否则换机器 fetch 会拉回原版。
+
+**验收**：`ougen_8 idle8` 分割线虚影消失、`touch_idle17` 白瓶白杯出现；再抽 3 个默认色模型确认没变黑；`hit_verify.py --only ougen_8` WIRING=0。完整取证：§125 / WF-38。
+
+## 14. 回落三层语义 / 看门狗 / 自动刷新 / login / 眼动（2026-10-19，version 1.9.4）
+
+**回落（唯一定义）**：touch_idle* 用 `norm`、touch_drag* 用 `raw_sse` 查表 best；**不做覆盖度排除**（覆盖度会误杀 idle9 这种低覆盖但末帧完全重合的候选，反而选 idle11）。touch_drag* 按住时强制 loop、松手回表 best；其它长动作默认 idle；只有 idle* 自循环。不要给长动作加“最佳衔接”闸门/覆盖度排序（2026-10-19 试过，ougen 会从 idle9 变 idle13，用户判不衔接，已回退）。
+
+**卡最后一帧**：库的 `shouldRequestIdleMotion` 不一定及时触发；在 `app.ticker` 检测 `currentGroup==null` 且不在回落中 → 下一帧 `startMotion(dst,0,NORMAL)`。
+
+**自动更新**：索引重建（`build_gallery_index.py`）写 index 前跑 `build_motion_chain_map.py --write`，失败拒绝写 index。
+
+**开场 login**：`OPT.login` 默认关；FORCE 启动（NORMAL 压不过初始 idle），用户切动作前 `state.complete()`。
+
+**眼神**：`OPT.eye` 默认开；LOW 优先级 ticker 直接写 `ParamEyeBallX/Y`（写在 update 里会被 `loadParameters()` 覆盖）；判据指针右上 → +0.7/+0.6，关闭回 0。
+
+**分屏阶梯**：mask 256→1024/2048 只变细；4x+4096+2D 降采样仍存在，是 artmesh 硬 alpha 露出 (0,0,0) 底色。CSS blur 0.55 可消但整体软；彻底修需改模型 mask/artmesh，运行时不要谎称已根治。
+
+完整取证：§127/§128、WF-40。
+
+**2026-10-19 追加**：mask 缓冲不能固定 1024/2048 —— Cubism 把多个 mask 铺在一张方 RT 上，N 必须 ≥ 画布长边 × √maskCount；按模型自动取 2 的幂（ougen_8 maskCount=9 → 8192）。拖拽互动：把 moc3 的 TouchDrag* 补成互动区（ougen 30+14=44），**Ctrl/⌘+左键拖拽**才触发（普通左键平移），松手按距离播 touch_drag*。
+
+**HitAreas 完整性（2026-10-19）**：`fix_model3.py` 补 moc3 的 `Touch*` 时，动作组先查 `touch_<x>`，没有再退回 `<x>`（TouchIdle6→idle6 这种脱鞋/换装按钮就是被旧规则丢掉的）；TouchDragN 默认播 drag 动作：有 touch_dragN 用同名组，没有按编号轮转现有 drag 组；不能改播 idleN（~~脱鞋是 idle6~~ 误判已修正——见 §15，脱鞋是状态切换不是任何 motion）。
+
+## 15. TouchDragN 不全是动作：状态开关的识别、接线与验证信源（2026-10-20，version 1.10.7）
+
+**识别判据（缺一不可）**：某 TouchDragN 交互对应的参数 ① 在该模型全部 motion3.json 曲线里**零驱动** ② 零 physics3.json Output 驱动 ③ 0..1 值域开关 ④ 参数 Id 与区名同名或显示名是开关语义（「脱鞋」「墨镜」「××on/off」）。游戏里这类交互 = 播 motion（若有）+ **游戏代码直接 set 参数**，视觉过渡由 moc3 keyform 随参数渐变自然产生。碧蓝两种形态：区名→参数名不对应（ougen_8 TouchDrag17→ShoseOff，稀少）与**区名同名参数**（aersasi_2/3、antu_2 通用：点 TouchDragN = 播同名 motion + set 同名 `touch_dragN` 参数）。全库扫描器模式：join `CubismParameter`(GO 名=参数Id) + `CubismDisplayInfoParameterName`(显示名) + `CubismRaycastable`(区名)，三条判据过滤（实例 `scripts/diag/l2d_state_param_scan.py`）。
+
+**接线（零 monkey-patch）**：配置表（模型→[{trigger,id,off,on,dur,label}]）+ `stateApply` 挂 `internalModel` 的 **`beforeModelUpdate`** 事件（vendor 在 physics/pose 之后、`model.update()` 渲染之前 emit）——帧末 `loadParameters()` 会把参数拉回 motion 末态，但下一帧事件里再写，**渲染永远读到状态值**，不与 motionManager 抢管线。切换动画 = tween 逐帧写中间值（easeInOutQuad 0.5s）。⚠️ 配置表是模块级常量时，运行态（`_on`/`_tw`）挂条目对象上会**跨模型实例残留**——每次进模型必须重置，否则重进皮肤带着上一场状态。
+
+**验证信源的选择（截图法三层假阴性，按成本递增别走弯路）**：
+1. 全图截图差分：idle 基线抖动（碧蓝大 idle 模型 21~44%）常常 ≥ 状态差异 → 假阴性；
+2. 区域化裁剪：裁剪盒若取「点击标记」而非「形变 drawable」的盒照样漏；布局抖动还会让两张截图尺寸不一致；
+3. 冻结 ticker + `core.update()` 手动步进：core.update 两帧对比自身不幂等，基线反而 45%，弃。
+**两种干净信源**：① **顶点直读**——`setParameterValueById` + `core.update()` + `getDrawableVertexPositions()` 前后对比（形变 drawable 数即证据，配一条必驱动参数如 ParamAngleX 做阳性对照）；② **beforeModelUpdate 探针 listener**（排在产品 stateApply 之后注册）逐帧记录渲染前参数值——看到 tween 中间值与终态往复即闭环「渲染必读到」。形变大（换装/戴墨镜级别）时截图法才可直接用。
+
+**探针时序坑**：算好点击坐标→等几秒→用旧坐标点击 = 假阴性（idle 演进让判定区移位，远超 2% 包围盒容差）。坐标计算与派发必须在**同一次 evaluate 里零间隔完成**。同理，读「参数当前值」要想到帧末 `loadParameters` 拉回——渲染前一刻才是真值。
+
+完整取证：§132；实例 ougen_8 脱鞋 + aersasi_2 墨镜。
+
+## 16. 残留复位竞态 + headless 时钟伪影（2026-10-20，version 1.10.8）
+
+### 16.1 「消费型状态机 + async 登记」竞态（动作播完不复位的通型）
+
+**通型**：页面侧有「播过什么 → 之后怎么处理」的消费型状态（如残留复位 restTick 的 `played` 集合）。`mm.startMotion` 是 **async**（未预载组先 fetch 再 createMotion，页面侧的登记（如 paramSets）在 resolve 后才发生）。若消费逻辑按帧跑且触发条件（currentGroup 回到 idleSet）在**加载窗口内就成立**（切组是 async、旧组还在），消费会读到**未登记的空集** → 按空集处理 → **这组动作被吞**，后续一切依赖该登记的逻辑静默失效。
+
+**判据（日志形态）**：消费日志出现 `built ... 0`（want 为空）+ 随后 `empty`，而这组动作明明刚播过——不是没播，是被吞了。
+
+**修法**：登记时刻用 `playedAt[g]=performance.now()` 之类的**独立时间戳**；消费前检查「登记未完成 && 加载占位（`motionGroups[g][0]===undefined`）&& 距 play < 超时」→ 本帧跳过不消费；超时按空集消费防死等。超时取网络加载上限量级（本地服务 5s 足够）。
+
+### 16.2 headless 时钟伪影：动作「播不完/不回落」先查时钟再查逻辑
+
+**机制**：vendored pixi-live2d-display 的动作时钟不是 `performance.now()`，是 `elapsedTime += Ticker.shared.deltaMS`（onTickerUpdate 累计、_render 时传 internalModel.update）。**PIXI Ticker 低帧率下 deltaMS 被 maxElapsedMS cap**（headless swiftshader ~1.2s/帧）→ 动作时钟慢于真实时间数倍 → entry 的 `endTime < userTime` finished 判定迟迟不达 → 动作不结束、不回落、与复位渐变交错的稳态残差。
+
+**识别法（三个信号）**：
+- entry 快照 `et` 固定、真实时间远超 `st+dur` 仍 `fin:0`；
+- `queueManager._userTimeSeconds` 恒 0（该字段不走主时钟，别用它判推进）；
+- fadeWeight 却正常推进（0→1）——updateParameters 在跑，只是时钟刻度慢。
+
+**绕开法（验证时序敏感逻辑的标准姿势）**：不要等动作自然 finished——**直接切一个 idleSet 组**（`play('idleX')`）让消费逻辑的触发条件立即成立；开场 login 的 300ms 定时器竞态用 `localStorage.setItem('gallery.opt.v1', '{"login":false}')` + reload 排除。entry/state/调用流三层插桩模板见 `scripts/diag/l2d_motion_state_trace.py`（包 mm.startMotion/startRandomMotion/state.reserve/setCurrent/complete 记调用流 + queueManager._motions 快照）。
+
+**已排除的假设（别重跑）**：restTick 写入被 loadParameters 覆盖（同帧写后读回即推翻——save→load 在同一调用栈，外部 ticker 插不进中间）；cm 实例不同/方法遮蔽（`cm===stage.children[0].internalModel.coreModel` + 原型方法 hasOwnProperty 判定）；FadeOutTime 过长导致对抗（全库缺省=-1 → endTime=ut-1 即时掐，对抗仅 1-2 帧）；物理/呼吸/focus 写 Angle 参数（物理输出不含、breath 已关、focus 写在 save 后被 load 撤销）。
+
+完整取证：§133。
+
+## 17. 状态开关的值域坑 / slider 模式 / restTick 开关豁免（2026-10-21，version 1.10.9）
+
+### 17.1 on/off 不能硬编码——值域坑（墨镜只变深浅的根因）
+
+状态开关参数的值域**不是统一的 0..1**：aersasi_2/touch_drag1 实测范围 **0..10**（`core.getParameterMaximumValue`），硬编码 `on:1` 只到 10% 渐变位 → 观感「只变深浅不是穿戴」。**配置表必须省略 on/off、运行时解析**（on=max、off=min，`getParameterIndex` 拿 ix 后读 min/max）。验证信源：产品逻辑态（`STATE_TOGGLES[key][i]._on` 从 off 变 max）+ 顶点直读形变数（墨镜 on 态 609 drawable 形变）。**帧末 evaluate 读参数值=假阴性**（loadParameters 拉回、stateApply 下一帧才重申）——别用参数直读验证状态切换。
+
+### 17.2 slider 型 drag：拖动调值不是开关
+
+需求形态：某些 TouchDragN 是**拖动位移连续调参数**（颜色深浅类），非穿戴开关。实现要点：条目加 `mode:'slider'`；onDown 时记 `参数初值+起点 x`；onMove 按 `(cx-x0)/240*(max-min)` 连续写值并同步更新 `_on` 快照（stateApply 的每帧重申消费它——闭环成立）；onUp 只结束拖动、值保持。点击（非拖动）slider 区走原 toggle 两端切换。**哪些模型哪些参数是 slider 语义要扫描+游戏对照确认，别拍脑袋接线**。
+
+### 17.3 restTick 必须豁免「形态开关」参数（回落断崖真根因）
+
+**通型**：残留复位逻辑（§21 restTick）把「播过的 clip 驱动、idle 不驱动的参数」拉回默认值。**两态装饰开关**（数据侧识别：≥5 组以定值出现且值集恰 {0, V}，如 antu_2/Param148 ∈{0,10}）也是「idle 不驱动」成员 → 切回 idle 被拉回 0 → **装饰瞬间消失 = 用户报的「回落完全不衔接」**。游戏语义是**状态保持**（拖完戴着）。修法：`build_motion_chain_map.py` 的 `find_switch_params` 把开关集写进表（v2 的 `switch_params`），前端 restTick 的 want 构造排除 `switchParams`。**注意与姿势参数的区分**：姿势基态参数（每个 idle 变体不同值、多态）不满足两态判据，仍正常复位。
+
+### 17.4 回落选组的「漏参数断崖」盲区（计分口径）
+
+只对「动作与 idle 共有参数」求差异的 metric，对**漏参数（idle 无曲线、被拉回 0）的断崖完全盲**——低覆盖候选（leak 84/293）赢过高覆盖（leak 4）。正确口径：**全参数计分**，漏参数按 `(end-0)²` 计入（开关参数例外：前端豁免保持，断崖=0 跳过）。**硬约束方案已否证**：把开关匹配当 idle 候选的硬排除——姿势组合参数混进开关集 → 全候选被排除 → 退回软分 = 约束白做；且排除路径返回占位分 0.0 会污染排序。
+
+完整取证：§135；判据工具 `scripts/diag/l2d_pose_anchor_pick.py`（锚点）+ motion_chain.json v2。
+
+## 18. 真实浏览器取证通路 + 渲染路径偏差（2026-10-23，version 1.10.10）
+
+**为什么需要**：模型在 headless 全绿、用户真实浏览器却有部件缺失时，继续在 headless 里换参数只是空转。
+缺的往往不是"更多假说"，而是**在用户那一层环境里取数**的能力。
+
+### 18.1 页面侧三个取证参数（正本 `gallery_src/index.html` 末尾初始化段）
+- `?ship=<id>`：打开即直达模型（+自动切 Live2D 标签）。
+- `?motion=<组名>`：模型就绪后**走页面自己的 `window.__l2play`** 自动播该动作。
+  ⚠️ 诊断脚本直接调 `motionManager.startMotion` 会绕过语音/标签/回落映射，是典型假阴性（本项目 AGENTS.md 明令禁止）。
+- `?diagpost=<url>&diagframes=N&diagstep=ms`：把**全部 drawable** 的 `op/vis/ro/bbox` + WebGL
+  vendor/renderer + Hand 参数值 POST 回本地接收端（`scripts/diag/hand_diag_sink.py`）。
+  ⇒ 用户/默认 profile 环境**零操作**就能拿到与 headless 同格式的数据做逐一对照。
+- 参数不支持时的表现：不带 `ship` 也要能执行 `diagpost`（把两者放在同一个 IIFE 里时，
+  早退 `if(!sp) return;` 会让回传代码整段失效——本项目踩过）。
+
+### 18.2 判据：headless 对账必须走真 GPU
+`--use-angle=swiftshader`（软件渲染）与真 GPU（D3D11）在 **drawable 的 `vis` 上会不同**：
+实测同一模型同一动作，`ArtMesh255~258`（op=1）在 SwiftShader 下 `vis=1`、真 GPU 下 `vis=0`，
+真 GPU 与用户浏览器（ANGLE/NVIDIA D3D11）一致。
+⇒ 凡是对账「可见性 / 像素」，headless 必须 `--gpu`；把 `WEBGL_debug_renderer_info` 的 renderer 字符串
+随数据一起回传，当场就能核对两侧是否同一路径。**不要用软件渲染的绿旗去否证真实浏览器的问题。**
+
+### 18.3 判据必须落在正确的 mesh 上（否则一直是盲的）
+用手指/手掌这类无语义命名的 mesh 时，"猜一组 ArtMesh 编号当手部"会静默失效：本项目 §136 猜的
+7 个 ArtMesh 全部不是皮肤部件，据此得出的"手部正常"结论无意义。
+⇒ 用**逐 mesh 隔离渲染扫描**（patch `getDrawableOpacity` 只留目标 → render → 统计肤色占比）。
+肤色占比 >0.9 的才是皮肤部件；再按 bbox 位置区分脸/手。
+对"op=1 却 vis=0"的部件，用**叠加式强制显示**（只把目标 `getDrawableDynamicFlagIsVisible` patch 成 true，
+其余保持原值，比较 patch 前后像素差异）定性：差异区就是该部件本身，避免把遮罩关系打乱。
+
+### 18.4 坑：解构方法引用会丢 this，诊断 ticker 静默死亡
+```js
+const dvis = core.getDrawableDynamicFlagIsVisible;  // ✗ this 丢失，内部 this._model 报错
+const dvis = (i) => core.getDrawableDynamicFlagIsVisible(i);  // ✓
+```
+外层再套 `try{...}catch(e){}` 空吞 → 诊断面板永远空白，看起来像"没有异常"。
+⇒ 诊断/调试代码的 catch **必须把异常写进可读位置**（本项目把 `e.stack` 前两行写进诊断面板后一眼定位）。
+
+### 18.5 用户环境复现失败时的正确交付
+1. 先穷举**可自动化**的维度并逐条否证（DPR/有头/系统 DPI/全屏/动作切换残留/完整周期/数据版本/mask/model3），
+   把否证结论连同"判据方法"一起入库——否证本身也是资产。
+2. 打通 `?ship=&motion=&diagpost=` 后，剩下唯一一环是**人眼确认现象是否仍存在**；
+   这时向用户要的不是"帮我跑脚本"，而是"打开这个链接看一眼，红框落在哪/数值板最后一行是多少"。
+
+**涉及**：`gallery_src/index.html`（三个取证参数）、`scripts/diag/l2d_hand_probe.py`、
+`scripts/diag/hand_diag_sink.py`、`scripts/diag/l2d_motion_curve_diff.py`、`scripts/diag/hand_skin_map.py`。
+
+## 19. 部件「该显示却不显示」先找参数，不要先怀疑渲染（2026-10-23，version 1.10.11）
+
+### 19.1 判据：`--findop` 直接点名控制参数
+Cubism 高层 API 不暴露「哪个参数控制这个 drawable 的透明度」。做法是**逐参数试极值**：
+对每个 `parameters.ids` 设 `min`/`max` → `core.update()` → 读 `getDrawableOpacity`，
+`opacity` 或 `dynamicFlagIsVisible` 翻转的就是控制参数。一次扫描（582 参数）即可点名，
+比逐帧截图差分快一个数量级。
+
+实证（ougen_8 左腿）：`Param211=30 → 腿 op=1`；`=0 → op=0`。
+再回 motion3.json 比对：`home`/`login` 把它钉在 30，idle 系列只写 `[0,8]` 残值
+⇒ 「进模型少条腿、点某个区反而出现」的完整因果。
+
+### 19.2 场景级姿势开关要「钉基线」，且只钉未驱动项
+换装/场景类参数（腿、道具、装饰）的正确值常由**主界面动作**（home/login）决定，
+在待机 idle 里只留接近 0 的残值。播放器从 idle 起步就会缺件。
+修法：每帧在 `beforeModelUpdate`（motion 之后、渲染之前）钉回基线值，
+**但必须跳过「当前动作组有曲线驱动」的参数**，否则会盖掉动作本身的曲线。
+
+### 19.3 回落口径：raw_sse 与 norm 会背离，别假设归一化更合理
+`norm = Σ(d/range)²/N`（range = 该参数在各待机候选首帧间的值域）会让
+**实际几何差异最大的候选**拿到最小 norm：ougen_8/touch_idle14 的 idle5 raw 排名 11 / norm 排名 1，
+而正确答案 idle9 raw 排名 1 / norm 排名 11。
+判据：把两个口径的完整排行都打出来看是否背离（`l2d_fallback_rank.py`），
+背离时**以用户/游戏观感为准**，不要拿 norm 值大小当正确性证据。
+全库切换口径前先量影响面（`l2d_fallback_metric_ab.py`：本项目 1945 条里 363 条会变 = 18.7%），
+影响面大就先用「手工修正表 + `__hold__`（播完不回落）」逐条兜，别一次全切。
+
+### 19.4 `__hold__`：不是所有动作都该回落
+`effect` 这类语义是「暂停当前动作」的组，回落反而打断它。回落表要能表达「保持不回落」，
+而不只是「回落到哪个组」。
+
+**涉及**：`scripts/diag/l2d_hand_probe.py`（--findop/--abparam/--params/--follow）、
+`scripts/diag/l2d_fallback_rank.py`、`scripts/diag/l2d_fallback_metric_ab.py`、
+`gallery_src/index.html`（BASE_PINS / FALLBACK_FIX）。
+
+### 19.5 更正：`--findop` 的结论不足以判定「显示开关」（2026-10-23 实测翻车）
+`--findop` 能证明「改参数 X 会让 mesh M 的 opacity 变化」，但**姿势参数同样会让 opacity 变化**
+（换 keyform 改变形状/遮挡 → 可见性跟着变）。本项目据此把 `Param211` 当显示开关钉死 30，
+结果**把 idle 的双腿动画直接改了**，而缺的部件仍未出现。
+
+判据修正 —— 确认「显示开关」必须**同时**满足：
+1. 改它能观察到目标部件出现；
+2. **不破坏该动作自身其它部件的表现**（后者才是区分「开关」与「姿势」的关键）。
+
+定量辅助：同帧 A/B（`--abparam`）看差异面。
+- 差异面小且集中在局部（ougen_8 的 ShoseOff：0.64%）→ 局部开关/换装
+- 差异面大、横跨整片肢体（Param211：4.6%）→ 姿势/形态参数，**不许钉值**
+
+另：部件"不显示"还可能因为它**根本没有对应曲线**——ougen_8 的 idle9 是 12 个 idle 变体里
+唯一不写 `Param211` 的那个，于是它保持上一个动作的残值。查「该组有没有这条曲线」比猜参数含义快。
+
+### 19.6 回落表重算必须带 `--write`（否则静默不落盘）
+`build_motion_chain_map.py` 不带 `--write` 只打印统计、**不写产物**；终端最后一行出现
+`[chain] 已写 <path>` 才是真写了。同类坑：CDP 探针会命中 `http.server` 的 Last-Modified 缓存，
+改完前端/数据后仍读到旧文件 → 假阴性。修法：探针 URL 加毫秒时间戳 + `Network.setCacheDisabled(true)`。
+
+
+## 20. 互动区（Touch*）与换装参数：信号源选择与验收判据（2026-10-23，version 1.10.13）
+
+### 20.1 找互动区要用 moc3 的 Touch* drawable，不要用参数曲线
+**错误做法**：扫 motion3.json，按「参数在不同动作间有多档取值」筛互动项。
+**为什么错**：换装开关（脱鞋/戴眼镜/戴手套）在游戏里是**运行时代码 `setParameterValueById` 写的**，
+动作曲线里恒为常量。实测 `ShoseOff` 在 **46 个动作**里全部是 0 —— 从曲线看"只有 1 档"，
+被"恒定值无可调空间"规则整类剔除。用硬编码个案（如 `touchdrag17 → ShoseOff`）补，
+只能补到你发现的那一个。
+
+**正确信号源**：**moc3 里的 `Touch*` drawable**（互动区本体，模型自带按钮部件）。
+它与 model3.json 的 HitAreas 是否登记无关 —— 实测某模型 moc3 有 44 个 Touch drawable，
+HitAreas 只登记 3 个，**1299/4085 个互动区存在但前端点不到**。
+moc3 是二进制，但字符串池里 drawable id 可直接
+`re.finditer(rb'Touch[A-Za-z0-9_]{0,24}', raw)` 捞出，不需要解析库。
+
+### 20.2 三层信息要分开，别混为一谈
+| 层 | 来源 | 回答什么 |
+|---|---|---|
+| 互动区存在 | moc3 的 Touch* | 有哪些按钮 |
+| 能否点中 | model3.json HitAreas | 前端认不认 |
+| 点了做什么 | **只在游戏代码里** | 效果语义 |
+
+`--findop <TouchDrawable>` 只返回**该 drawable 自身的显隐参数**（实测 `TouchDrag17 → Param500`），
+**与它触发的业务参数无数据关联**。⇒ 自动提取只能做到"发现 + 定位"，
+效果语义必须目视确认或用户标注，别宣称能自动推导。
+
+### 20.3 「这个参数改了有没有效果」的唯一可靠判据
+三个假象（都踩过）：
+1. **画布像素哈希**：headless(`--gpu`) 下 `drawImage(app.view,…)` 取到**全 0 缓冲**
+   （哈希里可加非零像素计数自检，`nz0` = 0 个非零），此时"模型右移 40px"都判无变化。
+2. **前后两次全量 drawable 快照直接比**：呼吸/眨眼会在两次采样间改变状态 → **假阳性**
+   （曾让一个"改动 0 个 drawable"的参数显示"有变化"）。
+3. **写入后立即回读**：前端 pin 由 ticker 下一帧才重申，立即读必然读到动作铺回的值 → **假阴性**。
+
+**可靠判据**：把参数写到两端值 → 中间 `core.update()+render` →
+**逐 drawable 对比 opacity / dynamicFlagIsVisible，并要求能点名出具体部件**（changed > 0）。
+停动作能消除动画干扰；点名则排除假阳性。
+实测产出：某参数改动 16 个 drawable、另一个改动 2 个，各自可复核。
+
+### 20.4 参数「可写性」也要验，别把钉死参数当交互
+部分参数的 `min == max == default`（moc3 把它们钉死），前端放个按钮点了也不生效。
+上游筛选时必须跑一次运行时验证：写入后连推数帧再读，稳定保持才算可写。
+
+**涉及**：`scripts/diag/l2d_touch_drawable_scan.py`、`l2d_toucharea_export.py`、
+`l2d_toucharea_ui_verify.py`、`l2d_costume_writable_probe.py`、`l2d_canvas_hash_diag.py`。
+
+## 21. 非循环动作播完不回 idle：库的回落通道可能整条失效，别改 vendor 库（2026-10-24，version 1.10.14）
+
+**症状三连**（同一个根因的不同表现，容易被当成三个 bug）：
+点动作后画面「定住」；开场 login 播完角色「逐渐走出画面只剩背景」；「当前动作」标签一直停在刚播的组名。
+
+### 先分清三条通道，别混着查
+
+| 想做的事 | 依赖什么 | 失效表现 |
+|---|---|---|
+| 动作播完自动回 idle | `MotionManager.update()` 里 `isFinished()` → `state.complete()` → `shouldRequestIdleMotion()` → `startRandomMotion(idle, IDLE)` | 停末帧、永不回落 |
+| 「当前动作」标签正确 | 前端自己写 DOM（库回落**不**经过前端 `play()`） | 画面已回落但标签还是旧组名 |
+| 用代码强制切动作 | `MotionState.start()` 的优先级规则 | `startMotion` 静默失败、`state` 纹丝不动 |
+
+### 判「有没有回落」不能用 UI 标签
+
+标签只在**前端主动播**时写入；库自己回落时不刷新它。据标签判「未回落」必然误判。
+可靠判据只有两个：读 `mm.state.currentGroup`（回落成功后它会变成 idle 组），
+或用参数直读看姿势定值是否回到 idle 组的值。截图像素比对**不可用于此**——
+idle 有呼吸循环，同状态两张截图的差异本底就有 20~80，基准不稳时判据会给出任意结论。
+
+### 别改 vendor 库，用时长自己安排
+
+`isFinished()` 走 `queueManager` 条目的 `_finished` 标志；实测某些模型/库版本下
+`getEndTime()` 恒为 `-1`、`_finished` 从不置位、`motionFinish` 从不 emit。
+这时改库要动 vendor 文件（下次换版本全丢），而「按 `Meta.Duration` 定时回落」几行就够：
+
+1. 索引侧把每个动作组的 `Meta.Duration` 带进 `motion_chain.json`（库的 `definitions` 里只有 `File`，
+   取不到时长）。
+2. `play()` 里 `setTimeout(duration + 0.6s)` 调回落；`play()` 每次先 `clearTimeout` 防叠加；
+   语义上「播完停在末帧」的动作（如 `effect`）用白名单跳过。
+3. 回落时 **`state.complete()` 之后必须把 `currentPriority` / `reservePriority` 归零**，
+   否则上一动作的 FORCE(3) 会让回落请求被 `reserveMotion` 拒掉。
+
+### `startMotion` 的优先级陷阱（最耗时的一条）
+
+`MotionState.start()` 的真实规则：
+
+```js
+if (priority === 1) {                      // IDLE
+  if (this.currentPriority !== 0) return false;
+} else {                                    // NORMAL(2) / FORCE(3)
+  if (group !== this.reservedGroup || index !== this.reservedIndex) return false;
+}
+```
+
+**非 IDLE 优先级要求先 reserve**。没走 `reserve` 流程时传 2/3 必被拒，
+而且 `startMotion` 是 async，返回的是 Promise，`sync` 读状态永远读到旧值 ——
+现象就是「返回值看着正常、`state` 一点没变」。**代码里主动切动作时优先用 IDLE(1)。**
+
+### 附带的两个坑
+
+- **`#l2Curr` 的 DOM 引用会失效**：工具条用 `bar.innerHTML=...` 重建时，旧节点脱离文档；
+  此前抓的引用写 `textContent` 写进孤儿节点，页面上看不见。每次 `getElementById` 重查。
+- **旧产物可能是靠数据错误绕过问题的**：对照旧画廊发现它 41/55 个 clip 的 `Meta.Loop=True`，
+  而 Unity `m_LoopTime` 真值是 `False`。旧版「从不回落」正是因为动作永不结束。
+  **数据侧忠于源数据、功能侧自己补回落**，不要抄错误标记。
+
+### 回落目标别写成默认组（2026-10-24 实测）
+
+索引侧（motion_chain.json）会为每个动作算出 est = 「本动作末帧 vs 各待机变体首帧」
+衔接最优的那个组，实测 42 组里 27 组的 best 指向**具体变体**而非默认 idle。
+回落逻辑若图省事写死 idleGroup，这 27 组会全部跳回不衔接的待机
+（用户可见症状：脱完鞋/摆好姿势后人物「跳一下」回到另一个姿势）。
+
+优先级应为：手工覆盖表 > chain[组].best > idleGroup 兜底。
+验证用 erify_touch14.py <模型> <组名>，它同时打印「索引期望」与「实际停留」。
+
+### 「部件消失」先与基准逐 drawable 比，别数不可见数量
+
+getDrawableOpacity 里「842 个 drawable 中 530 个透明度≈0」看着像严重故障，
+其实是 Live2D 常态：模型同时准备正反面两套肢体（Zhengmian_* / Beimian_*），
+同一时刻只有一面可见。**不可见部件数不是缺陷判据。**
+
+正确判据是「同动作下，与可信基准逐 drawable 比不透明度」：一致则属源模型特性，
+不一致才是回归。实测 ougen_8 新旧 842 个里 841 个一致、仅 1 个 0.034→0.019，
+两边画面肉眼等同——用户报的「左腿缺失」在旧画廊里同样存在。
+工具：scripts/diag/ab_part_opacity.py。
+
+### 验证要点
+
+- 播一个时长 T 的非循环动作，在 T+1~2s 时断言 `state.currentGroup` 已变成 idle 组、
+  且标签同步更新；再对 2~3 个模型重复（不同模型组数/时长差异大）。
+- 服务进程会静默消失，探测读到白屏会算出「完全一致」的假结论。
+  **每次验证前先探活 + 渲染门禁**，不过就报 INVALID，不输出结论。
+- 一次偶发的 `xhr.onabort` 不能定性为缺陷，重试 2~3 次再判。
+
+## 22. 「回落成功却闪回默认待机」：先看目标 idle 的曲线数（2026-10-24，version 1.10.16）
+
+**症状**：动作播完、`state.currentGroup` 确实变成了正确的 idle 变体，标签也对，
+但回落那一瞬间姿势猛地塌回「直立正面」。用户会说「回落后立马闪回初始默认 idle」。
+
+### 判据：末帧 vs idle 首帧的逐参数差值，不要看覆盖率
+
+模型库里常见**分层 idle**：一个 idle 变体只负责一部分参数（呼吸），姿势由动作末帧提供。
+判「衔接对不对」只看一件事：
+
+```python
+common = set(action_end) & set(idle_start)
+sse = sum((action_end[p] - idle_start[p]) ** 2 for p in common)
+```
+
+**`sse == 0.0` 且共同参数只有几十个，就是正确答案**，不是错误。
+两个独立 `.motion3.json` 的浮点值逐一精确相等，只可能是制作方刻意对齐。
+附带判据：正确的目标 idle 往往**首尾闭合率极高**（呼吸层特征，实测 `idle9` 109 条里 108 条首尾相同）。
+
+⚠️ **`best_coverage` 低不是缺陷**。实测 `touch_idle14 -> idle9` 覆盖率仅 26.2%，
+一度据此提议「排除低覆盖候选」，被用户当场纠正。覆盖率低**恰恰说明**该 idle 只驱动
+一小部分参数，剩下的 305 个靠动作末帧续着。选 100% 覆盖但 `sse=728` 的候选，
+只是用「多比较了不该比较的参数」把正确答案挤掉。
+
+### 缺口在哪里：`end_val` 有、目标 idle 无曲线的那些参数
+
+```python
+cliff = {p: v for p, v in action_end.items()
+         if p not in idle_start and abs(v) > 0.5}
+```
+
+这批参数在回落瞬间会被 `model.loadParameters()` 按 moc3 默认值复位成 0。
+`ParamAngleX = -18.367 -> 0` 就是「视角翻转」的直接来源。
+
+### 修法：pose_keep + LOW ticker pin（两个执行者都要处理）
+
+1. **索引侧**（建表脚本）给每个动作输出 `pose_keep`：
+   `末值非零 且 目标 idle 无曲线 且 非开关参数 且 非运行时驱动参数`。
+   - 必须排除 `ParamEyeL/R/BOpen` / `ParamEyeBallX/Y` / `ParamMouthOpenY` / `ParamMouthForm` /
+     `ParamBreath` —— EyeBlink / LipSync / CubismBreath 每帧写，pin 住会让模型**永不眨眼**。
+   - `ParamAngleX/Y/Z` **不能**排除：它们同时是真实姿态参数，pin 覆盖呼吸小偏移是预期行为。
+2. **前端**：
+   - 回落时把 `pose_keep` 写进 `__posePinsByModel[skinKey]`，key 另记一份 `__poseKeepKeys`。
+   - ⚠️ **动作组名要在 `lastGroup = <回落目标>` 改写之前抓走**。回落函数末尾通常会把
+     `lastGroup` 覆盖成目标组，用错变量就拿不到本动作的 pose_keep。
+   - ⚠️ **参数残留复位（`restTick` 那类「拉回默认值」的逻辑）必须排除这批 key**，
+     否则 pin 与复位渐变每帧互写，肉眼是姿势抖动。
+   - pin ticker 挂 **LOW 优先级**（模型 `update()` 含 `loadParameters()` 之后、渲染之前），
+     且**只在待机组生效** —— 动作播放中要让曲线自由驱动，不能把自己该动的参数钉住。
+
+### 探针纪律：三个反复踩的陷阱，都会产出「参数恒 0」的假象
+
+| 陷阱 | 表现 | 正解 |
+|---|---|---|
+| 读 `mm._motions` | 永远 0 条，误判「队列空」 | `mm.queueManager._motions` |
+| 用 `qm._userTimeSeconds` 算 fadeIn | 恒 0 → `fin=0` → 误判「权重为 0」 | 该值**不参与** `Cubism4MotionManager.updateParameters(model, now)`，恒 0 是正常的 |
+| `addChild` hook 抓到的模型 | 切皮肤会重建，旧实例 `destroyed=true` 仍占着 `window.__xxx` | 过滤 `destroyed !== true` |
+| 在 `setParameterValueByIndex` 里抓 `Error().stack` | 主循环从 ~150 次/秒压到 4 次/2.6s → 假数据 | 只读采样，不改写路径 |
+
+### 上游库 `curves.push` 冗余：确认无害，别改
+
+某版本 `CubismMotion.parse()` 先 `Array.from({length: curveCount})` 预分配，
+每轮循环末尾又 `curves.push(curve)`，导致 `curves.length == 2 * curveCount`，
+且**前后两半是同一对象引用**。实测 `doUpdateParameters` 只走前 `curveCount` 条，
+`baseSegmentIndex` / `segmentCount` 与 JSON 逐条一致、points 值正确，
+**不影响求值**。看到 `length` 翻倍不要当成元凶去动 vendor 文件。
+
+## 23. 参数型互动区（点局部换装）：命中判定的三个坑（2026-10-25，version 1.10.17）
+
+> ⚠️ **坑一的结论已被部分推翻**（2026-10-28，见 §23.4）：包围盒口径本身是错的，
+> 判定形状必须换成**真实三角形**；重叠裁决按**渲染序**而不是「面积最小者」。
+> 坑二（几何中心 ≠ 命中点）与坑三（换装改顶点不是 opacity）仍然成立，继续用。
+
+需求形态：点画面上的鞋/丝袜/衣角/戒指，切换对应 Cubism 参数两态，**不播 motion**
+（播动作会把姿态一起改掉）。数据侧 = 「参数 → 驱动 drawable 索引」映射，
+热区 = 这些 drawable 顶点包围盒的并集。
+
+### 坑一：面积最小者的命中规则会被极小盒劫持
+
+命中判定若实现成「落进盒子的候选里取 `area` 最小者」（最具体优先，这是对的），
+则**只驱动 1 个 drawable 的参数**会成为灾难：它的包围盒极小，
+于是任何落在大盒子里的点都被它以「面积最小」抢走。
+
+实测：`Paramring`（1 个 drawable，`w=0.293 h=0.175 area=0.051`）
+比第二名 `Cloth1`（area=1.68）小 33 倍 →
+`__costumeScreenOf` 反解出的 ShoseOff / Stock1 / Cloth1 三个屏幕点**全部命中 Paramring**。
+
+```js
+// 错：只挡「严格退化成一点」
+if(!(w>1e-3)||!(h>1e-3)) continue;
+// 对：扩张到最小可点击尺寸，中心不变
+const COS_MIN_SIDE=0.5;
+if(w<COS_MIN_SIDE){ const c=(x0+x1)/2; x0=c-COS_MIN_SIDE/2; x1=c+COS_MIN_SIDE/2; w=COS_MIN_SIDE; }
+if(h<COS_MIN_SIDE){ const c=(y0+y1)/2; y0=c-COS_MIN_SIDE/2; y1=c+COS_MIN_SIDE/2; h=COS_MIN_SIDE; }
+```
+
+**为什么扩张而不是丢弃**：丢弃会让戒指/项圈彻底点不到，等于砍功能。
+扩张后它仍是最小者、优先级最高，但只在**自己周围**获胜，不再劫持远处的大热区。
+阈值取「其余参数 min(w,h) 最小值的一半」（实测其余 ≥1.05 → 取 0.5）。
+
+### 坑二：`__costumeScreenOf` 返回的是几何中心，不是真实命中点
+
+判命中正确性是分两层的，混用会得出错误结论：
+
+| 函数 | 返回 | 用途 |
+|---|---|---|
+| `boxOf(param)` | V 空间包围盒 | 搜索范围 |
+| 屏幕中心 `(x0+x1)/2` | **几何中心** | **不能**直接当命中点用 |
+| 区域内逐点 `hitAt(x,y)` | 真实命中者的 id | 这才是判据 |
+
+实测：`ScreenOf('ShoseOff')` 报 `n=238`（区域内 238 点命中它），
+但把返回的几何中心喂给 `hitAt` → 得到 `Paramring`。因为中心可能落在别的参数地盘。
+**验收必须在区域内逐点扫、统计每个 id 被命中多少次**，再取一个真正命中的点。
+
+```js
+// 正确做法：区域内逐点扫，找第一个真正命中目标的点
+for (let y = box[1]; y <= box[3]; y += 3)
+  for (let x = box[0]; x <= box[2]; x += 3){
+    const h = hitAt(x, y);
+    if (h && h.id === want) { point = [x, y]; }
+  }
+```
+
+### 坑三：换装改的是顶点，不是不透明度
+
+判「参数写入有没有到达渲染」不能用不透明度：换装多是把部件**挪走/缩放**，
+opacity 可能全程为 1。用顶点包围盒（`getDrawableVertexPositions` 求 w/h/x0/y0）
+才看得见变化。
+
+实测 ShoseOff `0→1`：drawable 460 `w 2.4017→2.4449`、`x0 -9.9973→-10.2100`、
+`y0 -1.2680→-1.3589`；drawable 461 同步。变化集合与 `param_drawables` 的交集
+正是 `[460,461]`。
+之前"pins lo vs hi 逐 drawable 比对 0 差异"的矛盾就是这么来的——比的是透明度。
+
+### 验收四层（缺一不可，全部走产品入口）
+
+1. **数据层**：参数表与 drawable 映射能加载，条数与驱动数都 > 0
+2. **热区**：能列出热区，每个都有可点面积
+3. **写入到达渲染**：toggle 后驱动部件**顶点**确实变化（非 opacity）
+4. **真实点击**：用 CDP `Input.dispatchMouseEvent` 派发 mousePressed + mouseReleased
+   （**不调内部 toggle 函数**），断言参数 `lo→hi` 且 `state.currentGroup` 未变成
+   动作组（否则说明点歪进了动作分支）
+
+只在第 4 层才能发现「函数好用但用户点不到」——`onUp` 里的接续顺序
+（命中判定 → 动作分支）写反了，前三层全绿而真实点击无效。
+
+## 24. 跨动作持久状态 ≠ 回落姿势：分表、离开动作时捕获、唯一 LOW 出口（2026-10-27，version 1.10.19）
+
+### 先分三类，混在一起必然误伤
+
+| 类 | 例 | 生命周期 | 新动作能否接管 |
+|---|---|---|---|
+| 装扮状态 | 鞋/丝袜/衣服/戒指 | 直到用户再次互动 | 否（用户操作优先） |
+| 动作产生的独立状态 | 吻痕/口红印/身体印记 | 直到动作明确改成另一非零态/显式清除 | 否 |
+| 姿势/表情 | 手臂、身体角度、眨眼、口型 | 当前动作/回落阶段 | **是** |
+
+`pose_keep` 只解决「动作末帧 → 呼吸 idle」的姿势塌陷，不能拿来做永久状态；
+把 A 有、B 没有的所有非零参数都 pin 住，会把旧手臂/身体姿势拖进 B，造成部件错位。
+
+### 数据判据：白名单，不按名称猜
+
+- 装扮状态只认已验证的 `costume_params.json`，且 `n_drawables>0`；
+- 动作状态只认逐动作实证后的显式白名单；**禁止**模糊匹配 `Eye* / Heart*`
+  （会混入眨眼、眼球、物理参数）；
+- 只把动作末值 `abs(v)>0.5` 记录进 `state_set_by_group`；普通动作填充的 0 曲线不清状态；
+- `state_params/state_set_by_group` 与 `pose_keep` 分表，前端 `restTick` 豁免 `state_params`。
+
+### 时机：不能在 play(A) 时预写末值
+
+吻痕动作内部有自己的 0→非零过渡。若 `play(A)` 时直接把最终值 7 写进 pin，吻痕会瞬间出现，
+局部过渡被绕掉。正确出口：**离开 A 的那一刻**（直接 A→B / A 回落 idle）从 coreModel
+读取当时实际值，非零才写进 `__actionStatePinsByModel[skinKey]`。
+
+### 唯一 LOW ticker
+
+`loadParameters()` 在模型 update 末尾覆盖参数，所以状态重申必须在 app ticker 的 LOW 优先级
+（update 后、render 前）。全模型只许一个 `app.__statePinTick`：
+
+1. 先写 action-state pins；
+2. 后写 costume pins（用户主动互动优先）；
+3. `pose_keep` 仍走自己的回落姿势出口。
+
+真实事故：同一页面曾有两份逐字相同的 costume ticker，参数面板又注册第三份——每帧写 3 遍，
+不仅浪费，还让“谁最后写”变得依赖注册顺序。修法不是加 guard，而是合并成唯一出口。
+
+### 验收（缺一不可）
+
+- 动作开播早期状态仍低值（证明没有提前 pin 末值）；
+- 动作完成捕获后，用户直接选普通动作，独立状态保持；
+- 新动作 `ParamAngleX` 等姿势参数仍变化（证明没有把旧姿势锁死）；
+- 真实点击装扮热区后连切两动作仍保持；
+- 同一个 core 写 0 干扰做 A/B：stateTick 开→恢复，移除→保持 0（阴性对照有区分力）；
+- 静态断言 `__statePinTick=true` 且旧 `__costumePinTick=false`。
+
+⚠️ headless SwiftShader 下动作时间轴可能慢于 wall-clock 回落定时器，曲线未到状态段就被抢先回落。
+探针可重播并打印 RETRY 做仪器稳定化，但不能据此断言真 GPU 用户环境也有同样低帧率缺陷。
+
+## 25. 逐帧探针的仪器体检前置：十三条仪器 bug 与六条闸门(2026-10-28，version 1.10.20；2026-10-31 补第 11~12 条）
+
+**背景**：同一轮里，逐帧验收读到"参数没到达渲染""中心点命中歪了""同一次点击一次命中一次不命中"，
+每条都被当成产品缺陷查了一遍。查完发现**其中九条是探针或帧源自己的问题**。这类错误的代价是
+"改产品越改越烂"——所以本节是**前置闸门**：判据出现红或飘，先过这一节，再怀疑产品。
+
+### 硬闸门(缺一即不可信)
+
+1. **先体检，再读结论**：任何"帧数/fps/衰减"读数前，先确认帧源当前状态
+   （是否已衰减到 1 Hz、rAF 是否还活着、`core.update` 是否真被调用）。
+   **"对照页稳定 60fps"这类断言必须写明观测时长**——本项目一轮里的十六条排除法全部建立在
+   只观测 10–12 秒的对照上，而衰减潜伏期就在那个窗口之后，整套推理的地基是错的。
+
+2. **帧源与 rAF 解耦，且速率用页内墙钟算**：不要靠 rAF 出帧。手动推帧时
+   `step=1000/fps`、`due=floor((now-t0)/step)`、掉队 >10 帧**重锚不补**、
+   `while(!(p.n>=due) && guard++<3)` 单次最多补 3 帧。
+   ⚠️ 三个必踩：① `acc+=step` 的写法会推出 430–2078 帧/秒；② 用 Python 侧墙钟算速率会把
+   CDP 往返时延算成帧率；③ **只推 `app.ticker` 会让画面正常但 `core.update` 零调用**
+   （`PIXI.Application` 默认 `sharedTicker:false`），同时推 `tk` 与 `PIXI.Ticker.shared`。
+
+3. **保活必须周期性重发**：`Emulation.setFocusEmulationEnabled` 只在一段时间内有效
+   （实测约 27–48 秒后仍掉回 1 Hz，期间 `hasFocus` 恒 true、`visibilityState` 恒 visible）。
+   要按周期重发 `Page.bringToFront`（本项目取 8 秒）。**只做一次等于没做**。
+
+4. **采样点挂在 `coreModel.update` 入口**，不要挂 `requestAnimationFrame`。
+   同一个采样器挂在 rAF 上时只拿到 0–1 帧/秒，而模型其实在正常渲染——因为出帧源已经不是 rAF 了。
+   入口打桩要带幂等保护（`if(core.__wrapped) return; core.__wrapped=1;`）。
+
+5. **模型引用必须走页面的只读出口，不要在 `PIXI.Container.prototype.addChild` 里快照**。
+   快照会指向**已销毁的旧对象**，之后所有读参数都读到冻结值，表现为"参数写不进去"。
+   正确做法是页面暴露一个每次返回当前活对象的出口（本项目 `__l2ModelRef()`）。
+
+6. **坐标只许用页面自己算出来的点，探针不许自算**：`getDrawableVertexPositions` 出来
+   已是画布像素坐标，再套一次"V→屏幕"换算等于乘两遍。实测一个自算点报 `cx=152050px`
+   （画布只有 1400 宽），而**阴性对照照样是绿的**——自算偏差不产生报错，只产生错结论。
+
+### 判据设计的三条
+
+7. **阳性与阴性必须成对**：凡"修好了"的判据，都要有一条**预期失败**的对照，
+   并验证那条对照**确实失败**。本项目每一轮"只验阳性侧"的结论后来都被推翻过。
+
+8. **`JSON.stringify` 会丢弃 `undefined` 键**：页内采集的字段在没有值时整键消失，
+   Python 侧 `row['pin']` 直接 `KeyError`。要么在页内归一成 `null`
+   （`(v===undefined?null:+v)`），要么 Python 侧一律 `.get()`。
+
+9. **判"参数写入有没有可见效果"必须在状态让渡之后比**：未让渡时状态机每帧无条件重写
+   `_on`，覆盖值到不了渲染，pins 前后必然零差异——这是**正常行为，不是缺陷**。
+   先确认 `owned=true`，再比。否则会得出"这个参数没有可见效果"的错误结论，
+   进而把装备功能当成坏的。
+
+### 一条真实产品缺陷(唯一一条真属于产品的)
+
+10. **tween 起点要取"渲染真正读到的值"，不是取参数面板读到的值**：
+    状态开关做 `0→1` / `1→0` 的过渡时，若起点读 `getParameterValueById`（最后一次写入），
+    会读到 motion 末态；而渲染实际读的是状态覆盖值。两者不一致时，关方向 tween 会
+    `0→0` 瞬间跳变。修法：维护每参数"最后写入值"记账（`t._last`），让 tween 从它起步，
+    复位循环时清空记账。**判据**：过渡窗口中采样必须出现**中间值**，
+    只看到 `{-1,0,1}` 这类端点值就说明 tween 没生效。
+
+### 后补两条（2026-10-31，version 1.10.31）
+
+11. **`im.update()` 手动步进 ≠ 页面在跑，绝不能拿它当"自然播放"的替身**。
+    `im.update()` 只推 motion 那一层，**不推页面 `app.ticker` 上挂的其它写入者**
+    （本项目 `restTick`、状态机、语音口型…）。判据对比：
+
+    | 做法 | 结果 |
+    |---|---|
+    | `resetParams()` + 手动 `im.update(…, 90)` × 55 组动作 | 某暗红罩层 **55/55 全 `op=0`** ⇒ 误判成"本模型永远看不到该层" |
+    | 同上，但手动推到 **1200 步** | **仍然 `op=0`** |
+    | 只点下拉框、靠 ticker 跑 **200 ms 真实时间** | **`op=1`** |
+
+    ⇒ **凡要回答"用户到底看不看得见"，只能走自然播放**（点 UI、真实时间、不手动推帧）。
+    手动推帧只适合回答"某个已知姿势下渲染成什么样"，且必须**先把姿势冻住**。
+    这条错误的代价很高：它让一整轮"该层恒不可见 ⇒ 本仓无法目视 ⇒ 只能记账"的结论作废。
+
+12. **`ticker.stop()` 之后第一次 `extract.canvas()` 仍会让模型前进一次**，必须先丢弃一帧。
+    `extract` 触发 render → `internalModel.update()`，按"距上次更新过了多久"推一次。
+    实测冻结后：`poseSum -13.9217` →（第 1 次 extract）→ `-20.1907`（97 个参数被改写）
+    →（再 3 次 extract）→ 全部 `-20.1907` 不变。
+
+    ⇒ 若把 `ps0 = poseSum()` 取在丢弃帧**之前**，`ps0 !== psEnd` 恒成立，
+    **每一行都会被判成「姿势未冻结、本行作废」**，而画面其实早就稳定了（闭环 A==C 也照常通过，
+    所以闭环判据救不了这个错）。修法固定三步：`stop → shot() 丢弃 → ps0 → 采样 → psEnd`。
+
+### 诊断工具落点
+
+可复用探针放项目 `scripts/diag/`（必入库，`check_diag_hygiene.py` 会拦 `.diag/` 顶层散文件）；
+一次性取证跑完就归档清掉。极小对照页（`glmin.html` / `glmin_size.html` / `gl_two_ctx.html`）
+要跟着探针一起入库——探针以 `file:///.../scripts/diag/glmin_size.html` 引用它们，
+放 `.diag/` 会在清理时静默断链。
+
+## 26. 参数型热区最终形态：真实三角形 + 渲染序裁决 + 幽灵区第二遍 + 点击当天几何（2026-10-28，version 1.10.21）
+
+§23 坑一的「包围盒 + 面积最小者」已被**整条替换**。这里是与 §23 不同的部分，重复的坑不再抄。
+
+### 判定形状：真实三角形，不是包围盒
+
+`ougen_8` 实测同一批热区，多边形覆盖 6233 个采样点 vs 仅盒覆盖 8916 点 = **盒把判定区放大 1.43 倍**。
+斜置部件（四边形/盒面积比 0.49）最严重。这就是「点旁边空地也触发」。
+
+```js
+// 索引是 moc3 静态数据 ⇒ 永久缓存；顶点每帧变 ⇒ 每次重新拷贝
+const triOf = i => _triCache[i] || (_triCache[i] = core.getDrawableVertexIndices(i));
+function inTriV(x,y,pos,idx){
+  const e = -0.004;                     // ← 接缝容差，缺了所有热区都点不到
+  for (let k=0;k+2<idx.length;k+=3){
+    const a=idx[k]*2,b=idx[k+1]*2,c=idx[k+2]*2;
+    // 重心坐标；三条边同号即在内
+    ...
+  }
+}
+```
+
+⚠️ **接缝容差 `e=-0.004` 是承重的**：相邻三角共边，浮点误差会让**边界点全落空**，
+症状是「所有热区都点不到」，极易误判成「产品整体失效」。
+
+### 重叠裁决：渲染序 > 不透明度 > 面积 > id
+
+`getDrawableRenderOrders(i)` 返回**整张表**（`ougen_8` 长度 842），`ro[i]` 才是第 i 个的渲染序，
+序号大 = 后画 = 在上。
+
+**已否决两条**（都实测过，别再试）：
+- 「面积最小者胜」→ NeckMoney 可达率 59.4%；
+- 「只按部分重叠的 z 裁」→ NeckMoney 到 100% 但 Cloth1 100%→41.2%、Cloth3 100%→50%，
+  净效果只是**把不公平转移给别的热区**。
+
+### 隐藏件必须跑第二遍（幽灵区）
+
+`partOpacity` 由动作控制，静止态很多热区的驱动部件**全部 `opacity=0`**
+（`Paramring` drawable 796、`NeckMoney` drawable 502 都是）。只判可见件 = 它们彻底点不到。
+第二遍只补隐藏件，且**仅在没有任何可见件被点到的位置**获胜（无隐藏件的热区直接跳过）。
+
+### 兜底不能吃「盒内但多边形没覆盖」的边角
+
+ShoseOff 盒 2.5×2.7 但鞋形斜置 ⇒ 兜底把 287 个边角点判给它，`own=287 / win=390 = 135.9%`。
+**可达率超 100% 就是口径错的信号**，不是数据错。收窄成「该热区**所有**部件都没有可用三角形」
+后才降到 100%。
+
+### 点击链路：读的必须是**点击那一刻**的几何，且命中判在 `onDown`
+
+两处真实产品缺陷，都会让「探针报参数没变」而实际是点空了：
+1. 代码注释写「点击那一刻再算一次」，实现却是 ticker 每 4 帧（≈66–110 ms）重建快照。
+   小部件面积仅 6.47（V 空间），80 ms 内就漂出点位。
+2. 命中判在 `onUp`，而 `pointerdown`→`pointerup` 实测隔 **80–160 ms**。
+
+修法：`pickGeo()` 分道（探针要求冻结时返回快照，产品走 `freshGeo()` 每次现建）+
+**按下定命中、抬起执行**（`onDown` 存 `cosDown`，`onUp` 优先用它，空了才补算）。
+
+铁证（仪器侧看着像产品坏了）：`__costumeScreenOf` 报 n=104 命中，
+**紧接着**一次 `__costumeHit` 返回 None；事件探针显示 `pointerdown` 时 hit=null、
+`pointerup`（80 ms 后）hit=ShoseOff。
+
+### 做「参数影响哪些 drawable」的测量之前必须冻结姿态
+
+不冻结时这个测量**完全不可用**：idle 每帧把参数写回曲线值，呼吸/物理让全身顶点逐帧漂 ⇒
+实测逐档差值**非单调**（`#697` 在 want=-0.5 变 32.14、want=+0.25 只变 4.25），
+会误报「47 个 drawable 随参数变化」，冻结后真相是 **5 个**，本底漂移 **0/842**。
+
+冻住三件套（缺一不可）：`mm.groups.idle='__hz_frozen__'`（**最关键**，`stopAllMotions()`
+挡不住库的自动重启）/ `im.updateNaturalMovements=function(){}` / `im.physics.reset()`。
+判据要报「冻结后本底漂移 N/842」，不报这个数就没法区分「参数没效果」与「冻结没生效」。
+⚠️ 冻结时机只能在需要它的判据**之前**：漂移对照判据需要 idle 在跑，提前冻结会让它恒为 0。
+
+### 基线工具
+
+`scripts/diag/l2d_hotzone_reachability.py`（多边形口径 + 幽灵统计 + 守恒/阴性对照/几何稳定三闸，
+6–8 分钟，退出码 0=可信 / 2=环境 / 3=仪器红）；
+`scripts/diag/l2d_param_effect_scan.py`（逐档 pin + 冻结闸，回答「参数到底驱动哪些部件」）；
+`scripts/diag/l2d_action_state_audit.py`（逐动作曲线审计，回答「切这个动作会把参数写成什么」）。
+
+## 27. 「模型少了一个部件」怎么定性：反查绑定 + 镜像配对 + 真实播放态（2026-10-28，version 1.10.22）
+
+用户说「少了一只鞋 / 少半条腿 / 某部位消失」时，**默认答案不是「渲染丢件」，而是「素材侧关着」**。
+但要证明它，必须走四步；只做像素差分是**得不出结论**的（本项目为此翻盘三次）。
+
+### 第 0 步：先按观感分类
+
+| 观感 | 第一假设 | 第一条判据 |
+|---|---|---|
+| 「少一半」「边缘被硬切一块」 | 某总开关参数缺省关闭 | ① 不透明度绑定反查 |
+| 「整件不显示但点得到」 | `partOpacity=0` | `getPartOpacityByIndex` 全扫 |
+| 「只有播某些动作时才有」 | 参数只在少数动作里被推高 | ② motion3 曲线全扫 |
+| 「位置错 / 比例怪」 | 不是缺件，是坐标画框问题 | 换技能（painting restore / spine） |
+
+### ① 反查绑定：**必须有阳性对照组，否则 0 命中不可信**
+
+问题：「drawable `#411/#413` 恒 `op=0/vis=0`，是哪个参数在关它？」逐参数 `pin=1` 后读它的 `op/vis`。
+
+四条硬约束（都踩过）：
+
+1. **必须页内单次 JS 同步扫描**。串行 CDP 往返实测 582 参数 × 2 = 1164 次 ≈ **50 s**；
+   按 0.3 s/次估 350 s 会超宿主超时被强杀，`atexit` 不执行 ⇒ Chrome 整棵树泄漏（一轮泄漏 10~12 个进程）。
+   全塞进页面一次跑完，JS 单线程顺带挡住 rAF（否则 `loadParameters()` 会把值拉回曲线）。
+2. **只调 `coreModel.update()`，不调 `internalModel.update()`**（后者会重跑动作/物理）。
+3. **参数名只能从 `c._parameterIds` 取**（`csmVector`，`.at(i)` / `.getSize()`）。
+   `CubismModel` **不存在** `getParameterId(i)` —— 按它写会实测 0 次并静默给出「没有参数控制它」的假结论。
+   读写用 `getParameterValueByIndex` / `setParameterValueByIndex`。
+4. `getParameterIndex(name)` 对**不存在的名字返回 `count`（不是 −1）** ⇒ 必须判 `>= count`。
+
+**阳性对照组是承重的**：同一轮带一对已知被某参数控制的件（实测 `#184/#461 ↔ ShoseOff`），
+阳性零命中就直接 `exit 3`，**不许**把主目标的零命中当结论。
+
+`ougen_8` 实跑：目标件基线 `[[0,0],[0,0]]`、阳性 `[[1,1],[1,1]]`；
+目标件唯一命中 **`Param233 = 1 → [[1,1],[1,1]]`**，阳性命中 `Stock2` / `Param326`。
+
+### ② 几何镜像配对：区分「有件但关着」与「真的缺件」
+
+左右两侧部件名不同、索引不同，唯一可靠的配对是**包围盒镜像**：
+
+```
+镜像盒 = [-bx1, bx0, by0, by1]      # x 取反、左右边换位、y 不变
+在其余全部 drawable 里找 d ≤ 0.8 的候选，报它的 op/vis 与「是否跟随本参数」
+```
+
+`ougen_8`：`#411↔#461 d=0.50`、`#413↔#462 d=0.34`、`#408↔#183 d=0.94`、`#407↔#460 d=1.01`、
+`#665↔#463 d=1.11` 等；16 件合并框镜像后与左鞋 5 件合并框**四边差 d4=1.33** ⇒ 是第二套鞋件 **且全 `vis=0`**。
+⇒ 结论「有件但关着」。**配对不上**才可能是「真的缺件」。
+
+### ③ 真实播放态审计（**不冻结**）：观感问题只能在播放态回答
+
+冻结态只答「底座长什么样」，用户问的是「播 idle 时是不是少一只鞋」。另跑一遍**不冻结**的审计：
+采样器挂 `requestAnimationFrame` **只读不写**，逐帧记参数取值 + 目标件 `op/vis`。
+`ougen_8`：`def=0/min=0/max=1`；`idle`、`idle9` 各 220 帧参数**全程 0.0000**、16 件「曾可见」= 0。
+⇒ 素材侧缺省关闭。它在 `touch_idle2/4/10/18` 的 1.08s→3.95s 之间 `0→1→0`（某些动作才补上）。
+
+### 像素差分只能量「变化范围」，**不能**当「有没有件」的证据
+
+`ShoseOff −1→+1`：changed 3146 px（0.353%）、`left 3146 / right 0`，曾被读成「该模型只有一条腿配鞋件」。
+实际右侧 `V x[6,11] y[-2.3,2.6]` 区内有 **88 件 / 可见 44 件**，只是镜像件 `vis=0`。
+⇒ **「差分右半 0 变化」≠「右半无件」**。凡是拿差分下「缺件」结论的，都必须先过镜像配对与反查。
+
+### 坐标：区域框绝不许手写
+
+- `document.querySelector('canvas')` 抓到的是背景画布 `#bgfx`（页面第一个 canvas）⇒ 必须 `#l2wrap canvas`。
+- canvas rect 一律 `getBoundingClientRect()` **问页面**；不许按视口/dpr 硬编码（本项目差过 45 px）。
+- **手写 V←canvas 逆映射是地雷**（一版把 `LEFT_OFF`/`TOP_OFF` 重复扣两次，给出负坐标框）。
+  正解：canvas 相对坐标直接量，再**由实测变化簇反推 V 区间**，反推值要能对上某个 drawable 的包围盒才算校验通过。
+- 区域框**必须由实测变化簇反推**，跨模型、跨姿态一律不复用。
+
+### 性能与产物
+
+- 反查类长任务用 `py -3 -u`：被强杀时 Python 重定向输出会留 **0 字节**（缓冲未 flush）。
+- `scipy` 在本机**不可用** ⇒ 连通域自写 8 邻域 BFS。
+- `param_drawables.json` 是手写映射、**会漏项**：实测 `Param233` 驱动 16 件却登记 0 件、
+  `ShoseOff` 登记 `[460,461]` 实驱 `#183/184/460/461/615`（漏 3）⇒「表里没有」不能当证据。
+
+### 工具
+
+`scripts/diag/l2d_opacity_binding_hunt.py`（反查，内置阳性对照红闸 + `exit 3`）、
+`scripts/diag/l2d_param_effect_scan.py`（正查 + `vis` 列 + 映射表缺口/漏项 + 镜像配对段）、
+`scripts/diag/l2d_param233_visual.py`（冻结态两帧差分）、
+`scripts/diag/l2d_param233_live_audit.py`（真实播放态逐帧审计）、
+`scripts/diag/shot_regions.py`（像素模块 + 自写 BFS）。
+离线省事：`.diag/all_draw.json`（842 件 `[i,name,op,vis,box]` 快照）能免开浏览器做全部几何分析。
+
+## 28. 点击类探针：页内同步派发 + 取点必须避开 trigger 判定区（2026-10-29，version 1.10.23）
+
+用户报「互动区点了没反应 / 被另一个互动区覆盖」时，**先证明探针自己没撒谎**。
+本轮同一个脚本连翻两次，两次都是探针缺陷，产品在那一刻是正常的。
+
+### 28.1 派发：down/up 必须在页内同一个 JS 任务里
+
+`onDown` 用**按下那一刻**的新鲜几何定 `cosDown`，`onUp` 再算一次 —— 两个时刻两套几何。
+CDP 拆成 `mousePressed` / `mouseReleased` 两条时实测间隔 **4.6–29.9 秒**（headless 上往返会逐条恶化）：
+
+- up 那一刻命中判定可能已不认这个点 ⇒ `pin` 恒 `null`、参数 `0→0` ⇒「点了没效果」的假红；
+- 「等 tween 走完」的 `sleep` 全落在这段延迟里 ⇒ 读到的 `after` 是**还没执行**的状态。
+
+```js
+var base={bubbles:false,cancelable:true,composed:true,clientX:cx,clientY:cy,
+          button:0,buttons:1,pointerId:77,pointerType:'mouse',isPrimary:true,view:window};
+var up={}; for(var a in base) up[a]=base[a]; up.buttons=0;
+wrap.dispatchEvent(new PointerEvent('pointerdown', dn));  // #l2wrap —— 产品自己绑的 down 节点
+window.dispatchEvent(new PointerEvent('pointerup', up));   // window  —— 产品自己绑的 up 节点
+```
+
+节点必须是**产品自己监听的那两个**，不许造中间层（否则验的是探针不是产品）。
+一次调用顺带拿到同一时刻的 `__costumeLog` 增量与 pill 文本 —— 这是 CDP 两段式做不到的。
+⚠️ 推帧泵（`setInterval(fn,4)` + 每 tick 3 次 `ticker.update()`）开着时主线程饱和，
+点击前必须先 `detach_frames`。
+
+### 28.2 取点：反解出的「离边缘最远」点**不保证避开 trigger 区**
+
+`onUp` 顺序固定：① `stateFind(localHit)` 优先 → ② `costumeHitAt` → ③ `play`。
+`__costumeScreenOf` 优化的是**几何抖动鲁棒性**，与「会不会被 trigger 抢走」正交。
+实测 `ougen_8`：判定区 `touchdrag17` 盒 `[542,342,620,420]` 与鞋参数热区盒 `[482,287,608,449]`
+**相交**，反解点 `(566,359)` 落在判定区内 ⇒ 走 ①、`__costumeLog` 不新增
+⇒ 探针报「② 分支没进」，而产品④b 的 lo 端真实点击 pin `-1→1`、画面变 31 件（正常）。
+
+**正解 `find2`**：在参数热区自盒内 5×5 网格（0.12…0.88）筛点，要求 ① `__costumeHit(x,y).id===目标`；
+② 不在 trigger 盒 ±2 px 内。筛不到必须报 INVALID（「本几何下 ② 不可达」），
+**不许硬用落区的点**。trigger 盒用 `__stateTogglesInfo()[id].trigger` → `__L2_SCREENOF(trigger).box`
+（两者都是**屏幕坐标**，口径一致）。
+
+### 28.3 判「参数没变」要分三类，不能一刀切红
+
+读产品自己的 `__costumeLog`（`costumeToggle` 每次追加 `[id,from,to,Date.now()]`）：
+
+| `dlog` / log 内容 | 定性 |
+|---|---|
+| `dlog<=0` | 点击没进 ② ⇒ **真缺陷**（但先排除 28.2 的取点问题） |
+| `from==to` | **数据特性**（值域退化/已在该端），不判红 |
+| `from!=to` 但读回仍是 `from` | tween 没到渲染 ⇒ **真缺陷** |
+
+### 28.4 分支定性只能看产品 pill 文本
+
+| pill | 分支 |
+|---|---|
+| `<label> ▸ on/off` | ① `toggleState` |
+| `<label> · <id> → <to>` | ② `costumeToggle` |
+
+⚠️ **不能用 pins 差分判 ②**：① 修复后会主动 `delete pins[id]`（收回让渡）⇒ `dpin=true`，
+本轮实测这个写法把 ① 误判成 ②，直接毁掉 M2 判据。
+
+### 28.5 真 bug M2：`toggleState` 收回让渡时没清 `pins`/`tweens`
+
+`stateApply` 末尾**无条件**重放 pins，跑在 `_tw`/`_on` 写入之后、同一 `beforeModelUpdate` 内。
+只要 `pins[id]` 存在（② 走过一次就建），之后 ① 的写入**当帧即被抹掉** ——
+pill 报 `▸ off`（**谎报**）、像素 0 变化。**修法在 `toggleState`（连 pins/tweens 一起清），
+不是改 `stateApply`**（那段重放对已让渡条目是承重的）。
+
+**精确判据**：把 `pins[id]` 钉成**模型当前显示值**（`__stateTogglesInfo()` 的 `on`）**再点** ——
+未修则画面恒不变、已修必变，与 `_on` 奇偶无关；并配正向对照（建 pin 立刻删，**必变**）。
+⚠️ 不许用「随便什么旧 pin 值」：① 切到「当前值的反面」，旧 pin 恰好等于那个反面时画面本来就一样。
+
+### 28.6 已否证的假设（别再重跑）
+
+- **M1「`hitAt` 的 A3 随机抽取让同一点随机走 ①/②」不成立**：两类代表点各连点 5 轮，
+  参数热区 5/5 全落 ②、判定区 5/5 全落 ①。旧结论真因是**反解点漂移**。
+- **帧源闸门恒红 ≠ 渲染卡死**：产品里没有 `__rafc` 这个导出（应挂 ticker 活对象计数器）。
+- **`lastTime` 不能当帧率**：节流到 1 Hz 时采样窗口里照样涨满 ⇒ 假绿灯。
+- **停心跳不会让 CDP 变快**：反而 10.5–11.9 s 且逐条递增。
+
+### 28.7 判据
+
+`l2d_costume_hotzone_verify.py ougen_8 ShoseOff` ⇒ **7 PASS / 0 FAIL / exit 0**，
+日志须含 `派发即读数: dlog=1  pill='鞋 · ShoseOff → 1'`；
+`l2d_click_insync_diag.py ougen_8 ShoseOff 5` ⇒ 六阶段全绿。
+
+### 工具
+
+`scripts/diag/l2d_costume_hotzone_verify.py`（`SYNC_CLICK` / `FIND2` / `pick_safe_point`）、
+`scripts/diag/l2d_click_insync_diag.py`（M2 精确判据 `SETPIN`/`SETPIN_DROP` + 六阶段）、
+`scripts/diag/cdp_cmd_latency.py`（**先跑它再怀疑产品**）、
+`scripts/diag/frame_gate_selftest.py`（帧源闸门四判据 + 阴性对照）、
+`scripts/diag/ownership_entry_diag.py`（让渡态 `core.update` 入口采样）。
+
+**项目侧对应**：`docs/WORKFLOWS.md` WF-54、`docs/TROUBLESHOOTING.md` §164。
+
+## 29. 参数效果测量：**先冻眨眼**，再用「相对阈值 + 阳性对照」裁定（2026-10-29，version 1.10.24）
+
+判「某参数驱动几件 / 到底可见不可见」时，本轮把同一条参数在四个仪器版本上读出了
+**0 / 14 / 842 / 20 / 1 / 14** 六种数字，每一组都"跑通了"。仪器跑通 ≠ 数字可信。
+
+### 29.1 冻结姿态是七件套，眨眼必须单独冻
+
+```js
+// 错：只冻 idle/motion/breath/phys —— 恰恰让 motionUpdated=false
+// 对：替换 eyeBlink.updateParameters，把 ParamEye[LR]Open 写回 1
+var eb=im.eyeBlink;
+if(eb&&typeof eb.updateParameters==='function'){
+  if(!eb.__hzBak) eb.__hzBak=eb.updateParameters;
+  eb.updateParameters=function(model){
+    var ids=(model&&model.parameters&&model.parameters.ids)||[];
+    for(var i=0;i<ids.length;i++)
+      if(/^ParamEye[LR]Open$/.test(String(ids[i]))) model.setParameterValueByIndex(i,1);
+    return 1; };
+  done.push('blinkOpen'); }
+```
+
+两条都容易错，且错法互不相同：
+
+1. **方法名是 `updateParameters`，不是 `update`**（后者在这个类上不存在，改它等于没改）。
+   `InternalModel.update()` 里写死的是
+   `if(!motionUpdated) this.eyeBlink.updateParameters(model, dt)` ——
+   冻住 idle/motion 恰好让 `motionUpdated=false` ⇒ **眨眼反而开始跑**。
+2. **不能换成空函数**：眼睛会停在上一次眨眼值（可能半闭），整场测量都在半闭眼上做。
+
+实测证据：未冻时连拍 6 张出现 `#2=334px (639,266,689,282)` / `#4=241px (639,266,689,281)`，
+而当时被判成"参数效果"的 `BondEyes` 是 `348px (638,265,689,280)`、
+`ParamEyeSmile` 是 `103px (640,270,681,280)` —— **四个包围盒几乎完全重合**。
+冻住后连拍 5 张全等（0 px），重测 `BondEyes`/`HeartEyes` = 0 px、`ParamEyeSmile` = 89 px。
+
+### 29.2 阈值必须按 drawable 自身尺寸归一化
+
+绝对阈值 `0.5` 在整模（总宽约 602 V）上是 0.08%，但在眼睛 ArtMesh（`ext=0.1441`）上是
+**自身尺寸的 3.5 倍**。`ParamEyeSmile` 的真位移 `0.0153 V` = 自身的 **10.62%** = 屏幕 89 px，
+判 0 件。改 `ext × 0.005`（兜底 `1e-4`）后 0 → **14 件**。
+
+判据口诀：**小部件上的小位移是真的**。看绝对量级会系统性漏判眼睛/嘴/手指。
+
+### 29.3 三条读数纪律（每条都曾把结论带偏）
+
+| 纪律 | 不做会怎样 |
+|---|---|
+| `why == ['ro']` 的行剔掉 | `getDrawableRenderOrders` 是**按可见性每帧重排**的结果，隐藏一件整表平移 ⇒ `ShoseOff` 报 842/842，实际 20 件 |
+| **每条参数测前重取基线** | 冻结后没人复原，前一条残留下一条继承 ⇒ `NeckMoney` 单独 1 件、全量 14 件（10 件与 `Param233` 相同） |
+| `settle()` 之后再 `require_frames(1.0)` | 读回的是参数值，drawable 顶点要等 `core.update()` ⇒ 拿到上一帧几何，真效果读成 0 件 |
+
+另加**模型身份闸**：drawable 集合指纹（数量 + 前 16 件的 vis/tex/ro/首件包围盒）变了 ⇒
+整模重建，API 读数全部判废（像素侧独立可信）。
+
+### 29.4 结论要两条判据交叉才对得上
+
+- 只跑 API：`ParamEyeSmile` 读 0 件（阈值口径）；
+- 只跑像素：`ShoseOff` 读"驱动 842 件"（没有归属，其实是整模重建）；
+- **交叉**：API 能点名 + 像素能定位区域 + 阳性对照有区分力 ⇒ 才敢写"驱动 N 件"。
+
+阳性对照必须硬闸：阳性最大变化 = 0 ⇒ 判红，全表 0 值作废。
+
+### 29.5 已否证的假设（别再重跑）
+
+- **「13 路 API 报 0 件 ⇒ 参数真不可见」不成立**（本轮推翻）：`ParamEyeSmile` 有效，被阈值漏判。
+- **「像素探针在眼部测到 348/103 px ⇒ 眼睛参数有效」不成立**：那是偶发眨眼被采样。
+- **「`ShoseOff` 驱动全部 842 件」不成立**：822 件只是绘序号重排。
+- **`BondEyes`/`HeartEyes` 在本模型当前姿态下确实 0 变化**（冻结后 0 px + 阳性对照有区分力
+  ⇒ 可信）⇒ 降级面板控件，不做热区。
+
+### 工具
+
+`scripts/diag/l2d_param_map_batch.py`（API 全通道，端口 9412）、
+`scripts/diag/l2d_param_effect_pixel.py`（像素判据 + 正确冻眨眼 + 模型身份闸，端口 9420）。
+
+**项目侧对应**：`docs/WORKFLOWS.md` WF-56、`docs/TROUBLESHOOTING.md` §166。
+
+## 30. 互动区「互相覆盖」：先剔点击标记，再按"更具体者"裁决 + 采样点必须不依赖 emit（2026-10-29，version 1.10.25）
+
+### 三十·1 参数热区盒会被点击标记撑爆
+
+`buildCosGeo()` 用「驱动件顶点并集」当热区盒。而 `Touch*` 是点击标记、不是可见件；
+它进驱动清单只是"整张顶点表跟着动"的连带结果，且隐藏件顶点常是未初始化残值。
+
+实测 `ougen_8`：`Stock1` 的 `#735 TouchDrag16` 读到 `(-293.09, 288.16)`，而整模顶点范围只有
+`-448..154`、鞋在 `x≈-10.8..-0.4` ⇒ 本该 5×5 的热区变成 290×290，整块画布都成了"丝袜开关"。
+
+**判据**：凡驱动集里出现 `/^touch/i` 的件，就必须在算盒前剔掉（保留 `nMark` 计数）。
+剔除不改变任何可见几何，对其它模型零风险。
+
+### 三十·2 参数热区不能无条件抢占动作判定区
+
+`onUp` 的顺序是 `stateFind` → 参数热区 → 动作判定区，参数热区命中即 `return`
+⇒ 它盖住的判定区永久失效。实测 11 条热区里 9 条与判定区重叠，`Cloth1`/`Paramring` 是 100%。
+
+**判据（更具体者胜）**：比**可见多边形面积**，小者胜。
+
+- 热区面积 ≤ 重叠判定区里最小的那个 ⇒ 热区胜
+- 否则动作胜
+- 幽灵区（`nVis=0`）不参与面积比较，直接让位
+
+⚠️ 不能用包围盒面积：斜置件虚高 3–15 倍（`ShoseOff` 盒 82.4 / 真实 5.4）。
+
+**A/B 效果（ougen_8，改前页由 `git show HEAD:gallery_src/index.html` 落盘）**：
+HIT 19→26，WIRING 4→0，判定区中心可达 31/31 不变。
+
+### 三十·3 探针侧三个必须记住的坑
+
+1. **`plainWheelNoop` 偶发红不是产品缺陷**：产品的 `ResizeObserver(()=>refit(true))` 会按视口
+   尺寸重算基准缩放，连跑多模型时它可能落在"滚轮前/后"之间。判据：`wrap.clientWidth×clientHeight`
+   是否变了。修法是取基线前等尺寸稳定（不是放宽阈值）。
+2. **重试循环只捕 `RuntimeError` 会漏 WebSocket 超时**：`WebSocketTimeoutException` 不是它的
+   子类，会冒泡成 traceback + `exit 1`，把"全部通过"的一步记成失败。超时后必须**重连同一张 tab**。
+3. **`WIRING` 要把产品的拖拽编号轮转算进期望集合**：`TouchDragN` 不一定有同名动作组，产品按
+   `dragGroupOf` 轮转到现有 `touch_dragN`（实测 `touchdrag6/7 → touch_drag1`）。
+   ❌ 已试过并**回退**的错法：给 `WIRING` 加"点击后再采一次候选集" —— 点击后的几何漂移会让
+   更多部位进候选集，断言变松，`benningdun_2` 从 2 条红变 3 条。
+
+### 三十·4 「参数跨动作保留」只能用渲染有效值判，且采样点不能依赖 emit
+
+`beforeModelUpdate` 事件在本页**实测不稳定**（同一模型：限跑 3 个动作触发 65 帧，
+跑全量一帧都不触发）⇒ 拿它当判据必然得到**空断言**（"0 个被拉走"其实一次比较都没做）。
+
+**可用判据**：把 `coreModel.update` 包一层，**原函数返回之后**立刻读参数值 ——
+`core.update()` 用当时的参数算完 drawable，之后 `loadParameters` 才复原成曲线值，
+所以这一刻读到的就是**这一帧真正用于渲染的值**，且不依赖任何 emit。
+
+⚠️ `coreModel` 会随换肤/重建换对象 ⇒ 一次性包旧对象会得 `fired=0`。必须周期性重新解析
+当前模型的 `coreModel` 并补挂（用函数自身标记 `__retainWrapped` 防重包）。
+
+实测结论（`ougen_8` / 55 个动作 × 12 条装扮参数）：**全部保持，0 偏差**。
+（反面对照：直接读 `getParameterValueById` 会报 51/55 个动作"被拉走"，那是曲线值，非渲染值。）
+
+### 工具
+
+`scripts/diag/l2d_param_retain_verify.py`（渲染有效值 + 自愈挂钩 + 空断言红闸）、
+`scripts/diag/hit_verify.py`、`scripts/diag/interact_verify.py`。
+
+**项目侧对应**：`docs/WORKFLOWS.md` WF-57、`docs/TROUBLESHOOTING.md` §167。
+
+### 三十·5 三态参数（min < def < max）：默认档是**独立语义**，必须参与两端定义
+
+`ougen_8/ShoseOff` 值域 `-1 / 0 / 1`，三档语义完全不同（实测可见鞋件数）：
+`0` = 穿鞋 7/15、`1` = 脱鞋（黑丝光脚）5/15、`-1` = 残缺档 3/15。
+
+把它当两态会在**两条独立路径**上各掉一次进残缺档：
+
+| 路径 | 错误写法 | 后果 |
+|---|---|---|
+| 启动归属 `stateCurOn` | `cur` 离哪端近就归哪端 | `cur=def` 到两端**等距** ⇒ 判成 `min` ⇒ 每帧把默认值改写掉 |
+| 切换目标 `costumeTarget` | `to = 近hi ? lo : hi`（`lo=min`） | 循环 `def→max→min→max→min…` **永远回不到 def** |
+
+**正确写法**：默认值严格落在 `(min,max)` 之间 ⇒ 关端取默认值。
+
+```js
+const dv = core.getParameterDefaultValue(ix);
+if (typeof dv === 'number' && dv > lo && dv < hi) offV = dv;
+```
+
+**验收必须连点 4 次**看往返回切，序列应为 `def, max, def, max`。
+只验启动值或只点一次都会漏掉这个 bug（本项目的真实事故就是这么漏过两轮的）。
+
+### 三十·6 「两个参数各管一侧，应当联动」——这个直觉必须先证伪
+
+同一件东西的左右两侧若各由一个参数控制，很容易想当然地写一张联动表。
+本项目实测**这个直觉是错的**：`ShoseOff` 与 `Param233` 的驱动件
+在 V-X 上分别落在 `-3.0..0.5` 与 `10.1..14.9`，**尺寸差 4–10 倍、逐件镜像配对 0 命中**，
+根本不是同一件东西的两侧。
+
+想写联动之前，必须先拿到**第一性证据**。本项目试过、**全部不成立**的渠道：
+
+- ❌ `param_drawables` 的包围盒 X 范围 —— 只是间接推断，会把不相干的两件判成"两侧"。
+- ❌ motion3.json 曲线 —— 装扮参数在动作里常为常值 0，导出器又规范成同一形态，
+  "取值相等 + 段结构相同"对任意两条都成立（会产出 `[BondEyes, ShoseOff]`）。
+  **常值相同不构成证据。**
+- ❌ 离线快照（`.diag/all_draw.json`）做镜像配对 —— 快照若取在参数隐藏档，
+  **隐藏件顶点是未初始化残值**，必然 0 命中。必须在运行时把参数拨到可见档再量。
+
+结论：**没有第一性证据就不许写联动代码**。宁可只切一个参数（与素材行为一致），
+也不要凭推断做出"点一只脚两只脚都变"的错误行为。
+
+### 三十·7 「产品层干预数据」的两条边界（2026-10-29 用户实测纠错两次）
+
+**① 动作里有定值的参数，产品层不许硬钉。**
+
+曾用一张默认档表把 `Param233` 钉成 1，而 `idle` 的动作定值与 moc3 默认都是 0
+⇒ 产品与数据打架，用户看到"idle 的默认参数被改错了"。
+
+两条配套纪律：
+- 要"默认打开某个装扮"，必须**连该动作的定值一起改**，否则不同动作表现不一致。
+- **支撑这条干预的定性被推翻后，干预本身要跟着撤掉**。
+  本项目实例：§163 的"少一只鞋 = 素材缺省关闭"被 §169 推翻（真根因是三态参数被钳到
+  残缺档），但依据它写的那条 pin 一直留到用户实测反馈才被删。
+
+**② 列表类 UI 必须过滤"无内容条目"，并把折叠量写进标题。**
+
+部件区曾全量列出 310 个部件，其中 84 个挂 **0 个** drawable。
+拖空部件零变化，用户会判定"功能没生效"——而通路是好的
+（实测把挂 18 件的 `Part34` opacity 调到 0.05，画面变化 520470 px）。
+⇒ 用 `parentPartIndices` 统计挂载数，只列 >0 的，标题写 `部件 226（有内容 / 全部 310）`。
+
+**排查顺序（这条省了很多时间）**：用户说"X 没生效"时，**先证明通路本身有效**
+——找一个必定有可见效果的样本（挂件最多的部件 / `ParamAngleX`）跑一次。
+通路确认 OK 之后，"没生效"只剩两种可能：输入没到，或这个条目本来就没有效果。
+
+**别急着删功能**：参数/部件区是定位"某参数/部件控制什么"的唯一入口，
+本项目多次排查（§163 反查、§167 热区几何、§170 绑定反查）都靠它。
+用户觉得多余，通常是**标签没说明用途**——先改标签 + 过滤空条目，再谈删。
+
+### 三十·8 三态参数与输入修饰键（2026-10-29 第三轮用户实测纠错）
+
+**① 值域含中间档 ⇒ 离散档位，面板不许用滑块。**
+`min < def < max`（如 `ShoseOff` 的 `-1/0/1`）说明它是档位不是连续量。
+给滑块会让用户滑进素材里未使用的档位。正确做法：按 switch 渲染，两档取「默认档 ↔ 最大档」，
+与点击切换同一语义。判据一行：`dflt > lo && dflt < hi ⇒ switch`。
+
+**② 输入修饰键必须成套定义。**
+滚轮与拖拽要用同一套语义，否则用户只能靠记忆：
+
+| 输入 | 裸操作 | Ctrl/⌘ + 操作 |
+|---|---|---|
+| 滚轮 | 滚页面 | 缩放模型 |
+| 左键拖动 | 拖动互动 | 平移画面 |
+
+实现关键：`panMode` 在 `pointerdown` 那一刻由修饰键**定死**，
+不能在 `pointermove` 里逐帧判断（中途按/松 Ctrl 会让一次拖动语义漂移）。
+同时保留「位移 <6px = 点击」的旧阈值，点击行为一点不改。
+
+**③ 参数对照的像素差必须与 drawable 级差异量级一致。**
+同一个 `-1` vs `0` 对照，没停 ticker 时报「34% 画布变化」，停了报「0.19%」——
+前者是呼吸/物理在变，不是参数。**两者矛盾时先怀疑仪器，不要先下结论。**
+正确做法：停 ticker → 手动 `core.update()+renderer.render()` → 截图前后各断言一次参数值。
+
+## 31. 「点一处同时换两处」与「拖动型互动区」：先证参数归属，再谈联动（2026-10-30，version 1.10.29）
+
+### 31.1 两个独立参数 ≠ 不能联动：否证别把可能性空间砍太窄
+
+用户报「点一处能同时脱穿**双脚**」。上一轮的否证是「`ShoseOff` 与 `Param233` 逐件镜像配对 0 命中
+⇒ 不是同一件东西的左右两侧，不能写联动」，据此把联动代码全删。
+
+**那个否证只否掉了「同一批件被两个参数驱动」，没否掉「两批件分属左右脚」。**
+改按几何分箱重测（冻结动作、全参数逐参数 min↔max、全件可见性）得到：
+
+| 参数 | 驱动件数 | x 范围 | 归属 |
+|---|---|---|---|
+| `ShoseOff` | 15 | `-10.5 .. -0.3` | 全部左脚 |
+| `Param233` | 16 | `+6.1 .. +10.8` | 全部右脚 |
+
+交集为空，且**没有任何单一参数**能同时改两侧（582 个全扫 0 命中）⇒ 数据层无联动，
+只能在产品层成组。**写否证结论时要问一句：我否掉的是哪一个具体命题？**
+
+### 31.2 分箱不能用「模型包围盒中线」
+
+第一版按 `(x0+x1)/2` 分左右，而包围盒被分屏大面板撑成 `x[-430..153]`，中线算到 **-138**，
+左右分箱全错，报「同时改双脚的参数：0 个」。**改成按目标件自身的 x 中心分箱**才对。
+模型包围盒只在「整模级参数」判定上有用，不能当左右分界。
+
+### 31.3 写参数只走产品 pins 入口（这条写在别的脚本 docstring 里，本轮又踩一次）
+
+为做「干净对照」，每次测量前复位 582 个参数再 `setParameterValueById` 写目标值，读到：
+
+- `ShoseOff` 三档 `-1/0/1` 对 842 件可见性 **变化 0 件**、像素差 **0 px**；
+- 而同模型另一探针报「4 件变化」——**两个探针自相矛盾时优先怀疑仪器**。
+
+真因：页面每帧 `loadParameters` 会把参数拉回动作曲线值，直写当场被下一帧覆盖。
+唯一可信入口是 `window.__costumePinsByModel[模型]`（由 `__statePinTick` 每帧重申）：
+
+| 入口 | `ShoseOff` | `Param233` | 左右分布 |
+|---|---|---|---|
+| `setParameterValueById` | **0 px** | 16 件可见性翻转 | — |
+| `__costumePinsByModel` | **5592 px** | **15806 px** | SO 左 5008/右 584；P233 左 0/右 15806 |
+
+⚠️ 这条教训**早就写在** `scripts/diag/l2d_shoe_param_diff.py` 的模块文档里。
+**动手前先 `Select-String` 一遍 `scripts/diag/l2d_*.py` 的 docstring，别自己发明对照法。**
+
+### 31.4 拖动型互动区：线必须跟手，不能有固定 span
+
+「在分屏线附近左右拖动改占比」这类互动，参数与屏幕位置的关系**取决于画布尺寸与模型缩放**
+（实测 1145px 画布上 `Param373` 0..20 对应 **1622px** 行程）。用固定 `spanPx` 的后果：
+「拖一点就跑到头」或「拖到底线才动一点」，且换分辨率完全失效。
+
+正确做法 = **标定两端 + 反解**：
+已知 `v=lo` 时线在 `xa`、`v=hi` 时线在 `xb`（同一屏幕 y 处），
+求使 `x(v)=clientX` 的 `v` —— 与「参数→屏幕 x」的映射严格互逆。实测**误差 0 px**。
+
+配套两条硬约束：
+
+- **绝不每次 `core.update()`**：一次 update 要重算全部 842 件，拖动时每帧调会明显掉帧
+  （实测探针扫 6 个值就卡到超时）。遮罩顶点对参数是**线性**的，两点标定 + 线性插值足够。
+- **边界取「x 最小的两点」而不是写死顶点索引**：不同模型三角带起始点不同，
+  写死会在换模型时静默取错边（装扮热区上已经吃过一次）。
+
+### 31.5 「改动幅度最大」≠「最相关」
+
+上一轮选 `Param149`（宽度变化 4 倍）而放弃 `Param373`，实测 `Param149` 驱动 **667 件**，
+拖动它会**整模提亮**（三档两两像素差 51%–62%，包围盒覆盖几乎整幅画面）。
+判据里必须含一条「**只影响目标、不影响别处**」：`Param373` 只驱动遮罩 `FanMeng` 一件。
+
+### 31.6 两条仪器陷阱
+
+- **`masks` 不是 `maskIndices`**：`drawables` 的真实字段是 `masks`（`masks[i]` = 第 i 件自己的
+  遮罩索引数组，长度 = `maskCounts[i]`）。字段写错让反向统计恒空，打印「0 个」，
+  差点被读成「模型里没有结构遮罩」。
+- **整页截图判不了「分屏」**：页面左侧列表栏会造成「左亮右暗」的假象。
+  必须按 canvas 元素的 `getBoundingClientRect` 裁剪后再做逐行「最强竖直边」检测。
+
+### 31.7 判据清单（照抄）
+
+| 项 | 判据 | 本轮实测 |
+|---|---|---|
+| 联动生效 | 点 1 次两参数**同档**、再点 1 次**同回** | `1/1` → `0/0` |
+| 联动是真双脚 | 画面差分**左右两半都有**变化 | 左 76592 px + 右 74199 px |
+| 分屏参数归属 | 该参数只驱动遮罩件、不驱动整模 | 只驱动 `FanMeng` 一件 |
+| 拖动生效 | 拖完参数变化、松手保持 | 9.42 → 12.13，1.2 s 后不变 |
+| 线跟手 | 反解出的线位置 vs 指针落点 | **误差 0 px** |
+| 阴性对照 | 远离线处拖动参数不变 | 不变 |
+| 同态复测 | 同参数值两次读数完全一致 | 一致 |
+
+**涉及**：`gallery_src/index.html`（`COSTUME_LINK`、`COSTUME_DRAG`、`splitCalib`/`splitScreenX`/
+`splitHitAt`/`splitMove`、`costumeToggle` 成组广播、`__splitInfo`/`__splitScreenX`/`__splitHitAt`）、
+`scripts/diag/l2d_split_drag_verify.py`（六条判据验收）、
+`docs/TROUBLESHOOTING.md` §173/§174、`docs/WORKFLOWS.md` WF-58。
+
+## 32. 分屏拖动的「界限」与「画面跟随」：先证机制存在，再谈手感（2026-10-30，version 1.10.30）
+
+### 32.1 只验「线会动」不够，必须验「内容会不会跟着动」
+
+上一轮验收分屏拖动只跑了四条判据（线单调移动 / 拖动生效 / 松手保持 / 阴性对照），
+**全绿**，但用户一眼看出「和游戏不一样」。缺的那一条是**内容位移**：
+
+| 判据 | 方法 | 结论 |
+|---|---|---|
+| 线会动 | `__splitScreenX` 随参数单调 | ✅ |
+| **内容会跟着动** | 一维互相关求右半 dx | **❌ dx 恒为 0（纯裁切）** |
+| 内容件的可见性会变 | 842 件 `(vis, opacity)` 两态快照 | ❌ 变化 0 件 |
+| 有"两份副本"所以能两半各自取景 | drawable / part 名去重 | ❌ 重名 0 |
+
+⇒ **「线会动」与「画面跟随」是两件事**。用户说"跟随"时，验的必须是**内容位移**，
+不是边界几何。这条要写进任何「拖动型互动区」的验收清单。
+
+### 32.2 判「拖动界限」不能用「内容包围盒」
+
+第一版用「遮罩 fan-out 件的包围盒」当内容范围，算出 `vMin=0 / vMax=19.0`（几乎等于值域，等于没夹）。
+原因：fan-out 里包含**全屏背景**，它的包围盒就是整幅画布。
+
+正确判据：**遮罩边界必须落在画布内部**。线跑出画布时被遮那一侧整块空
+（实测 v=19.0 时左侧内容占比 **0.0%**）。把「边界 x ∈ 画布内」翻译成参数值区间即可
+（边界 x 随参数线性，已两点标定）。
+
+验证必须包含「两端各自的左右两侧内容占比」——只看参数值被夹住不算，要看画面真的两侧都有内容。
+
+### 32.3 「整模级参数」不等于「干扰项」
+
+`Param147/148/149/162` 各驱动 667 件，我上一轮把它们当「整模级干扰」排除了。
+但**驱动全部件正是相机/整体变换的特征**。判它们的类型不能用互相关（整幅缩放/旋转下
+不存在单一 dx，err 会到 70–200），要用**6×6 网格变化分布**：
+
+- 整幅均匀变（80–89%）⇒ 整体变换
+- 只少数格变 ⇒ 局部
+
+### 32.4 探针关缓存是硬要求
+
+`model3.json` 被浏览器缓存。改完判定区后新开探针仍读旧副本
+（`hit_verify` 报 60 条，服务器已吐 120 条），差点把「改了不生效」当成产品缺陷。
+`gallery_ui_shots.Page.__init__` 已加 `Network.enable` + `Network.setCacheDisabled(true)`。
+
+### 32.5 判重只能按原样 Id（判定区补登记）
+
+moc3 里 `TouchHead` 与 `Touch_Head` 是**两个真实、位置不同的 drawable**，指向同一动作组。
+按归一化名去重会把 59 个真实区域整块丢掉（判定区 120→60）。
+「共用动作组」是设计，不是缺陷。详见 TROUBLESHOOTING §175 / WF-59。
+
+**涉及**：`gallery_src/index.html`（`splitCalib` 的 `vMin/vMax`、`splitMove` 夹取、
+`__splitInfo` 导出）、`scripts/fix_model3.py`（下划线形态）、
+`scripts/diag/hitarea_audit.py`、`hitarea_missing_cause.py`、`hitarea_underscore_check.py`（新增）、
+`scripts/diag/gallery_ui_shots.py`（关缓存）。

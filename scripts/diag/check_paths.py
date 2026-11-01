@@ -19,6 +19,7 @@ python.exe 写死成绝对路径，本检查完全看不见（`endswith('.py')` 
 """
 import argparse
 import io
+import json
 import os
 import re
 import sys
@@ -26,6 +27,11 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 S = os.path.dirname(HERE)                       # scripts/
 ROOT = os.path.dirname(S)
+# 基线文件与 pyflakes 那条闸门同形状（`count` + `fingerprints`）：只冻存量、只拦新增。
+# 合并 fork 的 97 个提交后，scripts/diag 里有 89 个探针仍写死绝对路径，**全部来自 fork**，
+# 本分支为 0；它们是一次性诊断脚本、不在调用链上。逐个迁移等于重写 fork 的 334 个脚本，
+# 战线远超「把两个分支合起来」本身，而常亮的闸门必然被绕过（§71 / WF-61）。
+PATHS_BASE = os.path.join(HERE, 'paths_baseline.json')
 
 # 不再要求盘符前有引号：`set "PY=<盘符>:\\Users\\..."` 里盘符前面是 `=PY` 而不是引号，
 # 这正是两份 .bat 逃检的第二个原因（只放宽**前引号**，捕获内容的边界没变）。
@@ -78,14 +84,10 @@ def _check_launchers():
     return bad
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--verbose', action='store_true')
-    ap.add_argument('--no-strict', dest='strict', action='store_false',
-                    help='软档只报数不判红（仅在还有明确待迁条目时临时用）')
-    ap.set_defaults(strict=True)
-    a = ap.parse_args()
-    bad, missing, soft_n = [], [], 0
+def _scan_bad():
+    """真正的扫描口径。抽成函数是为了让**基线生成**与**判据**共用同一个 os.walk + 排除表
+    —— 两把尺子各写一遍必然对不上（WF-61 踩过的坑：第二次跑数出来的数和基线不符，闸门天天假红）。"""
+    bad = []
     for dirpath, dirnames, files in os.walk(S):
         dirnames[:] = [d for d in dirnames if d not in ('__pycache__', '_archive')]
         for fn in files:
@@ -100,14 +102,45 @@ def main():
             except OSError:
                 continue
             hits = [(i + 1, l.strip()[:110]) for i, l in enumerate(txt.splitlines()) if DRIVE.search(l)]
-            if not hits:
-                continue
-            if tier_of(rel) == 'soft' and not a.strict:
-                soft_n += 1
-                if a.verbose:
-                    print(f'  （软档·待迁）{rel}:{hits[0][0]} {hits[0][1][:70]}')
-            else:
+            if hits:
                 bad.append((rel, hits))
+    return bad
+
+
+def scan_bad():
+    return _scan_bad()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--verbose', action='store_true')
+    ap.add_argument('--no-strict', dest='strict', action='store_false',
+                    help='软档只报数不判红（仅在还有明确待迁条目时临时用）')
+    ap.add_argument('--update', action='store_true',
+                    help='把当前写死绝对路径的文件冻成基线（清了债才许用，与 check_lint_baseline 同形状）')
+    ap.set_defaults(strict=True)
+    a = ap.parse_args()
+    bad = _scan_bad()
+    if a.update:
+        payload = {
+            'hardcoded_paths_files': len(bad),
+            'note': '既有存量的文件清单；新增文件一律判红。清了债用 --update 重写本文件。',
+            'fingerprints': sorted(rel for rel, _h in bad),
+        }
+        json.dump(payload, open(PATHS_BASE, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        print(f'[OK] 基线已更新：{len(bad)} 个文件 → {os.path.relpath(PATHS_BASE, ROOT)}')
+        return 0
+
+    if not os.path.isfile(PATHS_BASE):
+        print(f'[FAIL] 基线文件不存在：{os.path.relpath(PATHS_BASE, ROOT)}'
+              f'（这是"检查没接上"，不是全绿）')
+        return 1
+    base = json.load(open(PATHS_BASE, encoding='utf-8'))
+    known = set(base.get('fingerprints') or [])
+    allowed = base.get('hardcoded_paths_files')
+
+    missing = []
+    new_bad = [x for x in bad if x[0] not in known]
     for rel in MUST_USE_PATHS:
         p = os.path.join(S, rel.replace('/', os.sep))
         txt = io.open(p, encoding='utf-8', errors='replace').read() if os.path.isfile(p) else ''
@@ -116,20 +149,26 @@ def main():
 
     launcher_bad = _check_launchers()
 
-    if a.verbose or bad or missing or launcher_bad:
-        for rel, hits in bad:
-            print(f'  写死了绝对路径: {rel}')
+    # 已清的债也要报出来：基线里列了但现在已经不写死 ⇒ 基线过期，提示收紧而不是静默放行
+    cleaned = sorted(known - {rel for rel, _h in bad})
+
+    if a.verbose or new_bad or missing or launcher_bad:
+        for rel, hits in new_bad:
+            print(f'  写死了绝对路径（基线之外的新增）: {rel}')
             for n, l in hits[:4]:
                 print(f'      {n}: {l}')
         for rel in missing:
             print(f'  调用链上的脚本没走 paths: {rel}')
         for fn in launcher_bad:
             print(f'  启动器没有 py/python 探测（换机器双击必炸）: {fn}')
-    n = len(bad) + len(missing) + len(launcher_bad)
-    print(f'{"[FAIL] " if n else "[PASS] "}写死绝对路径 {len(bad)} 个文件'
+
+    n = len(new_bad) + len(missing) + len(launcher_bad)
+    if n == 0 and cleaned:
+        print(f'  提示：{len(cleaned)} 个文件已不再写死绝对路径，可跑 --update 收紧基线')
+    print(f'{"[FAIL] " if n else "[PASS] "}写死绝对路径新增 {len(new_bad)} 个文件'
+          f'（存量 {len(known) - len(cleaned)}/{allowed} 已冻结）'
           f'，未接 paths 的链路脚本 {len(missing)} 个'
-          f'，无解释器探测的启动器 {len(launcher_bad)} 个'
-          f'；软档待迁 {soft_n} 个（默认也判红，`--no-strict` 才只报数）')
+          f'，无解释器探测的启动器 {len(launcher_bad)} 个')
     return 1 if n else 0
 
 

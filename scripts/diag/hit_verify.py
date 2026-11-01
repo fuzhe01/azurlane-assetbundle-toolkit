@@ -12,7 +12,8 @@
    候选集合取自产品暴露的 window.__L2_HITALL，探针不复算几何（复算版实测与真实派发 4/38 条不一致）。
 用法: py -3 scripts/diag/hit_verify.py [--limit N] [--only k1,k2] [--page index_a0.html]
 #   都不给 --limit/--only 即全量；--page 指向 A/B 对照页（判 WIRING 是不是本轮引入）
-前置: 8777 画廊服务器在跑（否则 Chrome 换成导航失败页，会假报 nAreas=0，见 WF-16 踩坑段）
+前置: 画廊服务器在跑（默认 8777；用 GALLERY_BASE 覆盖，本项目在 8778 ⇒ 设 GALLERY_BASE=http://127.0.0.1:8778/gallery_v2）
+      否则 Chrome 换成导航失败页，会假报 nAreas=0，见 WF-16 踩坑段
 """
 import sys, os, json, time, subprocess, urllib.request
 sys.stdout.reconfigure(encoding='utf-8')
@@ -21,7 +22,10 @@ import websocket
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import cdp_slot            # 端口 / profile 一律不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # 本目录：chrome_tree / cdp_wait
 import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
+import chrome_tree         # ⚠️ 必须在 launch() 之前导入（2026-10-29 修：原写法 import 在 launch 之后 ⇒ NameError）
 CHROME = P.chrome_or_die()
 PORT, PROFILE = cdp_slot.slot(ROOT, 'hitv')
 limit = int(sys.argv[sys.argv.index('--limit') + 1]) if '--limit' in sys.argv else 0
@@ -29,6 +33,8 @@ only = [x for x in (sys.argv[sys.argv.index('--only')+1] if '--only' in sys.argv
 # --page：指向画廊里的另一个页面文件，用于「改动前 vs 改动后」同一样本的定向复跑
 # （A/B 对照页由 git show HEAD:<正本> 落盘生成，见 WF-16 追加段 / gallery_framing_ab.py）
 page = sys.argv[sys.argv.index('--page') + 1] if '--page' in sys.argv else 'index.html'
+# 画廊地址不写死：8777 可能是另一份画廊（旧机全库），在那上面 PASS 不证明本项目生效
+GBASE = os.environ.get('GALLERY_BASE', 'http://127.0.0.1:8777/gallery_v2').rstrip('/')
 
 idx = json.load(open(os.path.join(ROOT, 'Output', 'gallery_v2', 'index.json'), encoding='utf-8'))
 cands = []
@@ -40,12 +46,12 @@ for s in idx['ships']:
 if only: cands = [c for c in cands if c in only] or only
 if limit: cands = cands[:limit]
 
-proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
   '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
   '--no-default-browser-check', '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
-  '--use-angle=swiftshader', '--window-size=1280,900', f'http://127.0.0.1:8777/gallery_v2/{page}'],
+  '--use-angle=swiftshader', '--window-size=1280,900', f'{GBASE}/{page}'],
   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-import chrome_tree; chrome_tree.install(proc)   # 异常退出也要收整棵树，见该模块 docstring
+chrome_tree.install(proc)   # 异常退出也要收整棵树，见该模块 docstring
 w = None
 for _ in range(80):
     try:
@@ -94,6 +100,7 @@ JS = r"""(async key => { try{
     const cux=im.width/ppu, cuy=im.height/ppu;
     const g=m.toGlobal(new PIXI.Point((sx/n+cux/2)*ppu, (cuy/2-sy/n)*ppu));   // 点击瞬间重算：框会随呼吸/物理位移
     return {scr:[r.left+g.x, r.top+g.y], v:[sx/n, sy/n]}; };
+  const groups=Object.keys((mm.definitions)||{});
   const res=[];
   for(const a of areas){
     mm.startMotion('idle',0,3); await t(300);           // 先归位，避免上一次残留
@@ -129,10 +136,24 @@ JS = r"""(async key => { try{
     /* A3（2026-09-24 用户裁定）：同一位置挂多个 Touch 标记时随机挑一条 →
        断言从「必须等于自己」改成「必须落在候选集合里」，否则把设计行为当失败 */
     const usable=window.__L2_HITUSE? window.__L2_HITUSE() : null;
+    /* 期望集合要把「产品自己的映射」算进去：TouchDragN 这类标记不一定有同名动作组，
+       产品会按 dragGroupOf 轮转到现有的 touch_dragN（实测 ougen_8 的 touchdrag6/7 →
+       touch_drag1）。旧写法只看候选名，于是把产品的正常映射判成 WIRING（假红：
+       2026-10-29 实测该模型 6 条 WIRING 里 5 条是这么来的）。这里用产品同一条映射规则
+       算期望值，判据仍是「实播必须落在产品允许的集合里」，只是把集合算准。 */
+    const altOf=(nm)=>{ if(!nm) return [];
+      if(groups.includes(nm)) return [nm];
+      const lo=groups.find(x=>x.toLowerCase()===String(nm).toLowerCase()); if(lo) return [lo];
+      const alt=String(nm).replace(/^touchdrag(\d+)$/i,'touch_drag$1');
+      if(groups.includes(alt)) return [alt];
+      const k=parseInt((String(nm).match(/(\d+)$/)||[])[1]||'1',10);
+      const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
+      return ds.length? [ds[(k-1)%ds.length]] : []; };
+    const expect=[...new Set([].concat(cand, ...cand.map(altOf)))];
     let cls;
     if(!cand.length) cls=(usable && !usable.includes(a.Name)) ? 'NOTCLICKABLE' : 'OUTSIDE';
     else if(cur===a.Name) cls='HIT';
-    else if(cand.includes(cur)) cls='INGROUP';
+    else if(expect.includes(cur)) cls='INGROUP';
     else cls='WIRING';
     res.push({area:a.Name, played:cur, cand, reachable:cand.includes(a.Name), cls});
   }

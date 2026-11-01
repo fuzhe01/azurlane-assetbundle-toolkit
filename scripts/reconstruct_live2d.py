@@ -46,6 +46,9 @@ except ImportError:
     print("[ERROR] 需要安装 UnityPy: pip install UnityPy")
     sys.exit(1)
 
+from astc_import_patch import ensure_astc_importable
+ensure_astc_importable()
+
 try:
     from PIL import Image
 except ImportError:
@@ -122,7 +125,8 @@ def extract_textures(env):
             img = data.image
             if img is not None:
                 textures.append((name, img))
-        except Exception:
+        except Exception as e:
+            log_error(f"{name}.texture", f"{type(e).__name__}: {e}")
             continue
 
     return textures

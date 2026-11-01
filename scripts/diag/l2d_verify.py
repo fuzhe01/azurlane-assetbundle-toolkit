@@ -6,6 +6,12 @@
 import sys, os, json, time, base64, subprocess, urllib.request
 sys.stdout.reconfigure(encoding='utf-8')
 import websocket
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
@@ -19,13 +25,14 @@ os.makedirs(SHOTS, exist_ok=True)
 BASE = 'http://127.0.0.1:8777/gallery_v2/index.html'
 SAMPLES = ['lafeiii_3', 'adaerbote_3', 'aersasi_2', 'abeikelongbi_3']
 
-proc = subprocess.Popen([
+proc = chrome_tree.launch([
     CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
     '--remote-allow-origins=*', f'--user-data-dir={DEBUG_DIR}',
     '--no-first-run', '--no-default-browser-check',
     '--disable-background-timer-throttling', '--enable-unsafe-swiftshader',
     '--use-angle=swiftshader', '--window-size=1280,900', BASE,
 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 
 def wait_ws():
     for _ in range(60):

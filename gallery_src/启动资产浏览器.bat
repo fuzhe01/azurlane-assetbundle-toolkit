@@ -1,21 +1,23 @@
 @echo off
-chcp 936 >/dev/null
-title 碧蓝航线资产浏览器 (本地服务器)
+chcp 65001 >nul
+title Azur Lane Asset Browser (local server on 8777)
 set "SCRIPT=%~dp0_gallery_server.py"
 
-REM 优先用 py 启动器，其次 python；找到即运行（前台，关窗口即停）
-where py >/dev/null 2>/dev/null
+rem Prefer launcher 'py'; fall back to 'python' if not on PATH.
+rem ASCII-only on purpose: cmd parses .bat bytes with the OEM codepage,
+rem so non-ASCII text can break the command splitting.
+where py >nul 2>nul
 if not errorlevel 1 (
   py "%SCRIPT%"
   goto end
 )
-where python >/dev/null 2>/dev/null
+where python >nul 2>nul
 if not errorlevel 1 (
   python "%SCRIPT%"
   goto end
 )
-echo [错误] 未找到 py 或 python，请先安装 Python 并加入 PATH。
+echo [ERROR] py / python not found. Install Python and add it to PATH.
 
 :end
-REM 无论正常退出还是报错，都停在这里，避免窗口一闪而过
+rem Keep the window open on error so the message stays visible.
 pause

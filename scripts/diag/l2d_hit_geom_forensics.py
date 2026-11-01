@@ -20,6 +20,12 @@ import sys, os, json, time, subprocess, urllib.request
 
 sys.stdout.reconfigure(encoding="utf-8")
 import websocket
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
@@ -138,7 +144,7 @@ def main():
     scan = "--scan-all" in sys.argv
     keys = args or (["<all>"] if scan else ["jianwu_2", "lafeiii_3"])
     os.makedirs(PROFILE, exist_ok=True)
-    proc = subprocess.Popen([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
+    proc = chrome_tree.launch([CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
       '--remote-allow-origins=*', f'--user-data-dir={PROFILE}', '--no-first-run',
       '--no-default-browser-check', '--disable-background-timer-throttling',
       '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--window-size=1280,900',

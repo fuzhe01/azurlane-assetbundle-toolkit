@@ -15,6 +15,12 @@ skin.live2d 路径加载，比较同一动作下的画面差异与参数轨迹�
    另外 load 后固定等 9s，超大模型偶发"无模型"假失败，重试即可。
 """
 import sys, os, json, time, base64, shutil, subprocess, urllib.request
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -91,6 +97,8 @@ def main():
          '-b', '127.0.0.1', '-d', os.path.join(ROOT, 'Output')],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    srv = chrome_tree.install(srv)
+
     kill_stale_chrome(DEBUG_DIR)
     url = f'http://127.0.0.1:{SRV_PORT}/gallery_v2/index.html'
     for _ in range(40):                      # 等 http.server 真的绑上端口，否则 Chrome 拿到错误页
@@ -102,7 +110,7 @@ def main():
     else:
         raise RuntimeError('本地服务器未就绪 ' + url)
 
-    proc = subprocess.Popen([
+    proc = chrome_tree.launch([
         CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
         '--remote-allow-origins=*', f'--user-data-dir={DEBUG_DIR}',
         '--no-first-run', '--no-default-browser-check',

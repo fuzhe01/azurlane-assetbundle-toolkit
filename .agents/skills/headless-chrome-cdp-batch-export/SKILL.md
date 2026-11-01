@@ -1,7 +1,7 @@
 ---
 name: headless-chrome-cdp-batch-export
 description: 无头 Chrome + CDP 批量驱动本地网页完成渲染/截图/资产导出。当任务需要用浏览器前端运行时（如 Spine/WebGL/Canvas/JS 库）批量产出图片或数据文件时使用——触发词：无头浏览器批量导出、CDP 驱动网页、headless chrome 批量截图、浏览器渲染落盘、autostart 参数自动化。不适用于单次网页截图和 QwenWork 内置媒体生成工具。
-version: 1.7.0
+version: 1.8.8
 ---
 
 # 无头 Chrome + CDP 批量导出
@@ -33,13 +33,50 @@ version: 1.7.0
    - 抽查 1-3 张落盘产物（尺寸、内容非黑图）确认正确
    - 正确后再放量跑全量；跑完确认 Chrome 进程已退出（独立 user-data-dir 的进程可直接按 profile 识别）
 
-## 关键坑位（五坑，缺一即翻车）
+## 关键坑位（六坑，缺一即翻车）
 
 1. **`--remote-allow-origins=*` 必须加**：CDP 新版安全策略下，websocket 握手带 Origin 头会被 403 拒绝，表现为 `/json` 能列出 tab 但 `create_connection` 失败。
 2. **独立 `--user-data-dir` + 清残留 chrome**：必须用独立 profile 目录，且启动前杀掉使用同一目录的残留 chrome 进程，否则调试端口被旧进程占用，`/json` 返回的是旧会话的 tab。
 3. **WebGL 走软渲染**：无头环境 GPU 不可用，WebGL 页面会黑屏或崩溃。加 `--enable-unsafe-swiftshader --use-angle=swiftshader` 强制 SwiftShader 软渲染。实测 2400px 长边约 2s/张，可接受；输出尺寸设上限防纹理超限。
 4. **`toBlob` 需要 `preserveDrawingBuffer:true`**：WebGL 上下文创建时必须传 `preserveDrawingBuffer: true`，否则事件循环清空帧缓冲后 `toBlob`/`toDataURL` 拿到黑图或空图。批量循环里逐项 `dispose()` 纹理/资源，防 4096² 页纹理堆爆显存。
 5. **`Runtime.evaluate` 前须等页面就绪**：`/json` 出现 tab ≠ 页面加载完成。探针若在目标 DOM（如 `#prog`）存在前发送，evaluate 返回 null 或抛异常。驱动脚本应对 `null` 探针结果做容错重试，或先 evaluate 一个存在性检查再进入正常轮询。
+   ⚠️ **`about:blank` 是这条的致命变种（2026-10-27 实测）**：CDP 连上 tab 时执行上下文可能还停在 `about:blank`，
+   而**空白页的 `readyState` 天生就是 `'complete'`** ⇒ `while (readyState !== 'complete') sleep()` 第一次判就放行，
+   以为等到了真实页面，实际在空白上下文里求值 —— 症状是探针报 `openShip is not defined` / `window.GALLERY` 为 false，
+   极易被误读成"产品坏了"。**就绪必须三件同时成立**：
+   ① `location.href` 真的等于目标 URL（不是 `about:blank`）；
+   ② `document.readyState === 'complete'`；
+   ③ 业务标志在（`window.<GLOBAL>` 非空 / 目标 DOM 节点存在）。
+   五项指纹对照（空白 vs 真实页面）：`location.href`、`outerHTML.length`（空白恒约 39）、`document.scripts.length`（空白 0）、
+   `document.title`、`window.<GLOBAL>`。另两条：等待中的 `continue` **不要计入重试预算**（否则"页面慢"会被记成"页面死在空白"）；
+   `/json` 列表会混入 `chrome-extension://` 的 `background_page`，必须按目标 URL 子串过滤 tab。
+   页面级就绪 ≠ 模型级就绪——重运行时页面（本项目 263KB html + vendor 需 41~43 秒才 complete）complete 之后
+   模型还要若干秒才进舞台，得另有一个业务级超时。
+   实现见本项目 `scripts/diag/cdp_wait.py` 的 `wait_ready()`。
+
+6. **批量迁移启动点时，`import` 位置必须一起审计**（2026-10-29 事故，6 个脚本中招）：
+   把全库 `subprocess.Popen(...)` 批量换成 `chrome_tree.launch(...)`（单出口三层兜底）
+   时，容易只换「调用点」不动「import 行」。原本常见的写法是「先起浏览器，再
+   `import chrome_tree; chrome_tree.install(proc)`」——当时 `chrome_tree` 只在那行才用到，
+   延迟导入无害；迁移后同一个模块名出现在**更早的行**，于是
+   `NameError: name 'chrome_tree' is not defined` 在 `launch(...)` 那一行炸掉。
+   ⚠️ **`py_compile` 抓不到**：`import` 缺失只在执行到那行时才炸，语法层面完全合法。
+   实测 6 个脚本中招，其中 5 个是回归六件套成员 ⇒ 整条验证链断在第 3、4 件，
+   而报出来的样子很像"环境故障"，白查一轮。
+   判据用 **AST** 而不是正则（正则会把注释/docstring 里提到 `chrome_tree.launch()`
+   的文件误判成坏的 —— 实测 3 个假红 —— 且认不出 `import websocket, chrome_tree, cdp_wait`
+   这种逗号式导入）：
+   ```python
+   imp = min(n.lineno for n in ast.walk(tree)
+             if isinstance(n,(ast.Import,ast.ImportFrom))
+             and any(a.name=='chrome_tree' for a in n.names))
+   first = min(n.lineno for n in ast.walk(tree)
+               if isinstance(n,ast.Name) and n.id=='chrome_tree')
+   assert imp <= first
+   ```
+   必须配阴性对照（造一个「使用在导入之前」的文件，检查必须报红），
+   否则全库全绿没有区分力。本项目固化入口：
+   `py -3 scripts/diag/migrate_chrome_launch.py --audit`（退出码 0 = 干净）。
 
 ## 验证类任务的额外坑（做"批量断言"而非"批量导出"时）
 
@@ -53,6 +90,7 @@ version: 1.7.0
      或在 JS 侧 `=== true` / `Boolean(...)`；写完先故意在页面加载前跑一次，确认它真的会等待。
 4. **两个 chrome 实例并发跑 CDP 会互相抢**，表现为 `Execution context was destroyed`。批量验证串行执行，或确保端口/profile 完全隔离且不重叠运行。
    4b. **同一类报错还有第二种成因**：探针刚连上 tab 就 `Runtime.evaluate`，而页面仍在导航 → 执行上下文被销毁。这种**不是并发问题**，串行也照犯。判据：先轮询 `document.readyState === 'complete'`，再对首次求值配"最多 6 次、每次 sleep 4s"的重试（同一张 tab 的默认上下文导航后会重建，重连即可）。⚠️ 别据此判产品坏了——本轮两个验收脚本就是这么假红过。另：脚本崩在半路会把 Chrome 整棵树漏在机器上（`proc.terminate()` 写在最后一行 = 异常时永不执行），注册 atexit 的整树 `taskkill /T /F` 才是兜底。
+   ⚠️ 只用 `readyState` 当门槛是**假门槛**（`about:blank` 也是 complete），必配 ①URL ②readyState ③业务标志 三件，详见上方「关键坑位」第 5 条。
    4c. **第三种形态最阴：不报错，只是静默附着到别人的浏览器**（2026-09-27 实测）。探针的 `PORT` 与 `--user-data-dir` 写死时，第二个会话起不来新实例（端口被占），`/json` 列出的却是**别人那个正在跑的浏览器**里的同一 URL → 两边驱动交替点同一个页面。症状不是异常而是**数据整齐地错位**：每条断言读到的"当前值"恰好等于**上一次操作**的结果（实测：逐部位点击，`played` 整体滞后一位 ⇒ 62 个部位报出 38 条 WIRING 假红 + 一个模型"加载失败"）。
       ⇒ 判据：结果出现**统一偏移一位 / 整序列平移**这种"太整齐"的形状，先怀疑探针侧污染，不要去改产品；
       跑任何 CDP 探针前先查那条端口上有没有别的 python 在跑
@@ -263,6 +301,36 @@ version: 1.7.0
     ③ 自查残留时 `Get-CimInstance Win32_Process | ? { $_.CommandLine -match "chrome_x_1"` 这类写法
        会**匹配到执行查询的 powershell/bash 自己**（查询串就在它的 CommandLine 里），
        误报"还有 N 个残留"、甚至差点去 kill 自己的 shell —— 先按 `$_.Name -eq "chrome.exe"` 过滤再匹配。
+    **④ ★ 进程内的任何收尾，在"宿主强杀"下全都无效 —— 只能靠内核级兜底**（2026-10-28 实测，用户的机器
+       被压到 96% CPU / 2.3GB 空闲近两小时）。三组对照：正常退出 / `sys.exit()` → `atexit` **执行**；
+       `Stop-Process -Force`、`taskkill /F` → `atexit` 与 `finally` **都不执行**，Chrome 整棵树
+       （实测 18~24 个进程）全部存活成孤儿。⇒ **别再用"加个 finally / 注册 atexit"来回答泄漏问题**，
+       那是同一条已被否证的思路换了个写法。真正有效的是**进程外**手段，三条一起上：
+       · **A 内核级**：把子进程放进 Windows **Job Object** 并设 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`
+         （`ctypes` 调 `CreateJobObjectW` / `SetInformationJobObject` / `AssignProcessToJobObject`，
+         不需要 pywin32）。父进程一死，内核自动杀光 job 内全部进程 —— 这是唯一不依赖"能走到退出流程"的层。
+       · **B 启动前清残留**：`Popen` 之前按 `--user-data-dir` **精确等于**匹配上一轮的孤儿并杀掉。
+         顺带治另一个假绿灯：Chrome 会**复用**还活着的同 profile 实例并忽略你新传的 URL。
+       · **C 收尾回读**：kill 之后按 profile 回读进程表，确认真的 0 ——
+         `taskkill /T /F` 在 Edge 上是**假绿**（返回 0/128 而 16~20 个进程还在），不能拿退出码当判据。
+       ⇒ 出口收敛成**一个**：`chrome_tree.launch(cmd, profile=...)`（本项目 `scripts/diag/`）。
+       **全库 60 个含 `--headless` 的文件、全部浏览器启动点已归一**（`launch` 58 个 + `install` 11 个，
+       浏览器 `Popen` 残留 0）；新增探针不许自己写 `Popen`。
+       ⚠️ **老接口必须跟着升级，否则它是个沉默的旁路**：迁移第一遍只按 `--headless` 字面扫，
+       漏掉了 11 个「先 `Popen` 再 `install(proc)`」的探针 —— 它们**长得最像已修好**
+       （每行都有 `chrome_tree.install`、注释还写着"异常退出也要收整棵树"），而 `install()` 当时
+       只注册 `atexit` ⇒ 强杀下 100% 泄漏。正确处置是让 `install()` 内部也做 A
+       （事后 `AssignProcessToJobObject` 同样有效，不要求进程是 job 的创建子进程），
+       **不要逐个去改调用方**：改接口对所有（含未来）调用者一次生效。
+       ⇒ 收尾判据不能只数"目标字面"，要用 AST 数出**所有** `Popen` 调用点并逐个归类
+       （浏览器 / http.server / 子 python），总数必须对得上。
+       **验收必须带阴性对照**：`AL_NO_JOB=1` 关掉 A 再跑同一场景 —— 阳性侧 15→0、阴性侧 15→**24**
+       才算证明"零残留是 A 的功劳"；只测阳性会把"恰好这次浏览器自己退了"当成机制生效。
+       对 `install()` 形态单独做同一条对照也有必要（实测强杀前 27 → 残留 23）。
+       ⚠️ 而**强杀测试本身也会假绿**：第一次跑时浏览器早已自己退出（`before kill = 0`，残留自然 0）。
+       必须先**轮询到 ≥15 个浏览器进程存在**再杀，否则测的是一个已结束的场景。
+    ④ **别再相信"`os.kill(pid, 0)` 探活"**：Windows 上 CPython 把它实现成 `OpenProcess + TerminateProcess`,
+       即它**真的会杀人**。判活要用 `OpenProcess(0x1000) + GetExitCodeProcess == 259`。
 11. **观测通道的编码问题会被当成被测对象的缺陷**：Python 在中文 Windows 上 stdout 默认 GBK，
     把 UTF-8 内容（如带中文的资源名）打成 mojibake 后打印出来，看起来像**被测数据编码坏了**。
     本项目据此写过一条"`.skel` 与 `.atlas` 区域名编码不一致"的错误结论，
@@ -375,6 +443,122 @@ version: 1.7.0
     - 点了没响：`await 600ms` 后读 `#t0` 仍是 `0:00`，因为首曲要现取现解码 1.8 MB。
       ⇒ 一律改成**轮询到值变了再采样**（`for(i<40 && text==='0:00') await 250`），
       这是第 2 条在媒体场景下的具体形态；固定等待造成的假红已经在项目里出现过三次。
+
+
+37. **CDP 批量导出前的"作业源"检查（2026-10-17 实测，一次空转的根因）**：
+    驱动脚本若从 `index.js` 读 `spineSkins`（folder 字符串数组）生成作业，必须先确认它不是 `[]`。
+    换 index 后曾出现 `jobs=0` CDP 空转跑满超时——因为旧的 `spineSkins` 是残留的空数组/无 `cg` 字段，
+    页面加载后队列为空，`#prog` 停在 "0/N" 不前进。⇒ 导出前先读目标 index 的作业源，用
+    `assert len(作业列表)>0 and 列表[0] 含 folder` 之类硬判据，别只看"页面起来了"。
+
+38. **驱动脚本无 argparse 时 `--help` 会直接进主流程（2026-10-17 实测）**：
+    `run_cg_export.py` 没定义 argparse，`py -3 run_cg_export.py --help` 被当成未知位置参数，
+    直接拉起一个独立 profile 的 headless Chrome 占住调试端口，且长时间不退。
+    ⇒ 探活/查重端口前先 `--help` 一遍确认参数行为；被误占的 Chrome 按 `--user-data-dir` 的
+    profile 路径精确 kill（`Get-Process chrome | where CommandLine -match profile`），别误伤用户主浏览器。
+
+39. **全量前用小样本冒烟 + 客观像素判据（2026-10-17 定型）**：
+    先 `--only` 挑 2 个代表目录导出，对产物做像素判据——非透明包围盒**占满画布长轴**、
+    采样色种上万、近黑占比约 2%（用来排除黑屏/花屏/空画布），三项都过再放全量。
+    别只看"导出完成 N/N"（脚本会把空作业算完成，`cg_exists` 也可能跳过但无内容）。
+    全量带 `--timeout` 覆盖默认值，用 `Start-Process` 脱宿主运行 + 记 PID 到 `.diag/`，
+    长时批处理三分法判定"真跑完/崩了/被截断"，别拿 `exit 0` 当完成证据。
+
+40. **收尾清理的判据必须是「回读进程列表」，不是 `taskkill` 的退出码；且只能按自己的
+    `--user-data-dir` 匹配（2026-10-27 实测，一次假绿灯 + 一次资源泄漏）**：
+    `Popen([chrome,...])` 拿到的 pid **常常只是一个已退出的启动器** —— 它把用户数据目录交给
+    重新孵化的主进程后就退了，祖谱断掉，于是 `taskkill /T /F /PID <那个 pid>` **"成功"地
+    什么也没杀**（实测退出码 128、无输出，而同一 profile 下 16~20 个浏览器进程全部存活，
+    探针退出数分钟后仍在跑）。修复形态：
+    ```python
+    def kill(proc_path):                       # 唯一安全的判据 = profile 全名
+        left = pids_using(proc_path)           # 查 CommandLine 里含该 user-data-dir 的进程
+        for p in left: taskkill /F /PID p
+        return not pids_using(proc_path)       # ← 判据落在回读上
+    ```
+    - **按 profile 名匹配，不按进程名杀**：`--user-data-dir=<自己的>_<pid>` 天然唯一，
+      而 `taskkill /IM msedge.exe` 会误杀并发会话正在用的浏览器（本项目多会话共用工作树）。
+    - 注册成 `atexit`（异常退出也要跑），并在残留时**打一行到 stderr**（不静默）。
+    - **验收必须双向**：旧法要能复现出残留（证明陷阱真实存在），新法回读为 0 才算修好；
+      单跑新法杀净可能是碰巧。本机 `Windows 10/11 + Edge` 复现稳定。
+    - 同理适用于任何"我把资源收掉了"的动作：判据一律落在**回读外部状态**，不落在自己的返回码上。
+
+41. **页面变量的就绪/读取判据用 `typeof X !== 'undefined'`，不要写 `window.X`（2026-10-27 实测，
+    探针恒失败却伪装成"页面没起来"）**：页面用顶层 `let l2State = ...` 声明时**不挂到 window**，
+    于是 `window.l2State` 恒 `undefined`：等待门槛第一次判就"通过"、后续读所有字段全 undefined，
+    症状是 `fail: '45s 内模型未进入舞台'` 这类**看起来像产品坏了的假红**。
+    实测 `typeof window.l2State === 'undefined'` 而 `typeof l2State === 'object'`。
+    ⇒ 判据写 `typeof l2State !== 'undefined' && l2State && ...`：`typeof` 对未声明标识符**不抛异常**，
+    同时兼容 `let`（词法作用域）与挂在 window 上的写法，比 `window.X` 更稳。
+    查到一处要**全库扫**（同类错法常成对出现）。
+
+42. **超时预算按「最坏情形」定，不按单跑实测拍；同类等待的预算要同量级（2026-10-27 实测）**：
+    同一批探针里 `l2d_inspector_verify` 是 150s、`interact_verify` 是 40s。实测
+    `interact_verify` **单跑 1 个模型 2.7s 通过**，而**连跑 5 个模型**时排在最后的那个
+    超 40s 报 `err:'40s 内模型未加载'` —— 每个皮肤三件套约 40MB、服务器**单线程**，
+    连跑时前面请求把最后一个挤到 40s 之外。⇒ 排"最坏情形清单"：**连跑多样本 / 冷启首跑 /
+    排在批处理最后 / 大贴图皮肤**；`--disable-background-timer-throttling` 只去定时器节流，
+    省不掉串行网络+解码时间。排查手法：把同批探针的等待预算列成一张表，不一致就逐个问为什么。
+
+43. **探针的默认参数必须指向"今天还存在"的东西，且默认值要能跑通（2026-10-27 实测）**：
+    截图工具的 `--pages` 默认写着 `index.html,index_b.html`，而 `index_b.html` **全库不存在**
+    （`git log --all` 无记录、盘上也没有）⇒ 默认跑必然 404 退出 1；皮肤 key 还写死成
+    **另一份画廊**才有的 `ninghai_4` ⇒ 恒 `NO_SHIP`。**改探针时顺手核一遍"这些名字今天还在不在"**
+    （路径 `Test-Path`；样本 key 对目标页面 `index.json` 的实有条目），要对比两份就显式传参。
+
+44. **就绪/等待类判据上线前必须做阴性对照自测，只报阳性 = 无区分力的假绿灯（2026-10-27 实测）**：
+    曾经用「poke 一下看是否同绿」做对照，结果**两侧同绿** ⇒ 判据根本没有判别力，等于没验。
+    正确形态是一条能自证的自测：**阴性侧（`about:blank`，其 `readyState` 天生 `complete`）
+    必须被拒 + 阳性侧（真页）必须放行**，两条都过才算这道门有拦截力。
+    就绪判据的三件套：① `location.href` 真等于目标 URL；② `document.readyState==='complete'`；
+    ③ 业务标志在（`window.<GLOBAL>` 非空 / 目标 DOM 存在）。
+    另一同族陷阱：谓词写成 `G.ships && G.ships.length`，JS 返回**最后一个操作数的值**（数字），
+    Python 侧 `is True` 恒假 ⇒ 门退化成"白等满超时"，症状是"工具很慢"而不是"门没生效"。
+
+45. **同类缺陷会成规模存在：查到一处要扫全库，并把「漏 X 的个数」做成可重复跑的数（2026-10-27 实测）**：
+    修完「清理器报成功却没杀 / 全局变量问错对象 / 预算按单跑拍」三处后，把同一批判据写成脚本扫
+    `scripts/diag/` 的 320 个探针，命中 **40 个**缺整树清理、**5 个**等待预算偏小。
+    ⇒ **只修"我碰到的那几个"不是修复，是抽样**。流程：先量化基线（"漏 X 的个数"），
+    批量改完跑同一个脚本，数归零才算解决。
+
+46. **批量机械改写的红线：只做最小可证安全的那一种改动；改写范围越大，"看着对"的风险越高（2026-10-27 实测踩坑）**：
+    第一版脚本想同时把 `proc.terminate()` 与裸 `taskkill` 换成"带 profile 回读的 kill"，撞两个坑：
+    - f-string 的 `--user-data-dir={ROOT}/.diag/x` 剥掉花括号后得到 `kill_tree(pid, ROOT)`
+      —— **语义全错但语法完全合法**；
+    - 裸 `taskkill` 常带续行实参（`stdout=`/`stderr=`），正则替换后留下悬空参数 ⇒ 语法错。
+    定稿只加两行（`import chrome_tree` + `proc = chrome_tree.install(proc)`）：
+    `install()` 从 `proc.args` 自动认 `--user-data-dir`，**等价地**修好泄漏。
+    ⇒ 配套三条硬规：① **干跑默认**，人读输出；② 小样本实改后**逐份人工读 diff 里的表达式**
+    （`py_compile` 只证明语法合法、不证明语义对）；③ 批量后抽样**实跑**，判据落在外部可观测状态
+    （进程数为 0），不落在脚本自己的退出码上。收尾删掉批量留的 `.bak`。
+
+40. **机器只有 Edge / 无 Google Chrome 时，headless CDP 起不来（2026-10-18 实测）**：
+    `msedge --headless[=new] --remote-debugging-port=<p> --remote-allow-origins=* --user-data-dir=<独立>`
+    启动后 `http://127.0.0.1:<p>/json` **拒绝连接**，stderr 报
+    `[ERROR:chrome\app\chrome_main.cc:321] Multiple targets are not supported in headless mode.`
+    即使传独立 --user-data-dir、不带 URL、加/去 swiftshader 参数都一样 ⇒ **不是参数写法问题，是 Edge
+    headless 的环境级限制**（本机没装 Google Chrome，`scripts/paths.py` 的 `CHROME` 只命中 msedge）。
+    ⇒ 渲染回归判据**降级为可复现三件套**：① vendor 台账 `--check` 指纹；② 文件内部版本串（spine 为
+    `"3.8.75"==skeletonData.version`，确认与旧份同系列）；③ 前端依赖符号在新构建里逐一生效全覆盖
+    （ManagedWebGLRenderingContext/SceneRenderer/SkeletonBinary/SkeletonJson/TextureAtlas/
+    AtlasAttachmentLoader/GLTexture/Skeleton/AnimationState）。真实渲染回归留待装真 Chrome 或 CDP
+    环境就绪（验证脚本先备好）。详见 docs/TROUBLESHOOTING.md §122 与 docs/WORKFLOWS.md WF-36。
+
+47. **截图产物不得直接进上下文：图片按轮重发，一张大图能顶掉整个会话（2026-10-28 事故）**：
+    一张 1.7 MB 的 PNG 把会话推到 213 万 token 后中断，占总量 76%。机制是**图片进入上下文后每一轮都会
+    重发**，代价 ≈ 体积 × 剩余轮数——所以"当时看着还行"和"后来炸了"能同时成立。而 headless 截一张
+    2560×1600 整屏 PNG 实测 0.9~1.8 MB（本项目 `.diag/uishots` 15 张里 16 张 >200 KB，最大 1.77 MB）。
+    ⇒ **默认不看图，先读指标**：`shot_budget.py <img> --text-only` 给出尺寸/体积 + 3×3 分块平均色与
+    alpha 覆盖率 + 非透明包围盒，足够回答"是不是黑底 / 这块空不空 / 大致配色"；两版对比用
+    `--diff <baseline>` 拿"变化像素占比 + 变化包围盒 + 平均色差"（`0.00%` 就是没变），
+    比肉眼比对缩略图可靠。**必须人眼看时**：先 `--crop x0,y0,x1,y1`（**相对比例**，像素坐标跨分辨率
+    不复用）裁关键区域，再 `--max-kb 200 --max-edge 1024` 压（实测 1770 KB → 178 KB，判定力不减），
+    **只把压缩图送进上下文，原图永不进**；一次一张，多张需求做拼图（`make_review_sheet.py`）；
+    看完当场把结论写进 `docs/`，不要留图当备忘。**别用 JPEG 换 PNG 省体积**：UI 截图（大面积纯色 +
+    文字边缘）JPEG 压不到 PNG 的 1/5，还引入块状伪影让"颜色对不对"失真——正解是降分辨率 + 裁区域。
+    "少截几张"也不是解：数量不是主因，单张体积 × 剩余轮数才是。收尾体检
+    `shot_budget.py --audit .diag --max-kb 200`（退出码即结论）。实现与踩坑见
+    `scripts/diag/shot_budget.py`、`AGENTS.md`「看图预算」、`docs/TROUBLESHOOTING.md §160`、WF-50。
 
 
 ## 验证

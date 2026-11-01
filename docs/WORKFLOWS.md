@@ -116,6 +116,11 @@
 **目标**: 处理超时问题，分批完成大规模导出
 **适用场景**: 单次导出超过 10 分钟超时限制
 
+> ⚠️ **前提更正（2026-10-28 补记，原文保留）**：本 WF 写于「单次命令 10 分钟会被杀」这一判断下，
+> 该判断**已被实测推翻** —— 宿主超时**不杀进程**（转后台继续跑），909 秒前台命令也能正常 exit 0，
+> 见 WF-49 与 `docs/TROUBLESHOOTING.md` §159。⇒ **分批本身仍然正确**（为了断点续跑、失败不全废、
+> 看得到进度），但理由要从「绕开超时」改成「可重入 + 可观测」。
+
 **步骤**:
 1. 先用 `--target painting` 单独导出立绘（12,397 文件）
 2. 导出完成后检查实际文件数
@@ -128,7 +133,8 @@
 
 **踩坑记录**:
 - 单次导出 12,397 文件需 ~108 分钟（3.5 文件/秒）
-- 超时 10 分钟被中断 → 需分批执行
+- ~~超时 10 分钟被中断 → 需分批执行~~（**前提已失实**，见上方更正：超时不杀进程；
+  真正原因是当时的长任务被会话关闭/手动强杀打断。分批的理由是断点续跑，不是避超时）
 - 256 个 Live2D 模型首次运行需 ~30 分钟，添加跳过逻辑后 <1 分钟
 
 **涉及文件**: `scripts/reconstruct_live2d.py`, `scripts/export_assets.py`
@@ -678,6 +684,7 @@
 | `scripts/`、`scripts/diag/`、`gallery_src/`、`docs/`、根 `*.md` | —— | ✅ 已入 Git，随时可取 |
 | `inputs/azdata/azdata_ship_{skin_template,data_statistics,data_template}.json` + `azdata_version.json` | **`scripts/build_ship_meta.py` / `extract_live2d_voice.py` 的唯一权威输入**（舰名/阵营/舰种/稀有度/CV id 全从这里来），也是 `tools/sharecfg_re` 的已知明文基准 | ⚠️ 半可再生：社区快照会滞后（385 时最新仍 381），且 `sharecfgdata/*` 是**自定义加密**、本机无解 → **务必当源文件保护**。2026-09-24 从 `.diag/` 迁到此处；`sha256` 台账 = `inputs/azdata/MANIFEST.json`，跑前 `py -3 scripts/diag/check_inputs.py` 校验。旧 `.diag/azdata_tree.json` 经核实内容是 14 字节 `Invalid input.`（上游报错残留，非数据），已删不再列入白名单 |
 | `inputs/gamecfg/name_code.json`（456 行） | 台词正文里 `{namecode:NN}` 的**唯一展开表**，`build_skin_words.py` 的第二个输入 | ⚠️ 半可再生：`41_export_lua_tables.py` 从设备侧 sharecfgdata 重导 lua 表 → `46_publish_name_code.py`；对齐关系由 `43_check_namecode_alignment.py`（带零假设）证成。2026-09-27 从 `.diag/sharecfg_re/lua_json/` 迁到此处，`sha256` 台账同 `MANIFEST.json` | | **台词中文正文的唯一副本**，`scripts/build_skin_words.py` 的唯一输入 | ⚠️ 半可再生：要能跑通 `sharecfgdata` 容器文法（§33/§36，`37_parse_sharecfgdata.py --scalar-all`）。2026-09-27 从 `.diag/sharecfg_re/cfg_json/` 迁到此处（原先只住在那儿，清盘即永久丢失）；`sha256` 台账 = `inputs/gamecfg/MANIFEST.json` |
+| `inputs/sharecfg/`（1594 文件 / 279.8 MB：`cfg_json/` 1、`cfg_json_scalar/` 32、`lua_json/` 778、`lua_out/` 780、`scripts64.full.ab` 39.7MB、`scripts64.tailpayload.bin`） | sharecfgdata 逆向的**全量产出**（游戏配置表 + Lua 表 + scripts64 解包） | **不可复原**：`sharecfgdata/*` 自定义加密、本机无解。2026-10-24 从 `.diag/sharecfg_re/` 迁入（迁移时 1593 文件逐份 MD5 校验 0 不一致），`sha256` 台账 = `inputs/sharecfg/MANIFEST.json`，`check_inputs.py` 已纳入校验 |
 | `Output/dependency_manifest.json`（~15MB / 86k+ 条） | `compose_paintings_v2`、`extract_spine_v2`（PPtr→包 依赖表） | ✅ 可再生：`export_dependency_manifest.py` |
 | `Output/ship_meta.json` | `build_gallery_index`（元数据主源） | ✅ 可再生：`build_ship_meta.py --write` |
 | `Output/WikiData/ship_data.json` | `build_gallery_index` 兜底 | ✅ 可再生：`scrape_wiki_fast.py`（需外网） |
@@ -2261,6 +2268,49 @@ CHROME_FLAGS = ['--disable-gpu', '--disable-gpu-compositing',
 | 条 | 处置 | 理由 |
 |---|---|---|
 | 15 | **逐字放回** | 唯一未关闭待办，丢了= 静默取消工作项 |
+### WF-31: 画质（渲染分辨率 / DPR）改动怎么验到放心（2026-10-17）
+
+场景：把画廊 Live2D / Spine 的渲染分辨率从 1x 提到 ≥2x（高 DPI 屏不糊）。判据必须量
+**canvas buffer 尺寸**而不是看截图（headless SVG 下 DPR=1，截图看不出 2x）。
+
+#### 判据（红 = 不许算过）
+1. **Live2D buffer**：`app.view.width/height` ≥ `wrap.clientWidth/Height × max(2, devicePixelRatio)`，
+   且 CSS 显示尺寸仍等于视口（`autoDensity:true` 保证）。vendored pixi `RESOLUTION` 默认 **1**，
+   不显式传 `resolution` 就是 1x。
+2. **Spine buffer**：`spcwrap canvas.width/height` = `clientWidth/Height × devicePixelRatio`，
+   且**帧循环每帧**比对 `buffer vs CSS×DPR` 偏差即重建（支持拖动跨 DPR 显示器，事件监听会漏）。
+3. **命中/取景不受影响**：Live2D 命中须走 `mdl.toLocal()`（pixi 官方坐标转换，自动处理 resolution）；
+   取景 `refit()/contentBox()` 用 CSS `clientWidth/Height`，与渲染 buffer 解耦——这两处用对了，
+   `resolution/autoDensity` 不会破坏命中几何（stage 逻辑坐标与渲染像素解耦）。
+4. 探针：`py -3 scripts/diag/l2d_spine_dpr_verify.py --only <keys>`，走**真实点击路径**读 canvas buffer，
+   输出每皮肤 `buffer x CSS x dpr x 倍率` + PASS/FAIL。
+
+#### 步骤
+1. 起服务器：`py -3 Output/gallery_v2/_gallery_server.py`（端口 8777）。
+2. 改 `gallery_src/index.html`（正本）→ `py -3 scripts/deploy_gallery.py --check` 确认 6/6 同 inode、
+   漂移 0（editor 原地编辑不破坏硬链；若断链按 AGENTS.md 收尾第 1 条四步走）。
+3. `py -3 scripts/diag/l2d_spine_dpr_verify.py --only aersasi_2,aersasi_3,ougen_8,yunlong_2`，
+   确认 live2d 三样本=2x、spine=CSS×DPR 全 PASS。
+4. 真机确认（headless 只验到「≥2x 成立」）：标准屏 2x、P1440/4K 再顶到 DPR，观感锐利。
+
+#### 踩坑记录
+- **本机无 Chrome（只有 Edge）**，本项目绝大多数无头验证脚本硬编码
+  `C:/Program Files/Google/Chrome/Application/chrome.exe` → `FileNotFoundError [WinError 2]`，
+  wf16 六件套直接全挂。**别把这判成产品缺陷**；自建探针要带 Chrome/Edge 候选列表
+  （`l2d_spine_dpr_verify.py` 已做：优先 Chrome，缺则 msedge）。
+- **无头 SVG DPR=1**：`want=max(2,1)=2` 只验到「≥2x 成立」，真实高 DPI 观感必须真机确认；
+  4K/dpr=2 时会取 `max(2,2)=2` 而不更高，若想 3x/4x 需改成 `max(2,dpr)` 以外的值。
+- **连续打开多个皮肤**：前一皮肤打开后 `#search` 可能不可见/被覆盖 → 探针报
+  `Cannot set properties of null (setting 'value')`。**每样本 `Page.navigate` 重载 + 等 `#search`** 可消除
+  （`reload_page()`）。
+- **toggle 误改 `autoDensity`**：只加 `resolution` 不加 `autoDensity` 会让 canvas CSS 尺寸随之放大
+  撑垮布局；两个必须成对。
+
+#### 涉及文件
+`gallery_src/index.html`（L1214 Live2D `resolution/autoDensity`、L1685/1688 Spine `resize()` 乘 DPR、
+L2070-2075 帧循环每帧校正）；`scripts/diag/l2d_spine_dpr_verify.py`（新增画质验收探针）；
+根因与排除假设见 `docs/TROUBLESHOOTING.md` §118。
+
 | 16 | 一行桩 + 指向 §60/WF-22/A21 | 结论已由 `仅台词`、`namecode` 承载 |
 | 17 | 一行桩 + 指向 §64/WF-14/A16 | 结论已由 `parts.json`、`15 对` 承载 |
 
@@ -2638,6 +2688,12 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 `scripts/build_gallery_index.py`、`scripts/run_v2_full.py`（引导文案与批调用）。取证全过程 **§111**。
 相关：WF-15（第 9 步备份换入）、WF-16（回归六件套）、§78（台账）、§46（备份瘦身先例）、§110。
 
+**临时区（`.diag/`）最后一查——目录名像"中间产物"，里面可能住着唯一源 + 产物（2026-10-17）**：
+清 `sharecfg_re` 这类名带"解析中间"的目录前，先逐目录看**里面有没有源类文件 + 有没有 `inputs/` 没收录的表**，不要凭名删：
+- 实证：`sharecfg_re/` 里同住 `scripts64.full.ab`（**已解出的 sharecfg AssetBundle 源**，37.9MB）与几百张解析配置表 json（`furniture_data_template` 1.2MB / `word_template_*` / `equip_skin_template` 818KB… 共 28.9MB）。整目录删 = **源与产物一起丢**——本机再无 sharecfg 源（重导需设备侧 sharecfgdata，WF-15 已注记加密）。
+- `lua_json/name_code.json` 的 `.diag` 版是**更完整视图**（48.8KB/3197 行，含 `id/nation/type` + `#456` 头），`inputs/gamecfg/` 版是**精简版**（26.9KB/1826 行，只留 code/name）——**`check_inputs.py` [PASS] 只证明 inputs 台账内部一致，不代表 `.diag` 旧副本可删**；完整性视图可能只在 `.diag`。
+- WF-15 承重白名单只护 `inputs/` 权威；`.diag` 里可能藏着**尚未迁出的唯一数据**。注意 `check_disk_footprint.py` 只统计 `files/` + `Output/*`，**不含 `.diag`**——别把 `.diag` 当"可再生中间件"整目录删，不确定就先留或先 `--archive`（AGENTS 收尾第 4 条）。
+
 ---
 
 ### WF-29: 改「渲染政策函数」（合成算子 / 画布口径 / 取景规则）怎么验到能放心全量（2026-10-06）
@@ -2714,10 +2770,1611 @@ PSD/SVG 图层、前端多层 canvas），出现「某个部件整块看不见 /
 `face_gate_flip_scan` / `face_overlay_cmp` / `painting_swap_in`。
 相关：**§114**（本轮取证全过程）、WF-15（备份换入 runbook）、WF-27（层序取引擎层级）、
 §48（判据演进必须配带标签回归集）、§85（两份语义必然漂移）。
+### WF-30: 单模型 Live2D 目视页（l2d_visual.html）的 motion 播放与资源重写（2026-10-16）
+
+场景：想快速看「某个 Live2D 模型 × 某条动作 clip」在浏览器里到底播成什么（诊断/抽查用），
+页面 `Output/l2d_visual.html?m=...model3.json&clip=<group>&idx=<n>`。
+
+#### 判据（红 = 不许算过）
+1. **clip 请求 = 实际播放组**：`clip=main_1` 页面就播 `main_1`，绝不回落 idle。无头用
+   `vis_auto_l2d.py` 采样（只走页面启动路径、**不手动调 play**），量参数振幅>0.05 的那批是不是在动。
+2. **资源不 404**：以 model3 完整 URL 为 base 的 moc3 / 贴图 / physics3 / motion3 必须 200，否则黑屏。
+   验证 `ensure_server_l2d.py` 的自验清单全 `[200]`。
+3. **选组只认键存在性**：`clip in definitions`，播放 `model.motion(clip, idx)`（默认 priority=2）。
+   禁止用 `definitions[g].length` 判组存在、禁止 FORCE(3)、禁止遍历/定时重试/自选 idx。
+
+#### 步骤
+1. 起 server：`py -3 scripts/diag/serve_live2d.py`（端口 8777、根=`Output/`；要杀端口+自验证用
+   `ensure_server_l2d.py`）。
+2. 打开 `http://127.0.0.1:8777/l2d_visual.html?m=Live2D/<name>/<name>.model3.json&clip=<group>&idx=0`。
+3. 无头验证：`py -3 scripts/diag/vis_auto_l2d.py <name>:<clip> ...`，看输出 `group=` 与参数振幅列表。
+4. 实机**硬刷或无痕**确认对应（headless 过≠实机过，中间只差缓存）。
+
+#### 踩坑记录
+- `definitions[group].length` **懒加载前恒 0** → 当「组存在」判据会把真实组（`main_1`/`idle3`）判缺失，
+  走 fallback 播成 `idle6`/`idle2`。**只看键集存在性，不数组长度**。
+- 动作源在 model3 的 **`FileReferences.Motions`**（`{组名:[{url}]}`），**不在顶层 `motions`**；运行时读
+  `motionManager.definitions`。
+- FORCE(3) 强制打断当前动作、整个换行为，被用户拒；直呼默认 priority 即对。
+- pixi 把 model3 **完整 URL（含文件名）当资源 base 目录** → 请求 `<dir>/<name>.model3.json/<res>`，
+  server 要 rewrite 回 `<dir>/<res>`，另加尾斜杠兜底（`serve_live2d.py` 两处）。
+- 实机仍不对应：先硬刷/无痕（疑缓存旧 model3），再考虑 `?v=` 或 server 加 no-cache。
+
+#### 涉及文件
+`Output/l2d_visual.html`、`scripts/diag/serve_live2d.py`、`ensure_server_l2d.py`、`vis_auto_l2d.py`；
+根因与排除假设见 `docs/TROUBLESHOOTING.md` §117。
+
+### WF-32: Live2D 动作回落选组映射表——Segments 首末帧差异度口径（2026-10-17）
+
+场景：想让「非 idle 动作播完后回落到哪个待机变体最自然」（方案 B），而不是固定回落 idle。
+先按「动作末帧曲线 vs 各待机首帧曲线的差异度」产出映射表，再据此改前端回落。本 WF 只落数据侧。
+
+#### 判据（红 = 不许算过）
+1. **Segments 首帧=seg[1]、末帧=seg[-1]，与段型无关**。首对 `(time, value)` 占 2 元素（无类型码）；
+   其后每段先一个类型码：`0=Linear/2=Stepped:[type, t, v]` 3 元素、`1=Bezier:[type, c1t, c1v, c2t, c2v, t, v]`
+   7 元素（终点在**最后**）⇒ 两种段型的最后一个元素都是终点 value。
+2. **组清单只认 model3 的 `FileReferences.Motions`**（`{组名:[{File,...}]}`）；读顶层 `Motions` 必返回 None
+   （实测 aersasi_2 顶层只有 `Version/FileReferences/Groups/HitAreas`）。
+3. **待机候选正则** `^(idle\d*|main_\d+|home|login)$`：同时覆盖「独立组变体」（aersasi_2 的
+   idle/idle2/idle5/home/login/main_1~4）与「编号变体」（aersasi_3 的 idle1~idle21）两种组织。
+4. **差异度只统计动作与待机都覆盖的参数**（运行时缺曲线的参数停在上一动作值，无差异可算）；
+   `norm = Σ(Δp/range_p)² / N`，`range_p` 取该参数在全部待机候选首帧中的 max-min——否则角度 0~30 与
+   位移 0~0.4 量纲悬殊，大参数主导选组。
+5. **零公共参数 → fallback**：`best=null`、`fallback=true`，不许把 `inf` 当 best 写入
+   （`Infinity`/`NaN` 不是合法 JSON）。
+
+#### 步骤
+1. `py -3 scripts/build_motion_chain_map.py --diag --models <m1> <m2>` 先看样本
+   （打印每动作 best + 候选排行）。
+2. 确认映射符合直觉后再 `--write` 全量 → `Output/gallery_v2/motion_chain.json`（262 模型 / 5008 动作）。
+3. 校验 JSON：无 `Infinity`/`NaN`、抽查 norm 分布（2026-10-17 实测：无缝<0.01 占 36.6%、平滑<1 占 31.1%、
+   明显跳<10 占 9.9%、大跳≥10 占 20.3%、n/a 2.2%）。
+
+#### 踩坑记录
+- **model3 顶层没有 `Motions`**：读错层级 → 加载返回 None，被误算成「模型失败」。正确层级 `FileReferences.Motions`。
+- **量纲不归一化会大参数主导**：角度参数（±30°）天然比位移参数（±0.4）差异平方大几个量级。
+- **`leak_n_params` 大 ≠ 选组错**：动作驱动 idle 从不驱动的参数（aersasi_3 的 touch_idle22~39 达 101），
+  切换期间保持动作值、不产生跳变，不影响选组；但会让「公共参数」变小、区分度降低，用该字段标注低置信度。
+- **同族姿态→同族待机客观存在**：aersasi_2 的 touch_head→idle2、touch_drag→idle3、touch_idle5→idle5、
+  mail→main_1、mission→main_3 高度自洽；aersasi_3 的 touch_idleN→idleN 一一对应。
+- **动作 `effect` 等只有寥寥几条曲线**：与所有待机候选零公共参数 → 必须 fallback，别硬挑一个 best。
+
+#### 涉及文件
+`scripts/build_motion_chain_map.py`、`Output/gallery_v2/motion_chain.json`；根因与排除假设见
+`docs/TROUBLESHOOTING.md` §119；前端回落改造另行跟进。
+
+### WF-33: 方案B前端回落（映射表 → 三层回落语义 + 动态标签 + 全库推广）（2026-10-17）
+
+场景：§119/WF-32 已产出 `motion_chain.json` 映射表。本 WF 是它的前端落地：非 idle 动作播完按
+**三层回落语义**选择回落目标 + bar 动态标签显示当前组。数据侧口径见 WF-32，踩坑见 §120。
+
+#### 判据（红 = 不许算过）
+1. **idle 待机变体 = 纯 `^(idle\d*)$`**。home/main_*/login 是场景长动画（用户实测自循环不符合预期），
+   播完回默认 idleGroup；不参与循环、不进 idleSet（但要兜底 `idleSet.add(idleGroup)` 保默认待机可循环）。
+2. **回落语义三层**（在 `mm.startRandomMotion` 接管里）：
+   ① `touch_drag*` → 回落 drag 自身（配合 `createMotion` 对 idle/drag 组 `setIsLoop` 持续循环）；
+   ② 长动画（`!idleSet.has(lg) && !/^touch_idle/`）→ 回默认 `idleGroup`；
+   ③ `touch_idle*` → 查 `chainModel.chain[lg].best`（启发式，用户确认保留）。
+3. **回落必须直接 `mm.startMotion(best,idx,优先级)`**：库的 `startRandomMotion` 只在「已加载进
+   motionGroups」的条目里筛（技能 §3），变体组从未播过 → motionGroups 空 → 静默不触发；直接 startMotion
+   让库走 loadMotion+state.reserve(IDLE) 正常路径。
+4. **`.includes` 空数组恒 false**：全量启用闸必须是 `SAMPLE_ONLY.length===0 || SAMPLE_ONLY.includes(key)`；
+   直接用 `SAMPLE_ONLY.includes(key)` 在 `[]` 下全库禁用（§120 ②）。
+5. **动态标签**：回落回调里更新 `#l2Curr`=回落组名；`play()` 里更新为当前播放组名；初始填 idleGroup。
+
+#### 步骤
+1. 数据侧：`py -3 scripts/build_motion_chain_map.py --write`（`idle_re` 收窄 `^idle\d*$`）→ 全库 262 表
+   （`idle_groups` 零混入：非 idle\d* 检出=0）。
+2. 前端：SAMPLE_ONLY 闸 + chainSrc 拉取 → `idleSet` 泛化（idle_groups ∪ idleGroup）→ `createMotion`
+   对 idle/drag 组打 setIsLoop → `mm.startMotion` 记 lastGroup → `mm.startRandomMotion` 三层回落 → bar 加
+   `#l2Curr` 动态标签。
+3. 无头抽查：`scripts/diag/l2d_motion_chain_verify.py`（forceEnd 用 `stopAllMotions` 模拟回落 + 从表
+   **动态读 best** 作 expected + warmup 消首 case 冷序）。抽查覆盖：编号多变体（zhangwu_2、zhenzhuhao_2）、
+   仅 1 idle 组（z46_4）与样本三模型。
+4. 实机目视：三样本（aersasi_2/3、ougen_8）逐项验证长动画回 idle、drag 循环、touch_idle 回变体、标签显示。
+
+#### 踩坑记录
+- home/main_*/login 被旧 IDLE_RE 当循环待机 → 用户播它们自循环停不下来（§120 ①）。
+- `SAMPLE_ONLY=[]` 后 chainSrc 走 `[].includes` 恒 false → 全库所有 touch_idle 退化成默认 idle（§120 ②）。
+- 启发式 best 随候选集漂移（aersasi_2 touch_idle1：idle3→idle）→ 手写 expected 探针会误报，必须动态读表（§120 ③）。
+
+#### 涉及文件
+`gallery_src/index.html`（回落接管 / createMotion / bar / `#l2Curr`）、`scripts/build_motion_chain_map.py`、
+`scripts/diag/l2d_motion_chain_verify.py`、`Output/gallery_v2/motion_chain.json`。
 
 ---
 
-### WF-30: 换机器 / 重新 clone 后的"接手自检"三件（2026-11-01）
+### WF-34: 资产一键更新的正确顺序（先 detect、别先手动 sync — 2026-10-18）
+
+**场景**：想「一键更新」—— 通过模拟器 adb 桥把新版本美术资产同步回本地，再跑 `update_pipeline.py` 完成 13 阶段重导。本条是"怎么跑才对"的判据 + 一条实测踩坑实录。机制细节见 WF-23（阶段机 / 三档），本条的**独有知识 = 增量范围（`affected.txt`）的唯一生成点与顺序约束**。
+
+#### 判据（红 = 做不到就重来）
+
+1. **`update_pipeline.py` 第 1 步 `st_pull` 本身就是 detect。** 它内部先 `mumu_sync diff --list-out`（`L451`）得到「设备 vs 本地」差异，再 `write_scope(paths, new, changed)`（`L417-444`）把差异源包相对路径（形如 `AssetBundles/<top>/<file>`）写进 `.diag/pipeline/affected.txt`。**`affected.txt` 是增量范围的唯一生成点** —— 下游所有导出阶段（paintings/spine/live2d/cg/audio…）都读它，范围不可用就判红 stop（`scope_or_stop`）。
+
+2. **正确用法 = 直接跑 `update_pipeline.py`（或控制台一键），让第 1 步自己 detect + 拉包 + 写范围。** 它会输出「范围清单 N 个源包 → M 个皮肤 stem 已落盘 · 未签字，请 --approve pull」→ 签字放行 `pull` 才拉包。**不要先手动跑 `mumu_sync sync`**。
+
+3. **⛔ 先手动 `mumu_sync sync --apply` 再跑 `update_pipeline` = 增量范围永久丢失。** 手动 sync 会把「设备 vs 本地」差异**拉平** → 第 1 步 detect 得「新增 0/变更 0」→ 走 `st_pull` 空分支（`L476-487`）→ `write_scope([],0,0)` 把 `affected.txt` **清空**（若无非空旧清单可沿用）→ 下游 `scope_state` 判 `missing` → 各导出阶段「增量范围不可用 ⇒ 拒绝按全量兜底」判红/跳过。
+
+4. **验证一条已发生的实录（2026-10-18）：**
+   ```
+   py -3 scripts/update_pipeline.py --plan   # 第 1 步 report 第 1 步 detect 还没跑过 / affected.txt 不存在
+   py -3 scripts/update_pipeline.py --only pull
+   # 实测: [pull] 设备与本地完全一致（新增 0/变更 0）⇒ 本轮没有要重算的东西；要整库重算请 --full
+   # 整轮 9 秒结束，13 档全部「未跑」；affected.txt 0B、affected.meta paths:0/new:0/changed:0
+   ```
+   根因正是第 3 条：先用 `mumu_sync sync --apply` 拉平了差异，范围无源可写。
+
+5. **这不等于「这次更新没有东西」。** 手动 sync 已把包拉到本地 = 本地与设备一致。若**本次差异不含画廊美术源包**（`painting/`/`spinepainting/`/`live2d/`/`cg`），则 paintings/spine/live2d/cg 阶段**本就会空跑**，受影响的只有 deps/meta/audio 等派生产物 → **不值得 `--full` 数十小时**。判据：`mumu_sync diff` 输出的「差异最大若干」若全是 `dorm3d/scripts*/sharecfgdata/dependencies/cue/hashes`，说明无美术更新。
+
+6. **范围是否被冲空，以 `.diag/pipeline/` 两枚章为准**：`affected.txt` 的 `paths` 字段 + `affected.meta` 的 `new/changed` 都应为 0 时，且你确实手动同步过 → 就是被冲空；`write_scope` 的空分支**只**在有非空旧清单时才沿用旧清单（`kept_from_prev`），首次跑没有旧清单可沿用。
+
+#### 踩坑记录
+
+- ⚠️ **mtime 不可用于反推「这轮拉了哪些」重建 `affected.txt`**：`adb pull` 写文件**保留设备侧时间戳**（实测 `files/AssetBundles` 近 60 分钟 0 个、全部落在更早）。所以不能靠「近 N 分钟修改」找回被冲空的差异清单。
+- ⚠️ **手动 sync 是 `pull` 的 live 半程**：`pull` 本来要 `--approve` 才拉包；先手动拉等于绕过签字，但第 1 步 detect 需要「设备 ≠ 本地」才写得出范围，拉平后无法回溯。
+- ⚠️ **别把判绿当「没有东西要做」**：`pull` 判“设备与本地完全一致”是**同步已完成**的陈述，不是“产物已重导”的陈述。产物重导与否看后续导出阶段，而它们因范围丢失全被跳过。
+
+#### 涉及文件
+
+`scripts/update_pipeline.py`（`st_pull`/`write_scope`/`scope_state`/`scope_or_stop`）、`scripts/mumu_sync.py`（`diff`/`sync`）、`.diag/pipeline/{affected.txt,affected.meta,pipeline_state.json}`。相关：WF-23（阶段机）、WF-15（权威 runbook）、§121（本条踩坑的 TROUBLESHOOTING 版）。
+
+
+---
+
+### WF-35: `mumu_sync` 的同步范围（`ONLY_TOP` 顶层白名单 vs 整棵 `files/` — 2026-10-18）
+
+**场景**：想让 `files/` 下的**任何**文件（不只 `AssetBundles`）都能靠模拟器 `sync` 下载/更新；
+缺 `files/il2cpp/Metadata/global-metadata.dat` 这类关键文件时也能从设备拉回。本条是范围怎么定的判据。
+
+#### 判据（红 = 缺了会漏）
+
+1. **`mumu_sync` 真正限宽的是 `ONLY_TOP`**。`REMOTE_ROOT`（设备）与 `LOCAL_ROOT`（本地 `files/`）本身遍历整棵树；
+   但 `wanted(rel, only_top)` 里「顶层名必须以白名单项**开头**才进范围」。历史上 `ONLY_TOP=["AssetBundles","hashes","version"]`
+   ⇒ `il2cpp`/`imgCache`/`Unity` 等顶层被**整体排除**，缺了 sync 拉不回。
+2. **设备侧 `files/` 顶层其实是平铺文件**：既有目录（`AssetBundles`/`il2cpp`/`imgCache`/`Unity`），也有
+   `hashes-*.csv`、`version-*.txt` 一坨平铺文件（**不是** `hashes/`、`version/` 目录）。所以白名单用 `startswith`
+   前缀匹配（`hashes-cv.csv` 命中 `hashes`、`version.txt` 命中 `version`）。**定范围时顶层名 = 目录名 或 平铺文件的公共前缀**。
+3. **默认放开为整棵 `files/`**：`ONLY_TOP=[]`（空=全部顶层），`wanted()` 改为「`--only`（`ONLY_SUB`）始终优先，
+   仅 `only_top` 非空时才做顶层收窄」。这样缺哪个文件都进同步范围。
+4. **改范围后看 `diff` 的「新增/独有」实测，别信注释**：放开后 `diff` 应报新增 0/变更 按实际/独有 0 或「设备已删的本地缓存」。
+   实测（2026-10-18）：放开后新增 0、仅 1 个 `Unity/.../Analytics/values`（-2B，本地旧）、1 个 `imgCache/notice_138_1/common_cn.png`
+   本地独有（设备已删，`mumu_sync` 设计上从不删本地）。`sync --apply` 拉平后差异归 0 ⇒ 本地与设备在整棵 files 上对齐。
+
+#### 踩坑记录
+
+- ⚠️ **别把「只同步 AssetBundles」当唯一真相**：`ONLY_TOP` 是一组顶层**前缀**，不是目录黑名单；例子里 `il2cpp` 不在其中，
+  于是 `files/il2cpp/...` 全部被 `wanted()` 判「不在范围」→ `diff`/`sync` 全程跳过，缺了拉不回。
+  排查先 `adb shell ls -1 $REMOTE_ROOT` 拿真实顶层，再与白名单做**集合差**，看哪些本地顶层缺了同步能力。
+- ⚠️ **解锁 `il2cpp` 不等于能逆向**：`files/il2cpp/Metadata/global-metadata.dat` 是 `tools/il2cpp_*/31_decrypt_scripts_bundle.py`
+  等工具的**逆向输入**（il2cpp 元数据，魔数 `FAB11BAF` 当阳性对照）。它**确实也在设备侧 `files/il2cpp/` 下**（实测
+  `il2cpp_dir=Y`）→ 放开后缺了能 `sync` 补；但它是**本机解密链**的输入，`sharecfgdata` 等我还需它。别把它当纯运行时缓存。
+- ⚠️ `wanted()` 早前实现 `if not only_top: return True` 会**绕过 `--only`**（`ONLY_SUB` 失效）；现改为 `--only` 优先、
+  `only_top` 收窄，二者不互斥。
+
+#### 涉及文件
+
+`scripts/mumu_sync.py`（`ONLY_TOP`/`wanted`/`cmd_diff`/`cmd_sync`/`run`）、`scripts/paths.py`（`P.FILES`）。相关：WF-34（一键更新顺序）、WF-23（阶段机）、§22/§33（sharecfgdata 文法）。
+
+
+### WF-36: 更换 gallery vendor 第三方库源（spine-all.js 案例 + 三层可复现验证 — 2026-10-18）
+
+**场景**：gallery 前端 vendor 台账 `gallery_src/vendor/MANIFEST.json`（4 个第三方 JS）需要**换源/补源**。本案例 `spine-all.js` 此前是唯一「无可下载源」的一个（本机副本来自被 gitignore 的 `tools/spine-viewer/`，git 0 份、无版本记录）。本例把它换成上游官方 `EsotericSoftware/spine-runtimes@3.8` 构建。
+
+#### 判据（红 = 换错会长篇排查）
+
+1. **换源前先探源，只有「下载后哈希命中台账」才可用**：
+   `py -3 scripts/diag/probe_vendor_source.py --expect-hash <sha> --expect-bytes <n> <url1> <url2>...`
+   它逐个下候选并比对 sha256/bytes；命中打 `★命中`。实测 `cdn.jsdelivr.net/gh/...` 可下（499623B/sha7304a0b7）、`raw.githubusercontent` 本机 HTTP000、`unpkg`/npm 的 spine-player 无此文件（404）。
+2. **台账一份文件只有一个期望哈希**（`fetch_gallery_vendor.py` 按 sha256 校验后才落盘）。所以：
+   - 若新源命中**旧哈希** → 前端加载内容不变，**零回归**；
+   - 若只找到**不同构建**（bytes/sha 都变，却是同版本系列）→ 前端加载内容会变，**必须回归**。本案例走这条（官方 499623B vs 旧本机份 501448B，但同为 3.8.75）。
+3. **更新 MANIFEST**：`sources` 放 verified=true 主源 + 多路 CDN fallback（本案例 `cdn`/`fastly`/`gcore` 三路）；`bytes`/`sha256` 同步改成新构建；**被替换的 local 旧副本若哈希不符就直接删掉勿再当源**（否则首次 fetch 会打「本机副本哈希不符」）。`gap` 字段从「无源」改「已解决」。
+4. **落盘 + 指纹**：`py -3 scripts/fetch_gallery_vendor.py` → `--check` 应 **N/N 就位**（指纹=台账）。本案例 4/4。
+5. **回归三层（可复现，不需要浏览器渲染时就到这一层）**：
+   ① **指纹**：`--check` 通过、落盘文件 sha256/bytes=台账。
+   ② **版本**：读文件内部版本串，确认与旧份同系列（spine 是文件内 `"3.8.75" == skeletonData.version` 校验 → 承重值 3.8.75）。
+   ③ **API 面**：列出前端实际依赖的库符号，逐一生效确认在新构建里**全存在**（缺一个都按退化处理）。本案例 9/9（见 §122）。
+
+#### 踩坑记录
+
+- ⚠️ **机器没有 Google Chrome，只有 Edge；Edge 的 headless CDP 启动即报**
+  `Multiple targets are not supported in headless mode` 且调试端口不监听；`node` 也不在 PATH ⇒ **本机跑不了真实渲染的像素级回归**。换源验证降级用上面「三层」，真实渲染回归留待 Chrome/CDP 环境就绪（`scripts/diag/verify_spine_vendor.py` 已把回归逻辑写好可直接跑）。详见 §122。
+- ⚠️ **工具废弃线索正中换源的紧迫性**：本机 `tools/spine-viewer` 已被清（旧 501448B 副本没了）。若没换源，`spine-all.js` 只剩 `Output/gallery_v2/vendor/` 一份旧副本、git 0 份、无可下载源 ⇒ Spine 标签彻底不可复现。换官方源恰好补上。
+- ⚠️ **License 别凭「文件内无许可头（无 Copyright/(c)/License）」推断可自由再分发**：上游 spine-runtimes 受 Spine Runtimes License 约束；本例只是「换一个有官方可校验的下载源」，不是「把 501KB 提交进仓库」。要提交仍须先确认 License。
+
+#### 涉及文件
+
+`gallery_src/vendor/MANIFEST.json`（台账）、`scripts/fetch_gallery_vendor.py`（按 sha256 落盘/校验）、`scripts/diag/probe_vendor_source.py`（探源工具）、`scripts/diag/verify_spine_vendor.py`（渲染回归，待 Chrome 就绪）。相关：WF-14（Spine 播放）、§122（Edge headless CDP 限制）、`docs/TROUBLESHOOTING.md` §42/§98（Spine 渲染取证）。
+
+
+### WF-37: 画廊画质（DPR）与动作回落的验收口径（2026-10-19）
+
+**场景**：改 `gallery_src/index.html` 的 Live2D/Spine 渲染分辨率，或改「动作播完回落到哪个待机」之后，
+怎么在**能抓住 bug** 的条件下验收。本条只写判据与踩坑，不重复 WF-16 的交互六件套。
+
+#### 判据
+
+1. **画质探针必须强制 DPR=2**：
+   `py -3 scripts/diag/l2d_spine_dpr_verify.py --only aersasi_2,yunlong_2 --dpr 2`
+   - Live2D 期望 `max(2,dpr)`，Spine 期望 `dpr`；看打印的 **ratio**，不要只看 PASS。
+   - 再跑一遍 `--dpr 1` 作对照：Live2D 应 2.00、Spine 应 1.00——否则说明代码把倍率写死了。
+2. **回落探针的 expected 必须从同一份表动态算**：
+   `py -3 scripts/diag/l2d_motion_chain_verify.py`
+   - 必须覆盖：伪最优（aersasi_2 touch_head→idle）、明确更优（jianye_4 mail→idle3）、
+     无候选（z46_4 mission→idle）、drag 自循环、touch_idle 变体、默认组不在候选（zhenzhuhao_2 touch_idle25→idle20）。
+   - **`touch_idle*` 例外**：即使 best 只比默认好 1% 也必须回 best（全库 148 条非默认）；
+     探针要覆盖 aersasi_2 touch_idle2→idle5、aersasi_3 touch_idle31→idle1 这两条被 15% 闸门误伤的用例。
+3. **改完先刷平再验**：`py -3 scripts/deploy_gallery.py` → `--check` 6/6；
+   `Edit`/原子保存会**断硬链**，提交前必须刷平，提交后再 `--relink` 补链。
+4. **画质要看图**：同屏 1x/2x 截图对照（`.diag/spine_ab/`），别只信数值；数值对但取景/构图变了也是回退。
+5. **静态立绘不放大**：查看器上限 1:1（小图留白、滚轮/双击看 1:1），判据：小图 `client==natural`；
+   Spine 开 `antialias:true`，判据：`getContextAttributes().antialias===true` 且 buffer/CSS 仍 = dpr。
+6. **CG 入索引**：`CG_v2/*.png` 由 `build_gallery_index.py` 写成 `skin.cg`，同时要有 `thumbs/<key>_cg.webp`；
+   判据：`gallery_index_diff_check.py --allow-skin cg` 只允许 235 条 cg 变化、船/皮肤/语音零差异。
+
+#### 踩坑记录
+
+- 无头默认 `devicePixelRatio=1`：Spine 的 `want=dpr=1` 让 1x 也 PASS（**假绿灯**），旧版探针因此
+  连续多轮把「2x 屏仍 1x」判成通过（§123）。
+- `SceneRenderer.resize()` 会把刚乘过 DPR 的 buffer 改回 CSS 尺寸；且在每帧检查下会**每帧重设画布**（§123）。
+- 回落 expected 写死「长动作=idle」等于**测试照着实现写**：14 条全 PASS 也掩盖 810 个动作（§124）。
+- 15% 闸门是经验值：默认组不在 `runners_up` 时不能把 `nb=0` 当「完美匹配」；要看 `fallback` 与 `n_params`。
+- **回落竞态是真的，不是探针抖动**：目标变体未预加载时 `startMotion` 要 fetch，期间库每帧再请求随机待机，
+  默认 idle 会抢先 ⇒ label 已是 idle2、currentGroup 仍是 idle。修法三件套（§124）：`state.complete()` +
+  `startMotion(...,NORMAL=2)` + pending 目标最多 10s 内拒绝后续随机待机。
+- 探针的 `forceEnd` 必须先 `mm.state.complete()` 再 `stopAllMotions()`，否则优先级残留会造**假 FAIL**
+  （输出里的 `prio` 会是 3）。改完连跑 4 轮 17 case 全 PASS 才算过。
+
+#### 涉及文件
+
+`gallery_src/index.html`（`resize()` / `_pickFallback`）、`scripts/diag/l2d_spine_dpr_verify.py`、
+`scripts/diag/l2d_motion_chain_verify.py`、`scripts/deploy_gallery.py`、`Output/gallery_v2/motion_chain.json`。
+相关：§123/§124、WF-16（前端硬规则）、WF-33（回落语义）、WF-14（Spine 播放）。
+
+
+### WF-38: 给画廊第三方运行时打本地补丁（Live2D 颜色案例 + MANIFEST local 源 — 2026-10-19）
+
+**场景**：画廊用的第三方库有功能缺失（本例：`pixi-live2d-display 0.4.0` 不读 moc3 的 per-drawable `MultiplyColor`/`ScreenColor`），但上游没有兼容当前 Pixi 版本的新版。需要在**不换栈**的前提下打最小补丁，并让换机器可复现。
+
+#### 判据
+
+1. **先证「缺的是库不是数据」**：同一份 moc3 与 AssetStudio 逐字节一致；库 bundle 搜目标符号 0 命中；core 里能读到颜色数组（`coreModel._model.drawables.multiplyColors`）。三条同时成立才动库。
+2. **补丁只改渲染末端**：fragment shader 加 2 个 uniform + `setupShaderProgram` 按 drawable 取色 + `doDrawModel` 记 `_drawableIndex`。不要重写/换整个渲染器。
+3. **默认值必须等价**：颜色数组缺失时回落 `multiply=[1,1,1,1] / screen=[0,0,0,1]`，否则没设颜色的模型会整块变黑（本例第一次就黑屏了）。
+4. **落盘两份**：运行目录一份 + `gallery_src/vendor/...` 入库一份；`gallery_src/vendor/MANIFEST.json` 把该条改成 `local` 源并更新 sha/bytes；`fetch_gallery_vendor.py --check` 必须 4/4。
+5. **验收必须看图**：本例 `ougen_8 idle8` 分割线虚影、`touch_idle17` 末尾白瓶白杯；再看 3 个默认色模型确认没被补丁弄坏；最后跑 `hit_verify.py --only ougen_8` 确认 WIRING=0。
+
+#### 踩坑记录
+
+- **0.5.0-beta 不能直接上**：它支持颜色，但 peerDependency 是 Pixi 7；本机 Pixi 6.5.2。实测换 Pixi 7 + beta 后 `PIXI.live2d` 为空（beta UMD 还引用 `process`），`Live2DModel.from` 不 resolve。补丁 0.4.0 是当前栈最小改动。
+- **颜色数组在 `getModel()._model.drawables`**，不在框架包装的 `getModel().drawables`；读错层级会全部走默认值（画面不变，误以为补丁没生效）。
+- **`u_multiplyColor.a` 不参与公式**（Cubism 官方：A 不用于 Multiply/Screen 计算），别把 alpha 乘进去。
+- **补丁后文件是未压缩 227KB**，文件名仍叫 `.min.js`；以 MANIFEST 的 sha 为准，别按文件名判断。
+- **`hit_verify.py` 原先硬编码 Chrome**，本机只有 Edge → 直接改 `FileNotFoundError`。已加 Chrome/Edge 候选（与其它探针一致），否则无法做补丁后的点击回归。
+
+#### 涉及文件
+
+`gallery_src/vendor/live2d/pixi-live2d-display-cubism4-patched.js`（补丁正本）、`gallery_src/vendor/MANIFEST.json`（local 源 + sha）、`Output/gallery_v2/vendor/live2d/pixi-live2d-display-cubism4.min.js`（运行副本）、`scripts/fetch_gallery_vendor.py`（local 源优先）、`scripts/diag/hit_verify.py`（Chrome/Edge 回退）。相关：§125、WF-36（vendor 换源）、§123/§124（本轮另两处修复）。
+
+### WF-39: 重建 BGM 音乐库（只解 BGM → FLAC → bgm.json — 2026-10-19）
+
+**场景**：`Output/Audio/BGM` 为空 / 音乐库 404，但 `files/AssetBundles/cue` 完整。不要重跑整套 `export_cue_audio.py`（会再导 2,780 个 CV）；只解 BGM。
+
+#### 判据
+
+1. 先 `paths.py` 验证：`VGMSTREAM` / `FFMPEG` 都命中本机安装位；脚本里不许再出现 `C:\Users\KLLM`。
+2. 只对 `get_category(f)=='BGM'` 的 cue 调 `convert_b_to_wav`（本案例 561 个，约 12.2GB wav）。
+3. `transcode_bgm.py --out Output/Audio/BGM_flac --codec flac --roundtrip 7`；台账写 `ledger/bgm_transcode_flac.json`（按 codec 分文件，别和 opus 台账混）。
+4. `build_bgm_index.py --dir Output/Audio/BGM_flac --out Output/gallery_v2/bgm.json`，浏览器打开 `bgm.html` 验一首能播、时长正常、进度条可拖。
+5. 删除 wav 之前必须 `--verify-only` 全绿（产物在/时长/能整条解到底）；删除后 `bgm.json` 不能指向 wav。
+
+#### 踩坑记录
+
+- `export_cue_audio.py` 的 `VGMSTREAM_CLI/FFMPEG` 原先钉死 `C:\Users\KLLM` ⇒ 561 条全 `WinError 2`（§126）。
+- `transcode_bgm.py` 的 `P.tool('AL_FFMPEG','ffmpeg')` 只查 PATH；本机 ffmpeg 在 `%LOCALAPPDATA%\ffmpeg\bin`，要用 `P.FFMPEG`。
+- `FFPROBE = FFMPEG.replace('ffmpeg','ffprobe')` 会把目录名也换掉，必须 `os.path.join(dirname,'ffprobe.exe')`。
+- `transcode_bgm.py` **不删源**；删 wav 是独立一步，必须先 verify-only。
+
+#### 涉及文件
+
+`scripts/export_cue_audio.py`、`scripts/transcode_bgm.py`、`scripts/build_bgm_index.py`、`scripts/paths.py`、`ledger/bgm_transcode_flac.json`、`Output/gallery_v2/bgm.json`。相关：§126、§113（FLAC 无损判据）。
+
+### WF-40: Live2D 回落三层语义 / 看门狗 / 自动刷新 / 开场 login / 眼神（2026-10-19）
+
+**适用**：Live2D 动作播完不回落、回落错组、卡最后一帧；或要加开场 login / 眼动开关。
+
+#### 回落语义（唯一判据，来自 2026-10-17 归档）
+
+1. `idle*` → 库自循环；`touch_drag*` 按住时 loop、松手回拖拽前的 idle（没有记录才默认 idle），不查表 best。
+2. `touch_idle*` 用 `norm`、`touch_drag*` 用 `raw_sse` 查表 best；不做覆盖度排除（否则 idle9 会被 26% 覆盖度误杀）。
+3. 其它长动作（`complete/home/login/main_*/mission_complete/wedding/touch_head/touch_body/touch_special` 等）→ **默认初始 idle**，不按表选 best。
+
+⚠️ 不要再给长动作加“最佳衔接”闸门/覆盖度排序：2026-10-19 试过，ougen 会从 idle9 变成 idle13，用户判为不衔接，已整体回退。
+
+#### 看门狗
+
+库的 `shouldRequestIdleMotion` 在 finish 后不一定及时触发，表现为卡最后一帧几秒。在 `app.ticker` 里检测 `currentGroup==null` 且不在回落中 → 下一帧 `startMotion(dst,0,MP.NORMAL)`。判据：forceEnd 后 1s 内 `currentGroup` 已是 idle，标签同步。
+
+#### 自动更新
+
+`build_gallery_index.py` 写 index 前调用 `build_motion_chain_map.py --write`；失败则拒绝写 index。Live2D 更新后只要走正常索引重建（含 `update_pipeline` 的 derive），回落表自动跟上。
+
+#### 开场 login / 眼神
+
+- `OPT.login` 默认关；开后在模型加载后 300ms 播 `login`，用 FORCE（NORMAL 压不过初始 idle），用户切动作前 `state.complete()` 防同级 reserve。
+- `OPT.eye` 默认开；用 LOW 优先级 ticker 直接写 `ParamEyeBallX/Y`（写在 model.update 里会被 `loadParameters()` 覆盖）；判据指针右上 → `ParamEyeBallX≈+0.7 / ParamEyeBallY≈+0.6`，关闭回 0。
+
+#### 分屏阶梯（未彻底解决）
+
+mask 256→1024/2048 只能让阶梯变细；4x 超采样 + mask 4096 + 2D 降采样仍存在，确认是 artmesh 硬 alpha 边缘露出 (0,0,0) 画布底色。CSS blur 0.55px 可消但整体变软。要彻底无阶梯需改模型 mask/artmesh；运行时暂不默认 blur。
+
+#### 涉及文件
+
+`gallery_src/index.html`、`scripts/build_gallery_index.py`、`scripts/build_motion_chain_map.py`、`Output/gallery_v2/motion_chain.json`、`scripts/diag/l2d_motion_chain_verify.py`。相关 §127/§128、WF-37/38。
+
+#### 2026-10-19 WF-16 实跑结果（Edge）
+
+- 五件：`l2d_ref_diff`（参考库 404 → 环境跳过，未参与比对）、坐标系、检查器、交互五项、台词与开关 **全 PASS**；
+- 全量 hit 262 个模型单轮 >1h，本轮改跑 `hit_verify.py --limit 30`：**30 模型 / 247 部位 / HIT 202 + INGROUP 45 + WIRING 0 / 可点中率 100%**；全量 262 未跑完，不能写成“六件全绿”。
+- headless Edge 的 `requestFullscreen` 无手势授权，`talk_verify` 打印 ⚠️ 跳过该直读判据，结构判据 `inFSTarget` 已独立验过。
+
+#### 2026-10-19 追加：mask 按数量算 + 拖拽互动
+
+- mask：`N` 取 2 的幂，`N ≥ 画布长边 × √maskCount`，上限 8192（ougen_8：maskCount=9、长边 2098 → 8192）；运行时按模型自动算，所有模型统一，无需逐模型配置。
+- 拖拽：把 moc3 里未登记的 `TouchDrag*` drawable 补成互动区（ougen_8 30 + 14 = 44 个）；**Ctrl/⌘ + 左键按住**才进互动（普通左键仍是平移）：按下即播 `touch_drag*` 并强制 loop（按住期间持续动），松手停 loop 并回拖拽前的 idle；`touchdragN` 优先映射 `touch_dragN`，没有该组再轮转到现有 drag 组。
+
+- 2026-10-19 修正：Ctrl 拖拽不再写死 touch_drag1；按点击命中的 `touch_dragN`/`touchdragN` 交给 dragGroupOf，缺失的组按编号轮转到现有 drag 组。
+
+### WF-41: ConstantClip 姿势层重导换入（EMIT_CONST 批量流水 — 2026-10-21）
+
+**场景**：`L2D_MOTION_EMIT_CONST=1` 重导 motion（姿势定值层补齐 §134），换入正式目录并全链验证。适用于 1 个模型到全库 269。
+
+**流程**（每步判据缺一不可）：
+1. 重导：`AL_ASSETS_ROOT="D:/Azur Lane Assets" L2D_MOTION_EMIT_CONST=1 py -3 scripts/extract_motions.py --name <模型> --out .diag/l2d_const_test`。⚠️ `--out` 给到**共同父目录**（`.diag/l2d_const_test`），extract 自建 `<模型>/motion/` 单层；给到 `<模型>` 级会成双层，`apply_live2d_motions.py` 的模型发现（`SRC/<模型>/motion`）扫不到 → 干跑只报 1 个模型时先查目录层级。
+2. 四项审计：`py -3 scripts/diag/l2d_const_audit_batch.py`（A 逐 clip binding 数=磁盘曲线数；B 现网 streamed 曲线 Id 集合⊆新版；C 段格式可解析；D 总数对账）。**段长表必须含 id=0（InverseStepped=2 元素）**，漏 0 全组误报。
+3. 换入：干跑看清单 → `L2D_SRC_DIR=.diag/l2d_const_test py -3 scripts/apply_live2d_motions.py --yes`（自动备份 `Output/_OLD_bak/l2d_motion_<时间戳>`；曲线变少会 BLOCKED）。
+4. chain 重算：`py -3 scripts/build_motion_chain_map.py --models <全样本列表> --write`，跑完**必核对打印「模型数=N」**（整表覆盖写，单模型跑=清表事故）。
+5. 验证（本项目画廊 8778，参数直读为权威）：交互回归 `INTV_URL=http://127.0.0.1:8778/gallery_v2/index.html INTV_MODELS=<逗号列表> py -3 scripts/diag/interact_verify.py`；姿势落值用 `scripts/diag/l2d_pose_anchor_pick.py` 挑锚点 → `POSE_SKIN/POSE_GROUP/POSE_EXPECT/POSE_BACK/POSE_URL` 驱动 `l2d_const_pose_verify.py`。
+
+**判据（姿势验证假阴性谱系，三坑全实测过）**：
+- 采样必须 **settle 轮询收敛**，固定 sleep 会踩 fade 混合中间态（实测期望×0.784 权重假 FAIL）；
+- 期望值超参数范围会被 clamp（定值 280 / 范围 0..10 → 实测 10 是**正确**值，游戏内同行为），锚点挑选时跳过或按 clamp 后值；
+- **姿势基态随组**：回零判据=切回后实测 ≈ 切回组的**磁盘 constant 定值**（`POSE_BACK` 数据闭环），不能拿开场 baseline 或数学 0 当基准；切回组无该参数曲线（无复位指令）则豁免。
+
+**踩坑记录**：`apply` 干跑「将换入 1 个模型」+曲线总数不变 → 源目录双层（见流程 1）；探针连 8777 的是**旧画廊**（写死 URL），验证本项目必须 `INTV_URL`/`POSE_URL` 指 8778；`l2d_const_pose_verify.py` 的 ROOT 曾是两层 dirname（cdp_slot 在 `scripts/`），已改三层。
+
+**涉及**：`scripts/extract_motions.py`、`scripts/apply_live2d_motions.py`、`scripts/build_motion_chain_map.py`、`scripts/diag/l2d_const_audit_batch.py`、`scripts/diag/l2d_pose_anchor_pick.py`、`scripts/diag/interact_verify.py`、`scripts/diag/l2d_const_pose_verify.py`、`scripts/diag/serve_gallery_8778.py`（8778 本项目画廊启动器，8777 被旧画廊占用时用）。相关：§134（根因）、§134 续（判据三坑）、§25（全量覆写规训——全库 264 模型批次适用）、WF-16（前端回归六件套）。
+
+## WF-42 全量画廊重建：从空 Output 到可用画廊的编排（2026-10-23）
+
+**触发**：新机 clone / Output 被清空 / 用户要"跑一次全量生成完整画廊"。
+
+### 判据（每阶段跑完看什么）
+| 阶段 | 命令 | 判据 |
+|---|---|---|
+| Live2D | `rebuild_live2d_full.py --all --yes` | model3.json 数 = 期望模型数（源 bundle 262 → 模型 262+）；`l2d_tex_completeness.py` missing/extra=0 |
+| 动作回落表 | `build_motion_chain_map.py` | 产物 motion_chain.json 的**模型数 = 实际模型数**（该脚本 `--models` 是整表覆盖写，单模型调用会清掉其它映射） |
+| Spine | `run_v2_full.py --only spine` | Output/Spine_v2 目录数 ≈ 源主包数（本项目 235 个约 15 秒） |
+| 依赖清单 | `export_dependency_manifest.py` | **静态立绘的硬前提**，缺它每张立绘都 fail（报 `No such file: Output/dependency_manifest.json`） |
+| 静态立绘 | `run_v2_full.py --only static` | 日志 `ok=N fail=0`；约 2 秒/张（本项目 4454 张 ≈ 2.5h） |
+| 索引 | `build_gallery_index.py` | 末尾 `DONE {...}` 的 skins/live2d/spine 数与产物一致 |
+| 运行时库 | `fetch_gallery_vendor.py` | Output/gallery_v2/vendor 存在 |
+
+### 踩坑
+1. **编排脚本用 pwsh 7 启动，不要用 powershell.exe**：DSH 写的 `.ps1` 是 UTF-8 无 BOM，Windows PowerShell 5.1 按 ANSI 读会把中文注释吃进字符串 →
+   `字符串缺少终止符` 解析错误，且 `Start-Process -PassThru` 只给你一个立刻退出的 pid **不给任何日志**。
+   判据：无日志 + 进程秒退 ⇒ 先用重定向启动抓 stderr，再决定换解释器。
+2. **元数据缺失时索引用空占位跑通**：`build_gallery_index.py` 经 `extract_cv_voice` 模块级 `load_table()` 硬依赖
+   `inputs/gamecfg/character_voice.json`（缺失直接 FileNotFoundError 崩在 import 期）。
+   把 `inputs/azdata/*.json` 与 `inputs/gamecfg/*.json` 建成 `{}` 占位即可降级跑通（中文名走 `ship_name_map` 兜底，
+   阵营/稀有度会为 0）。**跑完要删掉占位**，否则 `check_inputs.py` 会把它们当"漂移"并掩盖真实缺失。
+3. **`Output/WikiData/ship_data.json` 也被硬依赖**（模块级 json.load），空数组 `[]` 占位。
+4. **关机必须是健康检查的后果，不是流程的结局**：编排脚本末尾校验 模型数≥200 且 index.js>10KB 才
+   `shutdown /s /t 120`，不达标只留日志。关机前 120 秒可用 `shutdown /a` 取消。
+5. 编排脚本 `scripts/run_full_gallery.ps1`（`-SkipPaintings` 跳过最大头、`-NoShutdown` 只跑不关）。
+
+**涉及**：`scripts/run_full_gallery.ps1`、`scripts/rebuild_live2d_full.py`、`scripts/run_v2_full.py`、
+`scripts/export_dependency_manifest.py`、`scripts/build_gallery_index.py`、`scripts/fetch_gallery_vendor.py`。
+
+#### 远端仓库瘦身（2026-10-24 实测）
+
+**判据：远端体积 != 当前分支文件总和时，先查「其它分支」，再查「历史大对象」。**
+
+`ash
+# 1. 远端真实体积（本地 pack 常远小于它——本地只统计被引用对象）
+curl -s -H "Authorization: Basic <b64>" https://api.github.com/repos/<owner>/<repo> | jq .size  # KB
+# 2. 远端还有哪些分支（这是最常被忽略的一步）
+curl -s .../git/refs
+# 3. 逐分支看文件总和与最大文件
+curl -s .../git/trees/<branch>?recursive=1 | jq '[.tree[]|select(.type=="blob")|.size]|add'
+`
+
+**真实案例**：本仓远端 71.09 MB，但 master 当前树只有 ~7 MB、本地 pack 仅 6.44 MiB。
+差距全部来自 samples-tmp 分支里的 samples/l2d_samples.tgz（63.6 MB 单个文件，
+提交信息只有「samples: 临时」）。
+
+**踩坑记录**：
+- git count-objects -vH 只统计**本地被引用**的对象，删掉分支后本地会跟着变小，
+  但**远端 pack 不会自动回收**。判断远端体积必须走 API 的 .size。
+- git fetch 默认不抓没有远程跟踪的分支，git rev-parse origin/<br> 会报
+  「unknown revision」。要么用显式 refspec
+  git fetch origin "+refs/heads/<br>:refs/remotes/origin/<br>"，要么先看 refs 列表。
+- 中文文件名在 git show <ref>:<path> 里会被 core.quotepath 转义成
+  \351\200\220...，导致 path not found。取文件时加 -c core.quotepath=false。
+
+**清理前必须先收编独有文件**：删分支前，用
+git ls-tree -r --name-only <branch> | grep -vxF -f <(git ls-tree -r --name-only master)
+列出独有路径，逐个 git show 取出并提交；否则删分支 = 永久丢失。
+本仓实测两个遗留分支各有 6~8 个 master 缺失的文件（其中 2 个是空文件，未收编）。
+
+**删分支的正确姿势**：远端用 git push origin --delete <branch>；
+若目标是让远端**物理缩小**，删分支后远端 pack 仍留着对象，需要平台侧
+「危险区 → 清理/GC」或联系支持，GitHub 会自动在空闲时 GC，不保证立即回收。
+
+
+## WF-43 审计判据上线前的自标定：四条闸门 + 基准审查（2026-10-27）
+
+**触发**：要写一个新判据 / 新比对工具来判断「A 比 B 忠实 / 一致 / 正常」，尤其是准备据此做换入决策时。
+**代价背景**：2026-10-25~27 连续两轮裁决方向被推翻（先判 F 忠实、再判 E 忠实），全部源自判据本身有缺陷，
+而非被测数据有问题。一个没有自标定的判据比没有判据更危险 —— 它给出可信的数字。
+
+### 判据（新工具上线前逐条过）
+| # | 闸门 | 做法 | 不过的后果 |
+|---|---|---|---|
+| 1 | **恒等检测** | 构造一对**已知不同**的样本喂进去，必须判红 | 判据退化成恒等式（例：段中点偏离对对称 smoothstep 恒为 0） |
+| 2 | **检查集大小** | PASS 行必须同时打印 `checked=N` / `skipped=M`，N=0 时输出 `NO_DISCRIMINATION` 而非 PASS | 单向判据空转（例：只查 L→B，E 组无 L 段 ⇒ 零违例 = 空集） |
+| 3 | **双向覆盖** | 判「写法偏好」类问题必须两个方向都建桶（A→B 与 B→A 各自报数） | 只能证明一个方向 |
+| 4 | **基准自审** | 用 X 当 `--gt` 判 Y 之前，先独立证明 X 自己忠实（拿源数据/原始字节，不拿另一个导出） | 基准错则结论 180° 反（例：官方参考导出是 smoothstep→Linear 有损降级版） |
+
+### 参考实现
+- `scripts/diag/l2d_poly_truth_verdict.py` —— 真值取自源包 `m_StreamedClip` 三次多项式，逐点求值比对；55 行内完成「基准自审」。
+- `scripts/diag/l2d_segtype_confusion.py` —— `--selftest` 参数即闸门 1 的落地形式；`--verify` 做解析器对拍。
+- 通用做法：审计脚本的 PASS 模板固定成 `PASS checked=N skipped=M max_dev=X`。
+
+### 踩坑
+1. **「一致率 99.99%」先当红灯看**：近满分几乎必然是判据恒等，不是数据干净。
+2. **两组独立数据给出同一个怪数 = 异常在测量端**：E/F 两侧最大偏差都恰好 35.4、最差曲线同名 ⇒ 求值器错（Stepped 段取了 `v0` 而非 `v1`）。
+3. **统计结果荒谬先查索引序**：`parse_segments()` 返回 `t1=b[3]、v1=b[4]`，写反后 56968 段只命中 111 段且不报错。
+4. **求值器必须先标定**：对已知 Linear 段取中点应精确等于两端均值；对 smoothstep 取 1/4 点必须偏离线性 —— 这两条自测先过，再拿来判别人。
+5. **不手写求值器**：正本在 `scripts/diag/l2d_motion_fidelity_audit.py`（`SEG_LEN`/`parse_segments`/`Curve.at`），段长表 `{0:3,1:7,2:3,3:3}`、指针从 2 起；自产 motion3 的段长表是 `{0:2,1:7,2:1,3:3}`，两套不可混用。
+
+**涉及**：`scripts/diag/l2d_poly_truth_verdict.py`、`scripts/diag/l2d_segtype_confusion.py`、
+`scripts/diag/l2d_motion_fidelity_audit.py`、`scripts/diag/l2d_bezier_quantization_audit.py`、
+`docs/TROUBLESHOOTING.md` §147~§150。
+
+## WF-44 会话数据丢失后的三源取证恢复（2026-10-27 实测）
+
+**触发**：系统还原 / 崩溃导致 `.copilot/session-state` 与本地会话库丢失，只剩 D 盘工作树，
+需要回答「昨天做到哪、改了哪些文件、结论是什么」。
+
+**核心认知**：会话记录会没，**工作树不会**。恢复不是「找回对话」，而是「从产物反推做过什么」。
+三个可能的信息源，按可靠性排序，**必须交叉**：
+
+### 判据（三源取证）
+| 源 | 取什么 | 判据 |
+|---|---|---|
+| ① git 工作树 | `git status --short`（未见文件）、`git diff --numstat`（改了多少行）、每文件 mtime | 未提交改动 = 正在进行的工作；mtime 给出时序 |
+| ② `.diag/` 临时产物区 | 探针 `.py` 的 docstring、它们写出的 `json`/`log` | **唯一会记录「量了什么、得到什么数」的地方**（在 `.gitignore` 里，不进 git） |
+| ③ 产物目录 mtime | `Output/_ab/E` 与 `Output/_ab/F` 的目录时间戳 | 定出实验组的产出顺序（实测 E 10-25 11:56 早于 F 17:52） |
+
+三源时间线**一致**才敢确认顺序；单看 git 会漏掉所有未入库探针，单看产物会漏掉工具还没跑完的部分。
+
+### 恢复后必须补的一件事
+**把「未提交的脚本改动 == 产出该产物的代码」证死**：用同配方重跑到临时目录，逐文件 sha256 比对正式产物。
+实测 5 模型 **367/367 `motion3.json` 全等** ⇒ 才有资格把这个未提交改动当作「已验证的终态代码」提交。
+配方（E 组）：`L2D_MOTION_SEGTYPE=1 L2D_MOTION_BEZIER=1 L2D_MOTION_LINEAR=0 L2D_MOTION_EMIT_CONST=1`。
+
+### 踩坑
+1. **别把「退出码 0」当跑完**：探针在服务不在线 / 字段名错 / 检查集空时照样 exit 0 并写出 `{}` 或 `[]`。判据落在产物非空性上。
+2. **长跑前先探活**：8778 的唯一可靠启动是 `powershell mode=async detach=true` 跑 `serve_gallery_8778.py`；扫描前查一次 `Get-CimInstance Win32_Process -Filter "Name='python.exe'"` 看它在不在。
+3. **`--bases` 含空格路径必须整体加引号并拼 `--bases=$b`**：PowerShell 直接传会被 argparse 按空格切断。
+4. **官方参考库子目录是 `motion` 不是 `motions`**（两种都存在），枚举必须两个候选都试，否则 load 全空。
+5. **`.diag/` 删了没有 git 兜底**：不确定就先 `check_diag_hygiene.py --archive`（打包 + 逐份 md5 回读校验），别直接 `rm`。
+
+**涉及**：`docs/TROUBLESHOOTING.md` §152、`scripts/diag/check_diag_hygiene.py`、
+`scripts/diag/l2d_poly_truth_verdict.py`、`scripts/diag/serve_gallery_8778.py`、
+`scripts/extract_motions.py`。
+
+## WF-45 多候选产物组的离线对账：三档判据 + 必须绕开网络（2026-10-27）
+
+**场景**：同一条数据管线产出了多个候选版本（本轮：`E` / `F` / `official` 三组，各 5 模型
+共 367 个 `motion3.json`），要判「哪一组进生产」，以及「生产目录里现在到底是哪一组」。
+
+**为什么不能用网络对账**：第一版对账工具走 HTTP 拉参考库，长尾请求两次被网络策略拦，
+而且诊断结论会与「服务器在不在线」耦合。**本地已有全部材料时不联网**：
+
+- 我方各组产物：`Output/_ab/{E,F,official}/`
+- 生产目录：`Output/Live2D/`
+- 官方参考库：`D:\Azur Lane Assets\Output\Live2D\`
+
+⇒ 纯本地 `json.load` 就够，10 秒跑完全量。
+
+**三档判据，从粗到细，前两档不过就别看第三档**：
+
+| 档 | 判据 | 工具 | 通过条件 |
+|---|---|---|---|
+| 1 | 逐文件 md5 | `l2d_group_cmp.py --files` | `diff=0 且 only=0` |
+| 2 | 曲线 `Id` 集合 | `l2d_group_cmp.py --sample`（曲线数可读） | 每 clip 集合相同 |
+| 3 | 逐点采样偏差 | `l2d_group_cmp.py --sample --ref=<组>` | 分布达标 + 阈值有依据 |
+
+⚠️ **第 3 档的「参考」必须是真值，不能随便选一组」。** 本轮实测（`antu_2`，29945 曲线）：
+以官方参考为基准则 F 超阈 32 条、E 超阈 4382 条 ⇒ 看起来「F 大胜」。但**官方参考本身是
+smoothstep→Linear 的有损降级版**，谁降级彻底谁高分。换用源包 `m_StreamedClip` 三次多项式
+真值后结论完全反转：E 平均偏差 `3.05e-07`、超阈 **0**；F `0.332`、超阈 1569。
+⇒ **每个「参考」都要先自证是真值**（详见 WF-43 闸门 4 与 §147）。
+
+**固定命令序列**：
+
+```bash
+# ① 生产到底是哪一组（先做这一档，能直接推翻任务清单里的前提）
+py -3 scripts/diag/l2d_group_cmp.py --files
+# ② 曲线级
+py -3 scripts/diag/l2d_group_cmp.py --sample --models antu_2 --ref Output/_ab/official
+# ③ 真值裁决（唯一能定终态的一档）
+py -3 scripts/diag/l2d_poly_truth_verdict.py --sample \
+  --bases=Output/_ab/E,Output/_ab/F,Output/_ab/official \
+  --models=aersasi_2,aersasi_3,antu_2,benningdun_2,ougen_8 \
+  --clips-per-model=25 --curves-per-clip=12
+```
+
+**判据**：
+- 第 1 档 `same=367 / diff=0` ⇒ 两组**就是同一份数据**（硬链或复制导致），别再换入。
+- 第 3 档「最忠实组平均偏差应 ≤ 1e-6 且超阈 0」；若最优组也在 1e-1 量级，说明**没有一组
+  是真的**，回去查提取器的段类型/控制点公式，而不是挑一个相对最好的换入。
+- 换 seed 或改 `--clips-per-model` 重跑一次，结论必须不变（本轮 `2.68786e-07` vs
+  `3.04924e-07`，量级一致，同为唯一 0 超阈组）。
+
+**踩坑**：
+1. **不要用 mtime 判换入状态**。硬链换入不改 mtime（同 inode），
+   `Output/Live2D/ougen_8/motion/home.motion3.json` 的 mtime（10-25 10:41）比源目录
+   `Output/_ab/E`（15:48）还早，看时间戳会得出完全相反的结论（§153）。
+2. **`Curve(segs, fadeIn, fadeOut)` 是错写法**，正本只收 `segs`；采样区间必须取
+   两条曲线的公共交集 `[max(t0), min(t1)]`，否则 `Curve.at` 钳末值会把「比长度」
+   混进「比形状」（§154）。
+3. **别手写 Segments 段长表**。正本 `parse_segments` 的 `SEG_LEN={0:3,1:7,2:3,3:3}` 是
+   「类型码之后」的长度，而 `extract_motions.py` 自产的段长表是 `{0:2,1:7,2:1,3:3}`
+   —— 两套不可混用。手写表把 Bezier 写成 7 会切片错位，产出误导结论（本轮删掉了这样一个探针）。
+4. **`parse_segments` 返回序 `(T, t0, v0, t1, v1, c1v, c2v)`**：`t1=b[3]`、`v1=b[4]`。
+   索引写反后统计全错**且不报错**。
+
+**涉及文件**：`scripts/diag/l2d_group_cmp.py`（新建）、`scripts/diag/l2d_poly_truth_verdict.py`、
+`scripts/diag/l2d_motion_fidelity_audit.py`、`Output/_ab/{E,F,official}/`、`Output/Live2D/`。
+
+## WF-46 探针清单体检：假成功 / 恒失败 / 预算失配三查（2026-10-27 实测）
+
+**触发**：接手一批未提交的探针改动；或者**任何一次"验收通过"要拿去下结论**之前。
+本项目的教训是反复的：**尺子坏了比东西坏了更贵**——假绿灯让真故障过关，恒失败让好产品背锅，
+而两者都表现为"跑了、有输出、有退出码"。
+
+**核心认知**：探针的输出**不是证据**，探针的**判据**才是。所以体检的第一层是
+「这条判据在阴性侧会不会红」，第二层才是「它现在报什么」。
+
+### 三步体检（每步都要有阴性对照，缺一步就等于没查）
+
+**① 清理/收尾类动作：判据必须落在"回读"，不能落在退出码**
+
+```bash
+# 对照实验模板（旧法必须有残留，新法必须杀净，双向都要）
+py -3 - <<'PY'      # 或写成一个 .diag 探针
+# 起一棵浏览器 → 记录 profile → 旧法杀 → 数残留（应>0，证明陷阱真实存在）
+#                  → 新法杀 → 再数（必须 0）
+PY
+```
+
+判据：**旧法残留 > 0 且 新法残留 = 0**。单跑新法杀净不算证明。
+`taskkill` 的退出码在这里是**假的**（实测退出码 128 而什么都没杀，见 §156 形态一）。
+
+**② 就绪/等待类判据：必须先证明"它真的会等"（否则是白等满超时的假速度）**
+
+```bash
+py -3 scripts/diag/cdp_ready_selftest.py        # 阴性(about:blank 必须被拒) + 阳性(真页必须放行)
+```
+
+判据：**① 阴性通过 且 ② 阳性通过**。⚠️ **只报阳性 = 无区分力的假绿灯**
+（2026-10-27 实测过一次「`--poke` 对照同绿」的事故，判据本身没有判别力却看起来验证过了）。
+同类必查项，都是本项目踩过的：
+- 谓词写成 `G.ships && G.ships.length` ⇒ JS 返回**最后一个操作数**（数字），Python 侧
+  `is True` 恒假，门退化成白等满超时；
+- 读页面变量写成 `window.X`，而页面用 `let X` ⇒ 恒 undefined，门槛第一次判就放行（§156 形态二）；
+- `document.readyState` 单独当门槛 ⇒ `about:blank` 天生 complete（`cdp_wait.py` 的由来）。
+
+**③ 超时预算：按"最坏情形"拍，不按单跑实测拍**
+
+排查动作：把同一批探针的预算**列成一张表**，不一致就逐个问"为什么"。
+
+```bash
+py -3 - <<'PY'
+import re,glob
+for f in sorted(glob.glob('scripts/diag/*.py')):
+    s=open(f,encoding='utf-8',errors='replace').read()
+    for m in re.finditer(r'for\(let i=0;i<(\d+) && !\(.*?stage.*?children\[0\]\);\s*i\+\+\)\s*await t\((\d+)\)', s):
+        print(f'{f}: {int(m.group(1))*int(m.group(2))/1000:.0f}s')
+PY
+```
+
+判据：**同类等待的预算应同量级**（本项目 inspector 150s / interact 40s 就是失配）。
+最坏情形清单：**连跑多个样本**、冷启（首跑）、排在批处理最后、大贴图皮肤。
+
+### 踩坑记录
+
+1. **"默认参数"是最容易腐烂的地方**：`gallery_ui_shots.py` 默认截一张全库都不存在的
+   `index_b.html`、皮肤 key 写死成**另一份画廊**才有的 `ninghai_4`。改探针时顺手核一遍
+   "这些名字今天还在不在"（页面 `Test-Path`、样本 key 对 `index.json` 的 `live2dSkins`）。
+2. **同类错误会在同一批探针里成对出现**：`window.l2State` 同时出现在
+   `l2d_coord_forensics.py` 与 `diag_model_identity.py`。查到一处必须
+   `Select-String -Path scripts/diag/*.py -Pattern 'window\.l2State'` 全库扫一遍。
+3. **`proc.poll()` 非空 ≠ 树已死**：Chromium/Edge 的启动器进程会早退，把用户数据目录
+   交给重新孵化的主进程。判"树死没死"只能按 `--user-data-dir` 回读进程列表。
+4. **修完必须跑"改前会红、改后该绿"的双向验证**，不能只跑改后（本轮每个修复都附了改前实测记录，
+   见 §156 的判据表）。
+
+**涉及**：`scripts/diag/chrome_tree.py`、`scripts/diag/cdp_wait.py`、
+`scripts/diag/cdp_ready_selftest.py`（★自测）、`scripts/diag/clean_diag_profiles.py`、
+`docs/TROUBLESHOOTING.md` §156。
+
+### WF-46 追加（2026-10-27 全库执行结果）：批量机械改写的操作规约
+
+**判据先行**：动手前先把「漏 X 的个数」做成一个**可重复跑的数**（本例 40），
+改完跑同一个脚本，数必须变成 0。没有这个数就只能说"我改了 40 个文件"，不能说"问题解决了"。
+
+**三步顺序**（顺序不可换）：
+
+1. **干跑**（脚本默认不写盘）→ 人读输出，确认要改哪些、每种改法各命中几个。
+2. **小样本实改 + 逐份读 diff**：挑 3–5 个**形态各异**的（本例：普通 `proc=`、
+   `self.proc=`、f-string 路径、含 11 处 terminate 的极端样本），改完 `py_compile` +
+   **人工比对 diff 里的表达式**。
+   ⚠️ `py_compile` 只证明"语法合法"，**不证明语义对**：实测有一个改动把
+   `--user-data-dir={ROOT}/...` 剥成 `kill_tree(pid, ROOT)`，语法全绿而语义全错。
+3. **批量实改 → 跑判据 + 全量语法 → 抽样实跑**（本例抽样 2 个：正常退出后浏览器残留必须是 0）。
+
+**改写范围的红线：只做最小可证安全的那一种改动。**
+本例第一版脚本顺手把 `terminate()` / 裸 `taskkill` 也一起换，撞了两个坑
+（f-string 剥花括号语义错、taskkill 续行实参致语法错）。定稿只加两行（import + `install()`），
+因为 `install()` 会从 `proc.args` 自动认 profile，**等价地**修好了泄漏。
+
+**收尾必做的三件**：
+- 删掉批量改写留下的 `.bak`（本例 38 个）——它们是临时产物，不是备份；
+- 把「顺带发现的、与本轮无关的独立问题」单独记档，**不要顺手一起改**
+  （本例：24 个探针把浏览器路径写死成本机不存在的 Google Chrome，正解是走 `scripts/paths.py`）；
+- 抽样实跑，**判据落在外部可观测状态上**（进程数），不落在脚本自己的退出码上。
+
+## WF-47 Live2D 跨动作独立状态：数据白名单 + 离开动作时捕获（2026-10-27）
+
+**场景**：一个动作产生持久结果（吻痕/口红印、脱鞋/丝袜状态），用户随后直接选另一个动作。
+新动作文件通常带大量默认 0 曲线，若完全服从新动作，持久结果被冲掉；若把 A 的所有末值都保留，
+旧手臂/身体姿势又会拖进 B，部件错位。正确语义是：**只保留明确独立状态，姿势由新动作接管。**
+
+### 数据侧（判据）
+
+1. 装扮状态只认 `costume_params.json` 且 `n_drawables>0` 的权威清单；
+2. 动作状态只认逐动作实证后的显式白名单；**禁止名称模糊匹配** `Eye* / Heart*`
+   （会混入眨眼/眼球/物理参数）；
+3. 只把 `abs(动作末值)>0.5` 记录进 `state_set_by_group`；普通 0 曲线不清状态；
+4. `state_params/state_set_by_group` 与 `pose_keep` 分开：前者是跨动作状态，后者是回落姿势。
+
+首批样本：`ougen_8/touch_idle12 → KissShow=7`；`touch_idle11 → BoobHeart=1,
+ButtHeart1=12, ButtHeart2=1`。输出在 `motion_chain.json` v3。
+
+### 运行时（唯一写入出口）
+
+1. **不要在 play(A) 时预写 A 的末值**——会让吻痕瞬间出现，绕掉动作内部 0→7 的局部过渡；
+2. 在**离开 A 的那一刻**（直接 A→B / A 回落 idle）从 coreModel 读当前实值，非零才写入
+   `__actionStatePinsByModel[skinKey]`；
+3. 模型 update / `loadParameters()` 后由唯一 LOW ticker 重申：先 action state、再 costume pins
+   （用户主动互动优先）；`restTick` 排除全部 `state_params`；
+4. 任何参数不在状态白名单里，就让新动作接管——这是“不把旧姿势带进 B”的硬边界。
+
+### 验收（`scripts/diag/l2d_action_state_verify.py`）
+
+必须走页面 `__l2play` / CDP 真实点击，不直接调 `mm.startMotion`：
+
+- 动作内部 KissShow 不能在开播时瞬间变 7；动作完成捕获后，用户直接选 `mission` 仍保持；
+- `ParamAngleX` 在新动作里必须变化（证明姿势没被 pin）；
+- 同一个 core 写 0 干扰做 A/B：ticker 开→恢复，移除→保持 0（阴性对照有区分力）；
+- 3 个身体印记跨普通动作保持；真实点击 ShoseOff 后连切两动作保持；
+- `__statePinTick=true` 且旧 `__costumePinTick=false`（状态写入出口唯一）。
+
+### 踩坑记录
+
+- headless SwiftShader 下动作时间轴与 wall-clock 回落定时器会竞速；有时曲线尚未到非零段就先回落。
+  探针最多重播 3 次并打印 RETRY；这是**仪器稳定化**，不是放宽状态判据。是否影响真 GPU 用户环境
+  需另做低帧率取证，不能从 headless 直接外推。
+- `--models ougen_8 --write` 原实现会把 5 模型表覆成只剩 1 个；定向样本写入必须读取旧表后按模型合并。
+
+**涉及文件**：`scripts/build_motion_chain_map.py`、`gallery_src/index.html`、
+`scripts/diag/l2d_action_state_verify.py`、`Output/gallery_v2/motion_chain.json`（生成物）；问题记录 §157。
+
+## WF-48 装扮/状态类改动：删重复块与验收层级（2026-10-28）
+
+**为什么单列一条**：本轮在「合并重复 ticker」时误删了 tween 推进段，导致**互动区点击整体失效**，
+而面板级验收（`l2d_costume_ui_verify`）**照样 PASS**。这类回归只能被「真实点击链路」抓到。
+
+### 三条硬规则
+
+1. **删「重复代码块」前按行为核对，不按代码形状**
+   - 逐块列出副作用：写哪个全局、读哪个全局、推进哪种状态（pins / tween / 姿态）。
+   - 本例三块里两块是 pins 重申、一块是 tween 推进；形状相似、职责不同，只看 diff 会删错。
+2. **同一优先级（LOW）里，注册顺序就是执行顺序**
+   - tween 推进必须**早于**状态重申：同帧先推进 tween 写 pins，再重申 pins。
+   - 顺序反了会把渐变值打回旧值（肉眼是"点了没反应"）。
+3. **验收必须覆盖到「真实点击」这一层**
+   - 面板按钮级（`l2d_costume_ui_verify`）→ 只证明控件能改值；
+   - 真实点击级（`l2d_action_state_verify` 的 D 段 / `verify_r6_real_click`）→ 才证明
+     `costumeToggle → tween → pins → stateTick` 整条链没断。
+   - 改动触及 ticker/优先级时**必跑后者**。
+
+### 判据排查顺序（「参数对了但画面没变」）
+
+1. 先查**动作是否还在跑**（`currentGroup` / 该参数是否在该 clip 曲线里）——最常见；
+2. 再查**读的是不是同一实例**（本项目多次栽在「读一个不存在的全局」）；
+3. 最后才怀疑 keyform 重算时机。
+
+⚠️ 本轮曾判定「Cubism 只在参数变化时重算 keyform，pin 写同值不刷新」，并据此补 `core.update()`；
+**A/B 对照已否证**（动作停稳后旧行为同样生效，之前读到的"恒 0"是动作覆盖所致），改动已撤回。
+
+**涉及**：`gallery_src/index.html`、`scripts/diag/l2d_action_state_verify.py`、
+`scripts/diag/l2d_costume_ui_verify.py`、`scripts/diag/verify_r6_real_click.py`、§158。
+
+## WF-49 无头浏览器生命周期的三层兜底：Job Object + 启动前清理 + 回读确认（2026-10-28 实测）
+
+**适用**：任何往机器上拉起浏览器进程的脚本（诊断探针、批量导出、页面验证）。新写一个探针、
+或发现机器上堆了无头浏览器孤儿进程时按本流程执行。背景见 `docs/TROUBLESHOOTING.md §159`。
+
+### 判据
+
+1. **一个启动出口**：`chrome_tree.launch(cmd, **popen_kw)`，参数形状与 `subprocess.Popen` 完全一致。
+   全库不许再有"headless 的 `subprocess.Popen`"直接调用点。重扫命令：
+   ```
+   py -3 scripts/diag/migrate_chrome_launch.py --dryrun    # 期望：将迁移 0 个
+   ```
+2. **机制自测五判据全绿**（含阴性对照，缺 ③ 就是假绿灯）：
+   ```
+   py -3 scripts/diag/chrome_lifecycle_selftest.py
+   ```
+   | # | 判据 | 期望 |
+   |---|---|---|
+   | ① | 正常退出（`sys.exit` → atexit） | 残留 0 |
+   | ② | 父进程被 `taskkill /F` 强杀（走 `launch()`） | 残留 0 |
+   | ③ | 同一条强杀 + `AL_NO_JOB=1`（阴性对照） | 残留 **> 0** |
+   | ④ | `clean_profile()` 能回收 ③ 的现场 | 清掉 N 个，回读残留 0 |
+   | ⑤ | 老写法 `Popen` + `install()` 被强杀 | 残留 0（A 层必须也做进 `install()`） |
+3. **收尾固定自检**（非空即泄漏，当场清理）：
+   ```powershell
+   Get-CimInstance Win32_Process -Filter "Name='msedge.exe' or Name='chrome.exe'" |
+     Where-Object { $_.CommandLine -match 'azur\\.diag' }
+   ```
+   ⚠️ 先按 `$_.Name` 过滤再匹配命令行——否则会匹配到**执行这条查询的 shell 自己**。
+4. **profile 回收**：`py -3 scripts/diag/clean_diag_profiles.py --yes`（默认只删 30 分钟前的；
+   本次自测刚生成的用 `--min-age 0`）。实测一次可回收 20+ GiB。
+
+### 三步 dryrun → 样本 → 全量（批量迁移用）
+
+1. `--dryrun` 拿可重数的缺陷数（改前 56 个调用点）。
+2. 3 个代表样本手读 diff + `py_compile`：`proc =`（直接 Popen）、`self.proc =`（install 包裹）、
+   `Popen(flags, ...)`（headless 在变量里，间接形态）。**`py_compile` 只证语法，不证语义**。
+3. 全量后重扫要求"残留 headless Popen 调用点 = 0"，并 `py_compile` 所有改动文件。
+4. 删掉迁移过程产生的 `.bak`（`.diag/` 与 `scripts/` 下都不许留）。
+
+### 踩坑记录
+
+- **括号会被吃掉**：`rewrite()` 若按"Popen 的闭合 `)` 之后"切片，`launch(` 就少一个 `)`，
+  53 个文件一次性全坏（`'(' was never closed`）。正确做法是 BODY 取 `open_idx+1 : end-1`，
+  再自己补 `)`；install 包裹形态还要把 install 自己的那个 `)` 一起吃掉。
+- **间接形态会漏**：4 个文件写成 `flags = [..., '--headless=new', ...]` 再 `Popen(flags, ...)`，
+  参数区里没有字面 `--headless`。而 `gallery_ui_shots.Page` 是 ~70 个脚本的共用出口，
+  漏了它等于没修一半。⇒ 先扫"被赋过含 `--headless` 的列表"的变量名，再按变量名匹配。
+- **`launch()` 之后的 `X = install(X)` 是冗余**：`launch()` 内部已注册 atexit，
+  留着会让同一棵树注册两个回调（重复回读进程表，拖慢退出）。只删"同一变量确实由 launch 赋值"的那行。
+- **实测命令超时上限 ≥15 分钟**（909 秒前台命令正常跑完、退出码 0），
+  与 `windows-long-running-batch-detach` 技能里"默认 2 分钟 / 最大 10 分钟"的说法矛盾。
+  ⇒ 事故更可能是**长时间无输出**触发看门狗。修复重点在"超时后兜底"，不是"减少超时"。
+  ✅ 该技能已同日更正为 `version: 1.1.0`（Overview / 规则 1 改为实测口径：超时**不杀**进程、
+  只转后台；新增规则 8 讲 detach 与子进程孤儿的 A/B/C 三层与阴性对照），两处现已一致。
+- **`os.kill(pid, 0)` 在 Windows 上不是探活**：CPython 实现是 `OpenProcess + TerminateProcess`，
+  它会**真的杀进程**。用 `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) + GetExitCodeProcess == 259`。
+- **阴性对照可能落空**：第一次强杀测试拿到 "before kill = 0 / residual = 0"，看着是 PASS，
+  其实是浏览器在强杀前就自己退完了 —— **测的是一个已经结束的场景**。必须先轮询到进程数
+  稳定 >= 15 再下杀手，否则拿到的是假绿。
+- **★ 迁移只按 `--headless` 字面扫会漏掉一整类，且它们长得最像"已修好"**（同日自查发现）：
+  11 个探针是「先 `subprocess.Popen(...)`、下一行再 `chrome_tree.install(proc)`」，
+  `install()` 当时只注册 `atexit` ⇒ 强杀下 100% 泄漏，修复只做了一半。
+  ⇒ 收尾判据不能只数"目标字面"，要**用 AST 数出所有 `Popen` 调用点并逐个归类**
+  （浏览器 / http.server / 子 python），归类结果要能对上总数：
+  ```
+  10-28 复核结果：含 --headless 的文件 60 个；launch 58 个/58 文件；
+                  install 14 个（11 真浏览器 + 2 http.server + 1 自测）；浏览器 Popen 残留 0
+  ```
+  老接口的正确处置是**让它自己升级**（`install()` 内部调 `_attach_job()`），不是逐个改调用方 ——
+  逐个改会永远追不上沉默的旁路，而升级接口对所有（含未来）调用者一次生效。
+
+### 涉及文件
+
+- `scripts/diag/chrome_tree.py` —— `launch()` / `clean_profile()` / `orphans()` / `kill_tree()` / `_adopt()`
+- `scripts/diag/chrome_lifecycle_selftest.py` —— 四判据自测（含阴性对照）
+- `scripts/diag/migrate_chrome_launch.py` —— 批量迁移器（`--dryrun` / `--only`）
+- `scripts/diag/clean_diag_profiles.py` —— profile 回收
+- `scripts/cdp_slot.py` —— 端口 + profile 分配（`chrome_<tag>_<pid>`，每进程唯一）
+- `AGENTS.md`「脚本约定」、`docs/TROUBLESHOOTING.md §159`
+
+## WF-50 截图取证：把「看图」变成「读指标」（2026-10-28 事故后定为默认流程）
+
+**为什么**：图片进上下文是**按轮重发**的，代价 ≈ 体积 × 剩余轮数。2026-10-28 一张 1.7 MB PNG
+把会话推到 213 万 token 后中断（详见 `docs/TROUBLESHOOTING.md §160`）。所以"截图 → 直接看图"
+必须改成"截图 → 算指标 → 只在指标答不出时才看压缩图"。
+
+**判据（按顺序过，前一步能答就不进下一步）**
+
+| 步 | 问题类型 | 命令 | 判据 |
+|---|---|---|---|
+| 1 | 布局/空白/黑底/大致配色 | `shot_budget.py <img> --text-only` | 看 3×3 分块 alpha 覆盖率与平均色：`a=0.00` 的块是空的，`#000000/a=1.00` 是黑底 |
+| 2 | 改前改后是否真的变了、变在哪 | `shot_budget.py <after> --diff <before> --text-only` | `变化 0.00%` = 没变；包围盒告诉你只动了哪一块 |
+| 3 | 逐像素级断言（某部件像素数、颜色阈值） | 直接写脚本算，**不要看图** | 输出数字 |
+| 4 | 以上都答不出（形状怪、遮挡关系、字体渲染） | 先 `--crop` 关键区域，再 `--max-kb 200 --max-edge 1024`，**只把压缩图送进上下文** | 一张一次；看完当场把结论写进 `docs/` |
+
+**标准动作**
+
+```powershell
+# 只取结论（零图片进上下文）
+py -3 scripts/diag/shot_budget.py .diag/uishots/after_3_painting.png --text-only
+
+# 两版对比（零图片进上下文）
+py -3 scripts/diag/shot_budget.py after.png --diff before.png --text-only
+
+# 必须人眼看：先裁关键区域（相对比例！），再压到预算
+py -3 scripts/diag/shot_budget.py shot.png --crop 0.35,0.05,0.75,0.45
+py -3 scripts/diag/shot_budget.py shot.crop.png --max-kb 200 --max-edge 1024
+
+# 收尾体检：列出所有超预算图（退出码即结论）
+py -3 scripts/diag/shot_budget.py --audit .diag --max-kb 200
+```
+
+**踩坑记录**
+- **`--crop` 用相对比例不用像素**：同一处 UI 在 2560 宽和 1400 宽窗口里像素坐标不同，比例才可复用。
+- **`alpha 全 255` 不等于"全透明"**：三态要分清——满幅不透明 / 部分透明（给包围盒）/ 全透明。
+  早期版本把满幅当成"无包围盒"打印成"全透明"，直接误导判定（已修）。
+- **别用 JPEG 换 PNG 来省体积**：UI 截图（大面积纯色 + 文字边缘）JPEG 压不到 PNG 的 1/5，
+  还引入块状伪影让"颜色对不对"失真。正解是**降分辨率 + 裁区域**。
+- **"少截几张"不是解**：数量不是主因，单张体积 × 剩余轮数才是；一张 1.7 MB 顶十张 100 KB。
+- **多张需求做拼图**（`make_review_sheet.py` / `make_pair_sheet.py`），一张顶多张。
+- **看完图立刻收尾**：结论当场写进 `docs/`，长取证任务建议看完就另起新对话——别把图留在上下文里当备忘。
+
+**涉及文件**：`scripts/diag/shot_budget.py`、`AGENTS.md`「看图预算」、
+`docs/TROUBLESHOOTING.md §160`、`.agents/skills/headless-chrome-cdp-batch-export`。
+
+## WF-51 headless/WebGL 逐帧探针的仪器体检前置（2026-10-28 实测，十一条 bug 收敛后的写法）
+
+**适用**：任何在无头浏览器里做**逐帧判据**、或断言「参数变了 / 画面没变 / 点击无效」的探针。
+本项目这类结论已被仪器 bug 骗过十余次（全表见 `docs/TROUBLESHOOTING.md §158 续六`）。
+
+### 判据（写探针前先逐条对齐，缺一条就别写判据）
+
+1. **浏览器只有一个启动出口**：`chrome_tree.launch(cmd, **popen_kw)`（WF-49）。
+2. **页面对象只用 `gallery_ui_shots.Page`**，不要 `cdp_helper.open_page`（它不透传 gpu，bug ③）。
+   对账「可见性/像素」必须 `gpu=True`；URL **必须含 `#gallery_v2`**。
+3. **先解耦帧源，再过闸**：
+   ```python
+   pg.detach_frames(60); time.sleep(3.0); pg.require_frames(2.0)
+   ```
+   `require_frames` **只抓停摆（`n` 不涨 / src=none|exc），不判快慢**。拿写死 fps 判红时，
+   红的是预热与硬件成本，不是仪器坏（bug ⑧⑨）。
+4. **采样点落在渲染入口**：判「参数值 vs 画面」挂在 `coreModel.update` **入口**，
+   不许用 `requestAnimationFrame`（bug ①④：headless 会降到 1 Hz 甚至停摆）。
+5. **模型引用只用页面出口** `window.__l2ModelRef()`，不许 monkey-patch `addChild` 抓实例（§158 续四）。
+6. **坐标只用页面出口**：`__L2_SCREENOF` / `__costumeScreenOf` / `__costumeHit`，
+   **探针不许自己复算几何**（bug ⑩：复算版会把像素坐标再乘一遍 `ppu`，实测点到 152050 px 处，
+   而阴性对照照样绿 ⇒ 结论「产品点击无效」完全是假的）。
+7. **页内归一 undefined**：所有从页内取回的记录，缺值一律在**页内**写成 `null`
+   （bug ⑪：`JSON.stringify` 丢弃 `undefined` 键，Python 侧 `r['pin']` 直接 KeyError）。
+   Python 侧仍要用 `.get()` 兜底。
+8. **必须有「仪器自证」出口**：判「点击没进产品代码」还是「产品没效果」，靠页面自己的日志
+   （如 `__costumeLog` / `__stateTogglesInfo`）——日志空 = 点击根本没进 `onUp`，
+   这不是产品缺陷。缺这个出口就无法区分两者。
+9. **阴性对照与阳性对照都要有**：阴性（点画面外应为 null）+ 阳性（已知生效的参数应产生变化）。
+   缺阳性对照时，「0 变化」无法与「快照函数坏了」区分。
+
+### 踩坑记录
+
+- **推错 ticker**：只推 `app.ticker` 时画面照常渲染、推帧计数照样报 59.9 fps（假绿灯），
+  但 `core.update` **一次都没被调用** ⇒ `render_entry_verify` 拿到「n=0 帧」，
+  被判成「产品不稳」。必须同时推 `PIXI.Ticker.shared`（bug ⑦）。
+- **用帧率阈值判仪器**：1400×1000 的 Live2D 页单帧 9–27 ms，本机物理上限 36–58 fps，
+  永不到 60 ⇒ 判据恒红。判据只能是「`n` 在涨」（bug ⑧）。
+- **`maxItv` 不可信**：会被页面加载 / 换肤这种一次性长任务污染（实测 503.6 ms），
+  拿它算可达上限会得出 2 fps 这种荒谬数字（bug ⑨）。
+- **只观测 10–12 秒的阴性对照作废**：出帧源衰减潜伏期是加载后 18–30 秒，
+  短窗口的「稳定 60 fps」结论全都不成立（§158 续六）。
+- **历史探针可能从来没跑通过**：`healthcheck_costume.py` 自 2845c68 起两处接口就对不上
+  （`o.nDrawables` vs `o.n`、`__costumeScreenOf` 返回对象却被当数组读）⇒ R3 **恒 FAIL**
+  而没人发现。**接手旧探针时先看它最近一次真实输出，不要看它是否存在。**
+
+### 涉及文件
+
+`scripts/diag/gallery_ui_shots.py`（`Page` / `detach_frames` / `require_frames` / `MIN_FPS`）、
+`scripts/diag/chrome_tree.py`、`scripts/diag/l2d_costume_hotzone_verify.py`、
+`scripts/diag/l2d_state_toggle_regress.py`、`scripts/diag/render_entry_verify.py`、
+`scripts/diag/probe_costume_click_frames.py`、`scripts/diag/healthcheck_costume.py`、
+`docs/TROUBLESHOOTING.md §158 续三~续六`。
+
+### 取证探针的落点（2026-10-28 清理后固化）
+
+本轮把 `.diag/` 顶层堆的 47 个散落探针一次清完，规则是**按"下次还要不要用"二分，不按新旧**：
+
+- **可复用的取证工具 → `scripts/diag/` 入库**（33 个，全部过了 `import` 烟测）。
+  典型：`visibility_keepalive_ab.py`（保活对照）、`frame_pump_acceptance_diag.py`（帧源三侧判据）、
+  `keepalive_acceptance_diag.py`、`throttle_rescue_matrix_diag.py`、`occlusion_throttle_diag.py`、
+  `stall_attribution_diag.py`、`gl_backend_switch_diag.py`、`headful_vs_headless_fps.py`、
+  `gpu_vs_swiftshader_ab.py`、`shoseoff_two_paths.py`、`tween_visible_at_update_diag.py`。
+- **一次性定性探针 → `check_diag_hygiene.py --archive` 打包后删**（14 个，md5 回读全过，
+  zip 在 `.diag/cleanup/orphans_<date>.zip`，unzip 回 `.diag/` 即复原）。
+- **极小对照页必须跟探针一起入库**：`glmin.html`、`glmin_size.html`、`gl_two_ctx.html`
+  现在在 `scripts/diag/`。**移动时必须同步改探针里的 URL**，本轮有 5 个探针写的是
+  `file:///D:/azur/.diag/glmin_size.html` —— 不跟着改，探针会静默地打开一个不存在的页面，
+  然后报「页面没渲染」，被误读成产品缺陷。
+- **移动后必须跑 `import` 烟测**：`sys.path.insert(0, os.path.dirname(__file__))` 在移动后
+  指的是新目录，`r'd:\azur\scripts\diag'` 那行反而稳定；用
+  `py -3 -c "import sys;sys.path.insert(0,'.');import importlib;importlib.import_module('<name>')"`
+  逐个过一遍，别只看 `ast.parse` 通过（那只验语法，不验 import 与 `__main__` 之外的模块级代码）。
+- **文档里的路径引用要一起改**：`l2d_costume_hotzone_verify.py` 的注释曾写
+  `.diag/ownership_entry_diag.py`，`cdp_helper.py` 的 docstring 引 `gpu_vs_swiftshader_ab.py`。
+  移动后不改 = 下一个会话按注释去找文件找不到。
+
+
+## WF-52 参数型热区的「多边形命中 + 渲染序裁决 + 可达率基线」三段式（2026-10-28 收敛）
+
+**适用**：一个参数（换装/装扮类）在模型上需要一块「点它切换」的可点击区，而这块区由
+若干 drawable 构成，且这些 drawable 之间、以及与其它参数的热区之间**互相重叠**。
+
+### 三段式（缺任一段都得不到可信结论）
+
+**① 判定形状必须用真实三角形，不能用轴对齐包围盒。**
+`getDrawableVertexIndices` / `getDrawableVertexIndexCount` / `getDrawableVertexPositions` 都可用，
+用重心坐标判定落点。实测 `ougen_8`：多边形覆盖 6233 个采样点，仅盒覆盖 8916 点 ⇒ **盒把判定区
+虚增 1.43 倍**，这正是「点旁边空地也触发」的直接来源。
+- 索引是 moc3 静态数据 ⇒ 可永久缓存（`_triCache`）；顶点每帧变 ⇒ **每次都要重新拷贝**成
+  `Float32Array`（core 返回的是会被下一帧覆盖的视图）。
+- 接缝容差取 `e = -0.004`：相邻三角共边，浮点误差会让边界点**全落空**（症状是所有热区都点不到）。
+
+**② 重叠裁决按渲染序，不按面积。**
+`getDrawableRenderOrders(i)` 返回**整张表**（`ougen_8` 长度 842），`ro[i]` 才是第 i 个的渲染序，
+序号大 = 后画 = 在上。裁决优先级：`渲染序大` → `不透明度高` → `面积小` → `id 字典序`。
+- ⚠️ **已否决**：「面积最小者胜」——NeckMoney 可达率只有 59.4%。
+- ⚠️ **已否决**：「按绘制序 z 裁决部分重叠」的第一版——NeckMoney 到 100% 但 Cloth1
+  100%→41.2%、Cloth3 100%→50%，净效果只是**把不公平转移给别的热区**。
+
+**③ 隐藏部件要单独跑第二遍（幽灵区），兜底只能收窄到「全体无三角形」。**
+很多热区的驱动部件在静止态**全部 `opacity=0`**（`partOpacity` 由动作曲线控制，静止时不显示）。
+只判可见件 = 这些热区彻底点不到。做法：
+- 第一遍只补可见件；第二遍只补**隐藏件**，且**仅在没有任何可见件被点到的位置**获胜
+  （没有隐藏件的热区直接跳过第二遍）。
+- 兜底（盒内但多边形没覆盖）**不能**用「盒覆盖」当条件：ShoseOff 盒 2.5×2.7 但鞋形斜置 ⇒
+  兜底把 287 个边角点判给它，`own=287 / win=390 = 135.9%`（超过 100% 就是口径错的信号）。
+  收窄为「该热区**所有**部件都没有可用三角形」后才降到 100%。
+
+### 可达率基线（`scripts/diag/l2d_hotzone_reachability.py`）
+
+口径：屏幕网格与模型坐标网格各扫一遍，`own` = **多边形**覆盖到自己的采样点数（可见 + 幽灵），
+`win` = 最终判给自己的点数，**可达率 = win / (own + 幽灵)**；同时输出「谁抢走了谁的多少点」。
+三道仪器闸：**守恒**（Σwin == 有赢家的点数）、**阴性对照**、**几何稳定**。退出码 0=基线可信 /
+2=环境故障 / 3=仪器红。单次 6–8 分钟。
+
+### ⚠️ 做逐档参数测量之前必须先冻结姿态（这是最容易踩的一条）
+
+不冻结时「参数 A 影响哪些 drawable」这个测量**完全不可用**：idle 每帧把参数写回曲线值，
+呼吸/物理让全身顶点逐帧漂 ⇒ 实测 `ougen_8/ShoseOff` 逐档差值**非单调**
+（`#697` 在 want=-0.5 变 32.14、want=+0.25 只变 4.25），全是漂移噪声；
+会被误读成「47 个 drawable 随参数变化」，冻结后真相是 **5 个**，本底漂移 **0/842**。
+
+**冻结三件套，缺一不可**：
+1. `mm.groups.idle = '__hz_frozen__'` —— **最关键**。`stopAllMotions()` 挡不住：
+   `MotionManager.update` 里 `if(isFinished()) … startRandomMotion(groups.idle)` 会让 idle 立刻重启。
+2. `im.updateNaturalMovements = function(){}` —— 关掉呼吸 + 自然摆头。
+3. `im.physics.reset()` —— 清掉上一姿态残留速度。
+
+判据必须**每次之间真的 `sleep(0.5)` 连采 4 次**，并报「冻结后本底漂移 N/842」；
+不报这个数就没法区分「参数没效果」和「冻结没生效」。
+
+⚠️ **冻结的时机只能在需要它的判据之前**：漂移对照判据**需要** idle 在跑，
+提前冻结会让那个对照恒为 0、失去区分力。
+
+### 判定入口的两个真实缺陷（都曾让点击落空却让探针「参数没变」）
+
+1. **读缓存的几何**：注释写「点击那一刻再算一次」，实现却是 ticker 每 4 帧（≈66–110 ms）重建快照。
+   小部件实测面积仅 6.47（V 空间），80 ms 内就漂出点位。
+   修法：`pickGeo()` 分道——探针要求冻结时返回快照，产品走 `freshGeo()` **每次现建**。
+2. **命中判在 `onUp`**：`pointerdown`→`pointerup` 实测隔 80–160 ms，期间几何已漂走。
+   修法：**按下定命中、抬起执行**（`onDown` 里存 `cosDown`，`onUp` 优先用它，空了才补算）。
+
+**这两条的仪器侧症状**：`__costumeScreenOf` 报 n=104 命中，**紧接着**一次 `__costumeHit`
+返回 None；事件探针显示 `pointerdown` 时 hit=null、`pointerup`（80 ms 后）时 hit=ShoseOff。
+
+### 踩坑记录
+
+- **探针口径要跟着判定形状一起改**：`VS_SWEEP` 的 `own` 从「盒覆盖」改「多边形覆盖」后，
+  才能看出 ShoseOff 的 135.9% 异常。口径不跟着改 = 新判定形状的缺陷被旧口径掩盖。
+- **`__costumeScreenOf` 的反解循环里几何必须提到循环外取一次**：否则上千点 × 1.5 ms = 秒级，
+  且同一轮内各点用的是不同时刻的几何，口径不一致。
+- **`gallery_ui_shots.Page` 的 port 是 CDP 调试端口**，不能用画廊服务的 8778（会 `no CDP tab`）。
+  验收探针用 9405、逐档 pin 诊断用 9411。
+- **`SNAP` 遍历 842 个 drawable 耗时数百 ms** ⇒ 取点与派发之间不能插昂贵操作（否则判据自己制造漂移）。
+- **`JSON.stringify` 丢 `undefined` 键** ⇒ 页内先归一成 `null`，Python 侧再 `.get()` 兜底。
+
+**涉及文件**：`gallery_src/index.html`（`buildCosGeo`/`_triCache`/`inTriV`/`pickGeo`/`freshGeo`/
+`costumeHitV`/`__costumeHitAllV`/`__costumeScreenOf`/`onDown`/`onUp`）、
+`scripts/diag/l2d_hotzone_reachability.py`、`scripts/diag/l2d_costume_hotzone_verify.py`、
+`scripts/diag/healthcheck_costume.py`。
+
+## WF-53 「部件是不是丢了」的定性流程：不透明度绑定反查 + 几何镜像配对 + 真实播放态审计（2026-10-28 收敛）
+
+**适用**：用户报「某个 Live2D 模型少了某个部位」（少一只鞋 / 少半条腿 / 少一块衣角），
+需要回答「是渲染/管线丢件，还是素材侧本来就没打开」。**这类问题不许只看差分截图定论**——
+`参数 X −1→+1` 时右半 0 变化，既可能是「右侧无件」，也可能是「右侧有件但被另一个参数关着」。
+本流程用四道互相独立的判据把它定死。
+
+### 第 0 步：先分类，别急着测像素
+
+| 观感 | 第一假设 | 第一条要跑的判据 |
+|---|---|---|
+| 「少一半」、「边缘被硬切掉一块」 | 素材侧某总开关参数缺省关闭 | ① 不透明度绑定反查 |
+| 「整件不显示但点得到」 | `partOpacity` 为 0 | `getPartOpacityByIndex` 全扫 |
+| 「只有播某些动作时才有」 | 某参数只在少数动作里被推高 | ② motion3 曲线全扫 |
+| 「位置错/比例怪」 | 不是缺件，是坐标/画框问题 | 走 `unity-assetbundle-painting-restore` |
+
+### ① 不透明度绑定反查：**必须有阳性对照组，否则 0 命中不可信**
+
+问题定义：「drawable `#411/#413` 恒不可见，是哪个参数在控制它？」逐参数 pin=1 后读它的 `opacity/visible`。
+
+三条必须遵守的实现约束（都踩过）：
+
+1. **必须页内单次 JS 同步扫描**。串行 CDP 往返（每参数 1~2 次 evaluate）实测 582×2 = 1164 次 ≈ **50 s**；
+   按 0.3 s/次估 350 s 会超宿主超时被强杀，`atexit` 不执行 ⇒ **Chrome 整棵树泄漏**。
+   放页面里一次跑完，JS 单线程顺带挡住 rAF 插进来（否则 `loadParameters()` 会把值拉回曲线）。
+2. **只调 `coreModel.update()`，不调 `internalModel.update()`**（后者会重跑动作/物理）。
+3. **参数名只能从 `c._parameterIds` 取**（`csmVector`，`.at(i)` / `.getSize()`）。
+   `CubismModel` **不存在** `getParameterId(i)`（第一版按它写 ⇒ 实测 0 次、静默给出「无参数控制它」的假结论）。
+   读写用 `getParameterValueByIndex` / `setParameterValueByIndex`。
+   ⚠️ `getParameterIndex(name)` 对**不存在的名字返回 `count`（582）**，不是 −1 ⇒ 必须判 `>= count`。
+
+**阳性对照组是承重的**：同一轮扫描里带一对已知被某参数控制的件（实测用 `#184/#461 ↔ ShoseOff`）。
+若阳性对照零命中 ⇒ 直接 `exit 3` 红闸，**不许**把主目标的零命中也报成「无参数控制」。
+本工程第一版仪器就是零命中报「数据缺件」，差点把「素材设计」误判成「管线 bug」。
+
+实跑参数（`scripts/diag/l2d_opacity_binding_hunt.py`，`ougen_8` 582 参数 / 1164 次 / 50.21 s）：
+- 基线：目标件 `#411/#413` = `[[0,0],[0,0]]`，阳性对照 `#184/#461` = `[[1,1],[1,1]]`；
+- 目标件命中 **`Param233 = 1 → [[1,1],[1,1]]`**（唯一命中）；阳性命中 `Stock2`、`Param326`。
+
+### ② motion3 曲线全扫：某参数在多少动作里、被推到多少
+
+`Param233` 的交叉校验：`physics3.json` 无引用；**46 个 `motion3.json` 都含它，只有 4 个推到 1**。
+
+⚠️ **`Segments` 格式必须先 dump 原始数组再写解析器**：`Segments[0..1]` 是 `(time, value)` 起点，
+之后每段以 type 开头（`0`线性 / `1`贝塞尔 / `2`stepped / `3`inverse-stepped）。
+线性段的浮点对**交错排**，把 `(t,v)` 顺序搞反就会把时间戳当值（本项目已两次踩同一个坑）。
+
+### ③ 几何镜像配对：区分「有件但关着」与「真的缺件」
+
+模型左右两侧的部件名不同、索引不同，唯一可靠的配对方法是**包围盒镜像**：
+
+```
+镜像盒 = [-bx1, bx0, by0, by1]   （即 x 取反、左右边换位、y 不变）
+在其余全部 drawable 里找 d ≤ 0.8 的候选，逐个报它的 op/vis 与「是否跟随本参数」
+```
+
+`ougen_8` 实测（离线，读 `.diag/all_draw.json` 的 842 件）：
+`#411↔#461 d=0.50`、`#413↔#462 d=0.34`、`#408↔#183 d=0.94`、`#406↔#468 d=1.13`、
+`#407↔#460 d=1.01`、`#665↔#463 d=1.11`、`#416/#447↔#484 d=1.17`；`#405/#414/#417/#448` 无候选。
+合并 16 件 bbox `V x[6.08,10.84] y[-2.16,2.45] w=4.76 h=4.61` 的镜像 `x[-10.84,-6.08]`
+对上左鞋 5 件合并 `V x[-10.84,-5.94] y[-1.51,3.78] w=4.90 h=5.29` ⇒ **四边差 d4=1.33，镜像成立**。
+
+**这条判据的意义**：配对了镜像件、且这些镜像件 `vis=0` ⇒ 结论是「有件但关着」；
+配对不上 ⇒ 才可能是「真的缺件」。单看「该侧 0 变化」**永远得不出这个结论**。
+
+### ④ 真实播放态审计（不冻结）：回答观感问题
+
+冻结态只能回答「底座是什么样」，用户问的是「播 idle 时是不是少了一只鞋」。所以必须另跑一遍
+**不冻结**的审计：采样器挂在 `requestAnimationFrame` 里**只读不写**，逐帧记录参数取值与目标件的
+`opacity/visible`。
+
+`ougen_8` 实测（`scripts/diag/l2d_param233_live_audit.py`）：
+- Q1 `{"idx":189,"cur":0,"def":0,"min":0,"max":1}` ⇒ **默认值就是 0，隐藏是模型数据设计**；
+- Q2 `idle`：220 帧，`Param233 min/max = 0.0000`，16 件里「曾可见或曾有不透明度」= **0**；
+- Q3 `idle9`：220 帧，同样全 0。
+
+**三条判据合起来的定论**：`Param233` 是那 16 件的唯一总开关、默认 0、`idle`/`idle9` 全程不推高
+⇒ 「`ougen_8` 静态看着少一只红底高跟鞋」**是素材侧缺省关闭**，不是渲染丢件；
+它在 `touch_idle2/4/10/18` 里 1.08s→3.95s 之间 `0→1→0`，即「某些动作才补上第二套件」。
+
+### 像素差分只能当「变化范围」的度量，不能当「有没有件」的证据
+
+`ShoseOff −1→+1` 差分 changed 3146 px（0.353%）、**left 3146 / right 0**，
+曾被读成「该模型本来只有一条腿配鞋件」。实际上右侧 `V x[6,11] y[-2.3,2.6]` 区内有
+**88 件 / 可见 44 件**（腿、身体都在），只是那些镜像件的 `vis=0`。
+⇒ **「差分右半 0 变化」≠「右半无件」**，这条必须写进任何一次缺件判定的否定证据栏。
+
+### 坐标：区域框绝不许手写换算
+
+- `document.querySelector('canvas')` 抓到的是 `#bgfx` **背景画布**（页面上第一个 canvas）⇒ 必须 `#l2wrap canvas`。
+- canvas rect 必须**问页面**（`getBoundingClientRect` + `width/height`），不许按「视口 1370×871、dpr=1」硬编码。
+- 手写逆映射（V←canvas）是地雷：本项目一版把 `LEFT_OFF`/`TOP_OFF` **重复扣了两次**，
+  给出 `canvas box=(-146,282,-42,383)` 这种负坐标。
+  **正解**：用 canvas 相对坐标直接量，再**由实测变化簇反推 V 区间**（反推得 `x∈[6.08,10.84]`
+  正好落在 `#405` 的包围盒上 —— 这才叫校验）。
+
+### 踩坑记录
+
+- **仪器给出 0 命中时，第一件事是确认它真的测了**（本工程第一次是 `getParameterId` 不存在 ⇒
+  实测 0 次、脚本照常打印「无参数控制」）。没有阳性对照的「全库扫描」结论一律不可用。
+- **探针被强杀时输出常是 0 字节**（Python 重定向缓冲）⇒ 长任务必须 `py -3 -u`。
+- **`param_drawables.json` 是手写映射，会漏项**：本轮实测 `Param233` 控制的 16 件**完全不在表里**，
+  `ShoseOff` 表里声明 `[460,461]` 而实测驱动 `#183/184/460/461/615` ⇒ **漏 `[183,184,615]`**。
+  所以「映射表说没有」不能当「真的没有」的证据。
+- 旧记录「`getParameterId(i)` 返回空串」应更正为**函数不存在**。
+
+**涉及文件**：`scripts/diag/l2d_opacity_binding_hunt.py`（反查，带阳性对照红闸）、
+`scripts/diag/l2d_param_effect_scan.py`（正查 + vis 列 + 映射表缺口/漏项 + 镜像配对段）、
+`scripts/diag/l2d_param233_visual.py`（冻结态两帧差分）、
+`scripts/diag/l2d_param233_live_audit.py`（真实播放态审计）、
+`scripts/diag/shot_regions.py`（像素模块：`diff_stats` / `RED_TIERS` / `region_stats` / 自写 BFS 连通域）、
+`.diag/all_draw.json`（842 件离线快照，可免开浏览器做全部几何分析）、
+`Output/Live2D/<模型>/motion/*.motion3.json`、`Output/gallery_v2/param_drawables.json`。
+
+---
+
+## WF-54 「点击类探针」的派发与取点两条硬规矩（2026-10-29 收敛）
+
+**适用**：任何要验证「用户点这里会发生什么」的探针（热区验收、状态开关回归、互动区可达率复验）。
+违反任一规矩，得到的是**探针自己的假红**，不是产品缺陷。本轮为此在同一个脚本上连翻两次。
+
+### 规矩一：down/up 必须在**页内同一个 JS 任务**里同步派发
+
+`onDown`（`gallery_src/index.html:2937`）用**按下那一刻**的新鲜几何定 `cosDown`，
+`onUp`（`:2942`）再补算一次 —— 这是两个时刻、两套几何。用 CDP 拆成两条
+`Input.dispatchMouseEvent` 时，实测间隔 **4.6–29.9 秒**（`scripts/diag/cdp_cmd_latency.py` 六阶段），
+后果是：
+
+- up 那一刻 `costumeHitAt` 可能已经不认这个点 ⇒ `pin` 恒 `null`、参数 `0→0` ⇒ 被读成「点了没效果」；
+- 「等 tween 走完」的 `sleep` 全落在这段延迟里，读到的 `after` 是**还没执行**的状态。
+
+正解（`l2d_costume_hotzone_verify.py` 的 `SYNC_CLICK`）：
+
+```js
+var base={bubbles:false,cancelable:true,composed:true,clientX:cx,clientY:cy,
+          button:0,buttons:1,pointerId:77,pointerType:'mouse',isPrimary:true,view:window};
+var up={}; for(var a in base) up[a]=base[a]; up.buttons=0;
+wrap.dispatchEvent(new PointerEvent('pointerdown', dn));   // wrap = #l2wrap（产品自己绑的节点）
+window.dispatchEvent(new PointerEvent('pointerup', up));   // window（产品自己绑的节点）
+```
+
+- 节点必须是产品**自己监听**的那两个（`#l2wrap` 的 `pointerdown` / `window` 的 `pointerup`，见 `:2997-3006`），
+  不许自己造一个中间层，否则绕过了产品入口，验的是探针。
+- 间隔 0 ms ⇒ `moved=0 < 6` ⇒ 必进点击分支（`onUp` 里 `moved>=6` 会当拖拽）。
+- 一次调用就能拿到**同一时刻**的副作用读数（`dlog`、pill 文本），这是 CDP 两段式永远做不到的。
+
+### 规矩二：`__costumeScreenOf` 反解出的点**不保证避开 trigger 判定区**
+
+`onUp` 三支顺序是固定的：
+
+```js
+const name=localHit(e.clientX,e.clientY);
+{ const st=stateFind(name); if(st){ toggleState(st,false); return; } }     // ① 优先
+{ const cb=cd || costumeHitAt(e.clientX,e.clientY,freshGeo());
+  if(cb){ costumeToggle(cb); return; } }                                   // ② 只有 ① 没命中才走
+const g=...; if(!g) return; if(play(g)){...}                               // ③
+```
+
+`__costumeScreenOf`（`:2428`）的语义只是「该参数**自己的地盘内、离边缘最远**的点」——
+它优化的是**几何抖动鲁棒性**，与「会不会被 trigger 抢走」正交。
+实测 `ougen_8`：判定区 `touchdrag17` 屏幕盒 `[542,342,620,420]`、鞋参数热区盒 `[482,287,608,449]`
+两个盒**相交**，`__costumeScreenOf('ShoseOff')` 返回 `(566,359)` 正好落在判定区内
+⇒ `onUp` 走 ①、`__costumeLog` 不新增 ⇒ 被误判成「② 分支没进」。
+
+**正解 = `find2`**：在参数热区自己的包围盒内按 5×5 网格（0.12/0.31/0.50/0.69/0.88）筛点，
+要求 ① `__costumeHit(x,y).id === 目标参数`；② 不在已知 trigger 盒 **±2 px** 内。
+筛不到就**报 INVALID**（「本几何下 ② 不可达」），不许硬用落区的点。
+
+```js
+for(var fy=0.12;fy<=0.881;fy+=0.19) for(var fx=0.12;fx<=0.881;fx+=0.19){
+  var x=Math.round(b[0]+(b[2]-b[0])*fx), y=Math.round(b[1]+(b[3]-b[1])*fy);
+  if(ok(x,y)) return JSON.stringify({cx:x,cy:y}); }
+return JSON.stringify({err:'ALL_IN_TRIGGER'});
+```
+
+trigger 盒用产品自己的出口取：`__stateTogglesInfo()` 里该 `id` 的 `trigger`，
+再喂给 `__L2_SCREENOF(trigger)` 拿 `box`（**两者都是屏幕坐标，口径一致**）。
+参数不在 `STATE_TOGGLES` 里 ⇒ 无 trigger ⇒ `find2` 退化为普通取点。
+
+### 判据（改完必须重跑这两条）
+
+- `l2d_costume_hotzone_verify.py ougen_8 ShoseOff` ⇒ **7 PASS / 0 FAIL / exit 0**，
+  且日志里必须有 `派发即读数: dlog=1  pill='鞋 · ShoseOff → 1'`。
+- `l2d_click_insync_diag.py ougen_8 ShoseOff 5` ⇒ 六阶段全绿。
+
+### 踩坑记录
+
+| 坑 | 症状 | 修法 |
+|---|---|---|
+| CDP 两段式派发 | `pin` 恒 `null`、参数 `0→0`、画面却有几十个 drawable 变化（那是 idle 本底） | 页内同步派发，间隔 0 ms |
+| `__costumeScreenOf` 当代表点验 ② | `__costumeLog` 不新增，被读成「`costumeToggle` 没被调用」 | 先用 `find2` 错开 trigger 盒 |
+| 用 `dpin` 判分支 | ① 也会 `delete pins[id]`（收回让渡）⇒ `dpin=true` ⇒ 把 ① 误判成 ② | **只读产品 pill 文本**：`▸`⇒①、`→`/`·`⇒② |
+| 「参数值没变」一刀切红 | 值域退化（`from==to`）被当缺陷，同一功能时红时绿 | 读产品自己的 `__costumeLog` 分三类（见 WF-55） |
+| 换点后不当场复核命中 | 循环耗尽退出时 `hn2` 是**旧点**读数 ⇒ 带旧证据点新点 ⇒ 假红 | 换点后**立刻**再 `__costumeHit` 一次 |
+
+**涉及文件**：`scripts/diag/l2d_costume_hotzone_verify.py`（`SYNC_CLICK` / `FIND2` / `pick_safe_point`）、
+`scripts/diag/l2d_click_insync_diag.py`（`find2` 出处，六阶段对照）、
+`scripts/diag/cdp_cmd_latency.py`（延迟体检，先跑它再怀疑产品）、
+`gallery_src/index.html`（`:2937` onDown / `:2942-2953` onUp / `:2428` `__costumeScreenOf` / `:2997-3006` 绑定）。
+## WF-55 批量「调用点迁移」必须配一条导入顺序审计（2026-10-29 收敛）
+
+**什么时候用**：任何用脚本批量替换调用点的工作（`Popen`→`launch`、`os.path.join`→`Path`、
+旧 API→新 API…）。批量替换只动「用法」，不动「声明」，而声明的位置恰恰决定它能不能跑。
+
+**判据（三步，缺一步都不算迁完）**
+
+1. **调用点数守恒**：迁移前后的调用点数逐个对账，残留必须为 0。
+   `py -3 scripts/diag/migrate_chrome_launch.py --audit` ⇒ `headless Popen 调用点 0 个`。
+2. **导入位置审计（本条是新增的那一步）**：被迁到前移到更早行的模块名，其 `import`
+   **行号必须 ≤ 首次使用行号**。判据必须走 **AST**：
+   ```python
+   imp = min(n.lineno for n in ast.walk(tree)
+             if isinstance(n,(ast.Import,ast.ImportFrom))
+             and any(a.name=='chrome_tree' for a in n.names))
+   first = min(n.lineno for n in ast.walk(tree)
+               if isinstance(n,ast.Name) and n.id=='chrome_tree')
+   assert imp <= first
+   ```
+3. **阴性对照**：手工造一个「使用在导入之前」的文件，检查必须报红。没有这条，
+   全库 373 个文件的绿没有区分力。实测两侧都对：坏样本吐
+   `bad.py:3 用了 chrome_tree 但导入在它之后`，正常样本吐 `None`。
+
+**为什么不能用正则**：第一版这条检查是正则扫源码，出现两类假红 ——
+① 注释 / docstring 里提到 `chrome_tree.launch()` 的文件被误判（实测 3 个）；
+② 认不出逗号式导入 `import websocket, chrome_tree, cdp_wait`（`gallery_ui_shots.py` 就是这种）。
+正则匹配「源码文本」，判据需要的是「名字绑定在哪个语句里」，两者不是一回事。
+
+**为什么 `py_compile` 顶不住**：`import` 缺失只会在**执行到那一行**时炸 `NameError`，
+语法层面完全合法。上一轮的迁移提交 `f2811cb` 全库 `py_compile` 通过、却被 6 个脚本
+在运行时炸掉，其中 5 个是 WF-16 回归六件套的成员 ⇒ 整条验证链在第 3、4 件断掉，
+而报出来的样子很像"环境故障"。**任何"批量替换后跑一遍 py_compile 就算验完"的流程都要补这一步。**
+
+**踩坑记录**
+
+| 坑 | 表现 | 处置 |
+|---|---|---|
+| 迁移后 import 在更晚的行 | `NameError: name 'chrome_tree' is not defined`，py_compile 绿 | 挪 import 到使用之前；`--audit` 常态化 |
+| 用正则做导入顺序判据 | 3 个假红（注释/文档字符串命中） | 改 AST |
+| 只看 `--audit` 退出码不看输出 | 无法区分「0 调用点残留」与「导入顺序错」两类红 | 输出两段分开打印 |
+| 只在「有人跑到」的脚本上修 | 3 个漏网脚本（`l2d_const_pose_verify`/`l2d_motion_state_trace`/`spine_parts_wiring`） | 按全库审计结果一次修完 |
+
+**涉及文件**：`scripts/diag/migrate_chrome_launch.py`（`--audit` + `import_order_problem()`）、
+`docs/TROUBLESHOOTING.md` §165、`scripts/diag/chrome_lifecycle_selftest.py`（同批事故的生命周期判据）。
+
+## WF-56 参数效果的双判据裁定流程（API 全通道 + 像素阳性对照，2026-10-29 收敛）
+
+**用途**：判定"某个 Live2D 参数到底驱动哪几个 drawable"。这是参数型互动区（热区）的
+地基——映射错了，热区就点不中、点了没效果、或者把整模重建当成形变。
+
+**两条判据必须同时跑，缺一条都不能出结论**：
+
+| 判据 | 工具 | 它能看见什么 | 它的盲区 |
+|---|---|---|---|
+| API 全通道 | `l2d_param_map_batch.py` | 逐 drawable 的 op/box/cen/cnt/disp/uv/vis/mc/sc/mask/inv/cull/tex/ro/blend | 小于自身尺寸 0.5% 的位移 |
+| 像素 | `l2d_param_effect_pixel.py` | 屏幕上有多少像素真的变了 | 不告诉你驱动了哪几件 |
+
+单跑 API 会把 `ParamEyeSmile` 读成 0 件（阈值口径）；单跑像素会把
+"整模重建"读成"驱动了全部 842 件"（没有归属）。**两者交叉才定得住。**
+
+### 步骤
+
+1. **环境闸**：`py -3 scripts/diag/check_env.py`；确认 gallery 服务器在 8778 上活着。
+2. **冻结姿态**（七件套，缺一件读数就作废）：
+   `idle` 换成不存在的组 / `stopAllMotions` / `updateNaturalMovements` 置空 /
+   **`eyeBlink.updateParameters` 改写为"把 ParamEye[LR]Open 写回 1"** /
+   `physics.reset`。眨眼这一条是 2026-10-29 才补上的，漏掉它整条读数全废（见 §166 缺陷一）。
+3. **漂移闸**：同一份快照连采 4 次，逐 drawable 比，**必须为 0**。非 0 直接退出码 2，
+   不出任何结论。
+4. **逐参数（每条都要重取基线）**：参数钉 lo → 重取基线 → 参数钉 hi → `settle()` 确认读回 =
+   hi → **等一帧** → 取 hi 态快照 → 逐 drawable 相减。
+5. **三条读法纪律**：
+   - 阈值按 drawable 自身尺寸归一化（`ext × 0.005`），不用绝对 0.5；
+   - `why == ['ro']` 的行剔掉（绘序号是可见性重排的连带结果）；
+   - drawable 集合指纹（数量 + 前 16 件的 vis/tex/ro/首件包围盒）变了 ⇒ 整模重建，
+     API 读数判废，交给像素侧。
+6. **阳性对照自检**：跑至少两条已知有效的参数（本项目用 `Cloth3`/`ShoseOff`/`Param233`）。
+   阳性最大变化为 0 ⇒ 判红，全表 0 值不许当结论。
+
+### 判据
+
+- API 侧"驱动 N 件"要能点名（`#idx IdName`），且 N 与像素侧的变化区域**空间吻合**。
+- 报 0 件的参数必须同时满足：漂移闸 0、参数读回 = hi、阳性对照有区分力、像素侧 0 px。
+  四条齐了才能判"本模型不可见 ⇒ 降级面板控件"。
+
+### 踩坑
+
+- **眨眼污染**：冻结 idle/motion 恰恰让 `motionUpdated=false`，眨眼每帧都跑（§166 缺陷一）。
+- **绝对阈值**：`ParamEyeSmile` 真位移 0.0153 V（占自身 10.62%、屏幕 89 px），
+  在 0.5 的绝对阈值下是 0 件（缺陷二）。
+- **仅 ro 变化**：`ShoseOff` 842 件里 822 件只有绘序号变（缺陷三）。
+- **基线只取一次**：`NeckMoney` 单独 1 件 / 全量 14 件（缺陷四）。
+- **值写进 ≠ 几何重算**：`settle()` 读回是参数值，几何要等 `core.update()`（缺陷五）。
+- **静默空转**：两次在"基线已取"后单核空转 4 分钟以上，必须挂 `faulthandler`。
+
+### 涉及文件
+
+- `scripts/diag/l2d_param_map_batch.py`（API 全通道，端口 9412）
+- `scripts/diag/l2d_param_effect_pixel.py`（像素判据 + 模型身份闸，端口 9420）
+- `.diag/param_drawables/ougen_8.batch.json`（产物，不入库）
+- `Output/gallery_v2/param_drawables.json`（消费方映射，产品侧）
+- `docs/TROUBLESHOOTING.md` §166
+
+## WF-57 「互动区互相覆盖」的排查与改造流程（2026-10-29 收敛）
+
+**适用**：用户报「互动区点不到 / 效果被别的互动区覆盖 / 点了没反应 / 互动区错位」，
+而单点验收（`__costumeToggle` 直调）又都正常。这类问题的共同点是**几何重叠**，
+不是接线缺失——所以必须先量重叠，再改优先级。
+
+### 判据（缺一不可）
+
+1. **重叠必须两边同时问**：同一 V 坐标分别调 `__costumeHitV`（参数热区）与
+   `__L2_HIT`/`__L2_HITALL`（动作判定区）。只问一边永远看不到"被抢"。
+2. **面积口径必须是可见多边形**，不是包围盒。斜置件盒面积可虚高 3–15 倍
+   （实测 `ShoseOff` 盒 82.4 / 真实 5.4），用盒面积做优先级裁决必然错。
+3. **A/B 对照必须用改前的正本页**：`git show HEAD:gallery_src/index.html > Output/gallery_v2/_ab_pre.html`，
+   然后 `hit_verify --page _ab_pre.html`。同一份数据、同一台服务器、同一天跑两遍才有可比性。
+   跑完删掉该文件（它会被 `deploy_gallery.py --check` 之外的东西忽略，但不要留在运行目录）。
+4. **验收要落在「部位自己的中心点能不能命中自己」**，不是"整体 HIT 数"。
+   优先级规则最容易的翻车方式就是"把判定区让掉了"，而 HIT 总数看不出来。
+
+### 步骤
+
+1. **先剔标记件**。`Touch*` 是点击标记不是可见件；它的顶点常是未初始化残值
+   （实测 `Stock1` 里 `TouchDrag16` 读到 (−293, 288)，整模范围只有 −448..154）。
+   在 `buildCosGeo()` 里按 `/^touch/i` 剔除，并保留 `nMark` 计数供追溯。
+   ⇒ 这一步通常就能把"整块画布都是某个开关"治掉。
+2. **再量重叠**。逐参数在自身盒内打 24×24 网格，统计
+   「`own`（落在自己多边形内）」与「其中有多少同时落在某个判定区内」。产出：
+   `probe_overlap_area.py` 的 `res[].lostPct`。`lostPct` 接近 100% 的参数就是抢占者。
+3. **定优先级规则**：更具体者胜（可见多边形面积小者优先）；幽灵区（`nVis=0`）让位。
+4. **跑 A/B**（判据 3），确认「判定区中心可达数不变、WIRING 下降」。
+5. **跑全量 `hit_verify`**，把剩下的 WIRING 逐条与 A/B 的改前结果对照 ——
+   **改前也红的必须单独说明，不能算作本轮回归**。
+
+### 踩坑记录
+
+- **`WIRING` 会把产品的拖拽编号轮转判成失败**：`TouchDragN` 不一定是同名动作组，产品按
+  `dragGroupOf` 轮转到现有 `touch_dragN`（实测 `touchdrag6/7 → touch_drag1`）。
+  期望集合必须加上产品同一条映射规则的结果，否则真接线正确的地方也会红。
+- **「点击之后再采一次候选集」是错的**（做过、已回退）：点击后的几何漂移会让**更多**
+  部位进入候选集，`benningdun_2` 从 2 条红变 3 条 —— 断言变松等于把判据废掉。
+- **`plainWheelNoop` 的偶发红来自产品的 `ResizeObserver → refit(true)`**，不是滚轮在缩放。
+  判别法：`wrap.clientWidth×clientHeight` 在滚轮前后是否变了；变了就是 refit。
+  修法是在取基线前等尺寸稳定、判定时要求 refit 未发生（而不是把阈值放宽）。
+- **重试循环只捕 `RuntimeError` 会漏掉 WebSocket 超时**：`WebSocketTimeoutException`
+  不是它的子类，会直接冒泡成 traceback 并 `exit 1`，让"全部通过"的一步被记成失败。
+  超时后必须**重连同一张 tab**（只 sleep 不会自愈）。
+- **工具差异**：可达率工具（`l2d_hotzone_reachability.py`）的网格步长是
+  `span/target`（`span` = 全部热区盒并集最长边）⇒ **盒一变，采样口径就变**，
+  `own` 的绝对值不可跨轮比较；跨轮只能比 `rate_v` 与 `win_screen`，
+  `box_hash` 变化本身不是回归判据。
+
+### 涉及文件
+
+- `gallery_src/index.html`：`buildCosGeo`（标记剔除）、`costumeAreaOf`（可见多边形面积）、
+  `localHitAll`（判定区候选）、`onUp`（更具体者胜裁决）
+- `scripts/diag/hit_verify.py`、`scripts/diag/interact_verify.py`
+- `scripts/diag/l2d_hotzone_reachability.py`（跨轮对照口径）
+- `.diag/probe_overlap_area.py`-类一次性探针（量化重叠；用完即走，
+  常驻版本见 `scripts/diag/l2d_param_retain_verify.py` 的同类写法）
+
+### 追补（2026-10-29）：可点击性判据的四条换算纪律
+
+本条上面记的是「重叠抢占地盘」。追补的是**另一个问题：尺寸口径**。
+一个热区可以完全不重叠、逻辑全对，但换算错了就会被判成"点不到"。
+写 `l2d_hotzone_clickable.py` 时连撞四次，每次都"跑通但结论错"：
+
+1. **判据落在屏幕像素，不是 V 空间面积**。`Paramring` 的 V 盒 0.50×0.50 看着不可点，
+   换算后是 15.4×15.4 px，实际能点。
+2. **V→屏幕必须乘 `pixelsPerUnit`**。只乘 stage scale 得到 1e-4 量级 ⇒ 每条参数都变
+   `0.0×0.0 px` ⇒ 整张表 12/12 全红，看起来像"所有互动区都废了"。
+   产品侧 `__costumeScreenOf` 用的就是 `(vx+cux/2)*ppu*s`，探针必须对齐它。
+3. **必须走页面自己的打开流程**：`openShip → setSkin → buildSkinList → 点 live2d 页`。
+   只调 `stopLive2D()+renderLive2D()` 时 `#l2wrap` 未布局，`refit()` 拿到退化视口，
+   模型 `scale` 停在 1e-4、位置 -0.47，同样让全表变 0 px。
+4. **数据到达要轮询，别用固定 sleep**。实测模型 0.4 s 就在 stage 上，但
+   `COSTUME`/`PARAM_DRAWABLES` 到 3.2 s、几何到 4.0 s。7 s 预算会在慢的那轮空手，
+   然后报"几何没建出来"。
+
+**覆盖率不能当硬判据**：大热区（`ShoseOff` 243×321 px）天然含大片多边形没有的边角，
+`own` 低是形状所致；硬卡 30% 会把 `Cloth2`/`ShoseOff` 误判成不可点，而它们在
+`hit_verify` 里能点中。硬判据只留「屏幕像素 ≥ 8px」，`own` 低单独标注。
+
+**工具**：`scripts/diag/l2d_hotzone_clickable.py`（`--json` 可导出）。
+
+### 追补二（2026-10-29）：三态参数（min < def < max）必须让「默认档」参与两端定义
+
+需求①最终定位到的真根因，同时也是本条通用教训的第 5 条纪律：
+
+- **判据**：参数值域若满足 `min < def < max`，它就是三态，`def` 是有独立语义的一档
+  （实测 `ougen_8/ShoseOff`：`0`=穿鞋 7/15 件、`1`=脱鞋 5/15 件、`-1`=残缺 3/15 件）。
+- **错误做法**：用 `min`/`max` 当两端。`cur=def` 到两端**等距**时会被判成 `min`，
+  于是启动态被改写、点击循环也永远回不到 `def`（`0→1→-1→1→-1…`）。
+  用户表现就是"点第二次穿鞋，左脚鞋不见了"。
+- **正确做法**：`off = def`（当 `min < def < max`），`on = max`。两处都要改：
+  启动归属判定（`stateCurOn`）与切换目标（`costumeTarget`）。
+- **验证方式**：不能只看启动值，必须走产品入口**连点 4 次**看往返
+  （序列必须是 `def, max, def, max`）。只看第一次点击会漏掉这个 bug。
+
+**反面教训（都想当然过，已全部证伪）**：左右脚不是"两个参数各管一只"——
+逐件镜像配对 0 命中，尺寸差 4–10 倍；`param_drawables` 的 X 范围只是间接推断。
+用 motion 曲线推联动同样不行（全模型装扮参数在动作里都是常值 0，
+"取值相等"对任意两条都成立）。**没有第一性证据就不许写联动。**
+
+### 追补三（2026-10-29）：「哪些参数该做成互动区」的判据方向
+
+需求②要覆盖全部换装/可调参数。踩到的坑是**判据方向反了**，值得单独记：
+
+- **错误判据**：「参数在不同动作间被锁成不同档位 ⇒ 玩家可调」。
+  装扮参数的实际特征是**在几乎所有动作里都恒定**（玩家控制它，动作不碰它），
+  于是这条判据把它们全判成"无可调空间"剔掉。
+  实测后果：`ougen_8` 只报出 4 条（`Stock1` + 眼球噪声），漏掉鞋/衣服/戒指/项圈。
+- **正确判据**：**运行时反查绑定** —— 把参数在 `min`/`max` 两态各拍一次全部 drawable
+  的 `(opacity, visible, 顶点包围盒)`，任一变化即为"这个参数控制画面"。
+- **两个快照维度都要**：只比不透明度会漏掉只改形状的参数（`ParamEyeSmile` 变形 14 件
+  但 opacity 不动）；只比顶点会把物理连带位移件全算进来。
+- **基准必须逐参数重取**：复用一份全局基准时，上一参数的恢复残差会累积，
+  实测把 `benningdun_2/Paramring` 从真实 2 件虚报成 71 件。
+- **阳性对照**：戒指参数（`Paramring`）在任何模型上都只该驱动 1–2 件；
+  若测到几十件且索引散布全身 ⇒ 噪声没消干净，读数不可信。
+
+**工具**：`scripts/diag/l2d_param_binding_export.py`（反查）、
+`scripts/diag/l2d_costume_table_merge.py`（合入产品表，`--dry` 先看）。
+`l2d_costume_params_scan.py` 的旧判据**已废弃**，勿再用于装扮参数。
+
+### 追补四（2026-10-29）：两条「产品层 vs 数据层」的边界规矩
+
+用户实测纠错暴露的两条通用规矩，换任何 Live2D 前端都适用：
+
+1. **动作里有定值的参数，产品层不许硬钉。**
+   曾用一张 `COSTUME_DEFAULT_ON` 把 `Param233` 钉成 1，而 `idle` 的定值曲线是 0
+   ⇒ 产品与数据互相打架，用户看到"默认值被改错了"。
+   要"默认打开某个装扮"，必须**连该动作的定值一起改**，否则不同动作表现不一致。
+   尤其注意：**支撑这条干预的定性被推翻后，干预本身要跟着撤掉**
+   （本项目 §163 的"少一只鞋"定性被 §169 推翻，但依据它写的 pin 一直留着）。
+
+2. **列表类 UI 必须过滤"无内容条目"，并把折叠量写在标题里。**
+   部件区曾全量列出 310 个部件，其中 84 个挂 0 个 drawable（`Part406` 就是）。
+   拖空部件零变化，用户会判定"这个功能没生效"——而通路其实是好的
+   （实测把挂 18 件的 `Part34` opacity 调到 0.05，画面变化 520470 px）。
+   ⇒ 用 `parentPartIndices` 统计挂载数，只列 >0 的，标题写 `部件 226（有内容 / 全部 310）`。
+
+**排查顺序（这次省了很多时间）**：用户说"X 没生效"时，**先证明通路本身有效**
+（找一个必定有可见效果的样本，如挂件最多的部件 / `ParamAngleX`），
+确认通路 OK 之后，"没生效"只能是「输入没到」或「这个条目本来就没有效果」。
+
+**关于面板改名**：参数/部件区是定位"某参数/部件控制什么"的唯一入口，本项目多次排查都靠它，
+不应删除；问题在**标签没说明用途**。改标签 + 过滤空条目，比砍功能更合适。
+
+### 追补五（2026-10-29）：拖拽语义与"离散档位"的两条实现纪律
+
+**① 输入修饰键必须成套定义，不能一半一半。**
+本项目滚轮是「裸滚轮滚页面 / Ctrl+滚轮缩放」，而拖拽一度是「裸拖平移 / Ctrl+拖也平移」
+——两套语义打架，用户只能靠记忆。定案为对称：
+
+| 输入 | 裸操作 | Ctrl/⌘ + 操作 |
+|---|---|---|
+| 滚轮 | 滚页面 | 缩放模型 |
+| 左键拖动 | **拖动互动** | 平移画面 |
+
+实现关键：`panMode` 必须在 `pointerdown` 那一刻由修饰键**定死**，
+不能在 `pointermove` 里逐帧判断（用户中途按下/松开 Ctrl 会让一次拖动语义漂移）。
+
+**② 值域含中间档的参数是离散档位，面板不能用滑块。**
+`min < def < max`（如 `-1/0/1`）说明它是档位不是连续量。
+给滑块会让用户滑进素材里未使用的中间/残缺档；改成按钮（默认档 ↔ 最大档）才对。
+判据一行：`dflt > lo && dflt < hi ⇒ 按 switch 渲染`。
+
+**③ 三态参数的像素对照必须先停 ticker。**
+本项目在 §169/§172 之间翻过一次车：同一个 `-1` vs `0` 对照，第一次报「34% 画布变化」、
+第二次报「0.19%」。差别只有一处——第二次停了 ticker 并手动 `render`。
+**没停 ticker 时，对比期间姿态一直在变，变化的不是参数、是呼吸和物理。**
+判据：像素差要与 drawable 级差异**量级一致**；两者矛盾时先怀疑仪器。
+
+## WF-58 从「用户圈一个位置」到「找到它到底改哪个参数」的定位流程（2026-10-30 收敛）
+
+**适用**：用户给一张截图 + 一句话（「点这里能同时脱穿双脚」/「这里能拖动改分屏」），
+要求把它做成互动区。核心难点不是写代码，是**先证明这个行为真的由某个参数控制**。
+
+### 判据（按顺序走，任一步结论与下一步矛盾就先怀疑上一步）
+
+1. **先用真实点击确认「行为存在」**，不要先设参数。
+   `__costumeHit(x,y)` 能报出该点归属哪个热区（这是页面自己的判定，与真实点击同源）。
+   本轮靠它确认红圈处确实命中 `ShoseOff`，才排除了「我猜的坐标不对」。
+
+2. **区分「可见性」与「顶点位移」两种驱动**。
+   `PARAM_DRAWABLES` 里登记的件只说明「顶点会跟着这个参数动」，**不等于**「可见性由它开关」。
+   本轮实测：`ShoseOff` 清单里的 15 件，在 idle9 下三档切换可见性**全不变**，
+   而真正控制左脚 4 件可见性的是 `ShoseOff` 自己 + `Stock2`/`Param326`/`Param352` 各管一部分。
+   ⇒ 要判「开关」必须逐件读 `(vis, opacity>0.02)`，不能只看清单。
+
+3. **左右归属用几何分箱，不要用模型包围盒中线**。
+   本轮踩过：模型包围盒被分屏大面板撑成 `x[-430..153]`，中线算到 -138，左右分箱全错，
+   报「同时改双脚的参数：0 个」。改成「按鞋件自身的 x 中心分箱」才得到正确结论。
+
+4. **阴性对照必须有，且要能发现「同值两次读数不一致」**。
+   本轮有一次探针连续报 `ShoseOff` 三档 0 变化，而同模型另一探针报 4 件变化 ——
+   这种自相矛盾**优先怀疑仪器**，不要挑一个信。
+
+5. **写参数只走 `__costumePinsByModel`**（见 TROUBLESHOOTING §173）。
+   `setParameterValueById` 直写会被每帧 `loadParameters` 覆盖，量到的是假阴性。
+
+### 踩坑记录
+
+- **「改动幅度最大」≠「最相关」**：上一轮选 `Param149`（宽度变化 4 倍）而放弃 `Param373`，
+  实测 `Param149` 是整模级参数（驱动 667 件），拖动它会整模提亮。判据要加「只影响目标」。
+- **`masks` 不是 `maskIndices`**：字段写错让反向统计恒空，打印「0 个」被误读成「没有结构遮罩」。
+- **整页截图不能判「分屏」**：页面左侧列表栏会造成「左亮右暗」假象，
+  必须按 canvas 的 `getBoundingClientRect` 裁剪后再分析。
+- **每次 `core.update()` 都是 842 件的重算**：拖动/高频路径上绝不能调，
+  用「两点标定 + 线性插值」代替。
+- **固定 span 的拖动必然手感错**：可移动范围随画布尺寸与模型缩放变化，
+  必须由标定两端反解出「线跟手」。
+
+### 涉及文件
+
+- `gallery_src/index.html`：`COSTUME_LINK`（成组联动）、`COSTUME_DRAG`（拖动型互动区）、
+  `splitCalib`/`splitScreenX`/`splitHitAt`/`splitMove`、`costumeToggle` 成组广播、
+  `__splitInfo`/`__splitScreenX`/`__splitHitAt` 出口。
+- `scripts/diag/l2d_split_drag_verify.py`（新增）：分屏拖动六条判据验收。
+- `scripts/diag/l2d_shoe_param_diff.py`（沿用）：参数差分取证的**正确入口示范**。
+- `docs/TROUBLESHOOTING.md` §173（双脚两参数）、§174（分屏参数定位）。
+
+## WF-59 判定区（HitAreas）审计与补登记的完整流程（2026-10-30 收敛）
+
+**适用**：用户问「判定区的生成和对应规则是怎么实现的？有没有遗漏和不对应？」
+或要修「某块区域点不到 / 点了播错动作」。
+
+### 判据（按顺序，每步都要有阴性对照）
+
+1. **先读规则源码，不要凭现象猜**。本项目的规则在 `scripts/fix_model3.py` 的两段：
+   占位替换（只补 Head/Body/Special）+ 补登记（扫 moc3 字节里的 `Touch*`，命中动作组才登记）。
+2. **四类问题分开量化**（`scripts/diag/hitarea_audit.py`）：
+   ① moc3 有 `Touch*` 但未登记；② 登记的 Id 不是真实 drawable；
+   ③ 登记的 Name 不是动作组；④ 同一 Name 被多条登记。
+   判据全部来自 `model3.json` + `moc3` 字节 + `motion/` 目录，**不需要浏览器**，可全库跑。
+3. **「未登记」必须再分两类**（`scripts/diag/hitarea_missing_cause.py`）：
+   a) 该模型确实没有对应动作组 → **丢弃是对的**；
+   b) 有动作组但名字拼不出来 → **真遗漏**。
+   不做这一步就会把「合理的丢弃」当成 bug 去修，或者反过来把真遗漏放过。
+4. **改完必须验「零回退」**：逐模型比 `HitAreas` 条数 + **其它字段逐字段相等**。
+   本项目要求「已带正确 HitAreas 的模型一律不动」。
+5. **改完必须验「新增的可点」**：`__L2_HITINFO()` 里统计 `w/h >= 0.5` 的比例，
+   退化框（`w` 或 `h` < 0.5）必须为 0。
+
+### 踩坑记录
+
+- **判重只能按原样 Id**：moc3 里 `TouchHead` 与 `Touch_Head` 是**两个真实、位置不同的 drawable**，
+  指向同一动作组。按归一化名去重会把这 59 个真实区域整块丢掉（判定区 120→60）。
+  「共用动作组」是设计，不是缺陷。
+- **`str.replace('__','_')` 只替换第一处**：对 `Touch_Drag_11` 这类多段下划线会漏。
+  用 `re.sub(r'_+','_',x).strip('_')`。
+- **探针必须关缓存**：`model3.json` 被浏览器缓存，改完判定区新开探针仍读旧副本
+  （`hit_verify` 报 60 条，服务器已吐 120 条）。已在 `gallery_ui_shots.Page.__init__` 加
+  `Network.setCacheDisabled(true)`。这类「改了不生效」会被误判成产品缺陷。
+- **`hit_verify` 的 `nAreas` 不等于 `HitAreas` 条数**：它统计的是「有可用几何」的判定区
+  （`__L2_HITUSE`），本项目 `benningdun_2` 是 120 条登记 / **78 条可用**，两者不同。
+  拿 `nAreas` 当「有没有生效」的判据会得出错误的「没生效」。
+
+### 涉及文件
+
+- `scripts/fix_model3.py`：下划线形态归一 + 判重（只按原样 Id）。
+- `scripts/diag/hitarea_audit.py`（新增）：四类问题全库审计。
+- `scripts/diag/hitarea_missing_cause.py`（新增）：未登记根因分类（真遗漏 vs 无动作组）。
+- `scripts/diag/hitarea_underscore_check.py`（新增）：下划线形态量化。
+- `scripts/diag/gallery_ui_shots.py`：探针关缓存。
+- `docs/TROUBLESHOOTING.md` §175（判定区审计与 59 条真遗漏）、§176（分屏是裁切不是平移）。
+
+---
+
+### WF-60: 换机器 / 重新 clone 后的"接手自检"三件（2026-11-01）
 
 适用：拿到一个装好代码但没有资产的新克隆，或者换盘符/换用户名之后。目标不是"能跑全量"，
 而是**先分清三类红**：真缺陷 / 环境缺件 / 闸门根本没装。照 AGENTS.md 收尾清单一上来就跑
@@ -2801,11 +4458,11 @@ os.makedirs(os.path.join(tmpab, 'ui'))
 **涉及文件**：`scripts/install_git_hooks.py`（新增）、`scripts/git-hooks/{pre-commit,commit-msg}`、
 `scripts/diag/_precheck.py`（新增）、`scripts/diag/check_lint_baseline.py`（新增 + `lint_baseline.json`）、
 `scripts/diag/test_pipeline_gating.py`、`requirements.txt`。相关：AGENTS.md「阶段收尾必做清单」、
-WF-16（回归六件套）、§115。
+WF-16（回归六件套）、§177。
 
 ---
 
-### WF-31: 给"永远红的检查"装基线闸门，而不是逼人清零（2026-11-01）
+### WF-61: 给"永远红的检查"装基线闸门，而不是逼人清零（2026-11-01）
 
 适用：某个 lint / 静态检查有几十上百条存量告警，其中只有少数会咬人。三种常见错误做法：
 ① 全清零（成本极高且收益为零）② 不管（真缺陷淹没在噪声里）③ 加 `# noqa` 逐个压制（噪声还在，只是看不见）。
@@ -2830,10 +4487,10 @@ WF-16（回归六件套）、§115。
 同一份 `__pycache__`/`_archive` 排除表），否则第二次跑数出来的数和基线对不上，闸门天天假红。
 
 **涉及文件**：`scripts/diag/check_lint_baseline.py`（新增）、`scripts/diag/lint_baseline.json`（新增，入库）。
-相关：§115。
+相关：§177。
 
 
-### WF-32: 把散落硬编码路径批量收进单一出口（2026-11-01，43 py + 2 bat 一次过）
+### WF-62: 把散落硬编码路径批量收进单一出口（2026-11-01，43 py + 2 bat 一次过）
 
 **适用**：项目里散落着写死绝对路径（盘符/用户名/外部工具 exe），换盘符或换机器必炸；
 或已有的 `paths.py` 出口只覆盖了一半，剩下靠人记。
@@ -2891,4 +4548,63 @@ WF-16（回归六件套）、§115。
 `scripts/diag/check_paths.py`（闸门：`SCAN_EXTS` 扩到 `.py/.bat/.ps1`、`DRIVE` 放宽前置锚、
 `_check_launchers()` 逐行判真执行、`--strict` 改默认）、
 `scripts/mumu_adb.bat` / `scripts/mumu_sync.bat`（解释器探测）、43 个 `.py`。
-相关：§116、WF-30。
+相关：§178、WF-60。
+
+### WF-63: 合并别人的长分叉（先干跑、再查编号撞车、再让号、最后零信息丢失校验）（2026-11-01）
+
+**适用**：要合并一个独立开发过的远端分支（fork / 同事分支 / 长期 feature 分支），
+两边都改了几百个文件、都往同一批长文档末尾追加，且你**不能** force push —— 对方的提交是真实工作量。
+
+**判据（按顺序，每步都过了才进下一步）**
+
+1. **先确认谁是真的分叉**，别急着 merge：
+   `git rev-list --left-right --count <theirs>...<ours>` → `97  2` 表示对方 97 个提交、你 2 个。
+   `git merge-base <theirs> <ours>` 给出分叉点。
+   **只领先 0 个就能 fast-forward**；两侧都 >0 就必须合并。**永远不许为此 force push**。
+   动手前建备份 ref：`git branch backup/<theirs>-<sha> <theirs>` + `backup/<ours>-before-merge`。
+
+2. **干跑测冲突，不落地**：
+   `git merge-tree --write-tree --name-only <theirs> <ours>` 一次列出全部冲突文件。
+   先知道有 15 处还是 1 处，再决定是 merge 还是逐文件 cherry-pick。
+
+3. **解冲突之前，先查编号撞车**（这一步最容易漏，也最贵）：
+   `py -3 scripts/diag/check_merge_numbering.py` —— 三方（base / ours / theirs）比对
+   `## §N` 与 `### WF-N:` 的占用。它会区分「历史遗留重复」(WARN，两边共有，不许改)
+   与「本次新增重复」(FAIL)，并直接给出下一个可用号。
+   **判据**：只要两边对同一编号命名空间都追加过，就必须让号；
+   让号用 **精确串替换 + 命中次数断言**，禁止全局正则 —— 对方正文里的同号引用一处都不能动。
+
+4. **冲突一律并集解，不做取舍**：两边谁都不能丢。
+   解完逐文件断言三件事：① 无 `<<<<<<<`/`>>>>>>>` 标记；② 换行风格与文件原有风格一致（否则整文件变噪声 diff）；
+   ③ `py -3 -m compileall -q scripts` 退出码 0（合并最容易造出「两行粘连」这类 SyntaxError）。
+
+5. **闸门变红的默认假设 = 对方的存量，不是你的错**，但必须逐条实证到具体文件。
+   基线判据要换成**集合/基线形态**（冻结存量、只拦新增），不是抬高总数。
+   详见 §179；两把尺子的双向阴性对照（造样本必红、删样本必绿）不可省。
+
+6. **文档体量外迁要证明零信息丢失**：用 `scripts/diag/doc_verbatim_archive.py`，
+   它做四条核对（基线每条非空行可查 / 归档块与 `git show base:doc` 对应区间整块逐字相同 /
+   引用断链不得新增 / 写盘前重取 md5 防并行会话插队）。
+   **只删不移 = 丢信息**；红线（`PROJECT_STATUS.md` >400 行）只能靠逐字外迁压，不能靠删。
+
+7. **推之前再确认一次不能快进的原因**：
+   `git push --dry-run` 若报 `non-fast-forward` 而**不是认证失败**，说明凭据是通的、
+   只是历史不同 —— 这正是「必须合并」的证据。（实测：`schannel` 握手失败是暂时的网络抖动，
+   重试即通；若把 `SSL/TLS handshake failed` 误判成「没权限」，会白绕一大圈。）
+
+**踩坑记录**
+
+- **`git merge` 会重写整文件换行**：`core.autocrlf=true` + 无 `.gitattributes` ⇒ 合并后 CRLF/LF 混杂，
+  整文件写回必须显式保持原风格，否则 diff 全是行尾噪声。
+- **合并后代码可能「语法上崩了却无人发现」**：冲突块拼接常见 `CHROME = P.chrome_or_die()PORT, DEBUG_DIR = ...`
+  这类**两行粘连**，`py_compile` 单文件能抓到，但没人会想到去跑 ⇒ 把 `compileall -q scripts` 当收尾硬步骤。
+- **`worktree` 是比 stash 更干净的三方比对手法**：
+  `git worktree add --detach .diag/wt-base <rev>` 能在不切分支的前提下跑另一版本的闸门。
+- **别用「感觉」判进度**：`git status` 0.12s、闸门 0.24~2.08s ⇒ 提交动作本身几百毫秒。
+  慢的永远是解冲突与查证，不是 commit。把这一点告诉用户，能省掉「是不是卡死了」的反复确认。
+
+**涉及文件**：`scripts/diag/check_merge_numbering.py`（新，三方编号比对）、
+`scripts/diag/doc_verbatim_archive.py`（逐字外迁 + 四条核对）、
+`scripts/diag/check_paths.py` + `paths_baseline.json`、`scripts/diag/check_lint_baseline.py` + `lint_baseline.json`、
+`docs/WORKFLOWS.md`（本文件，编号让号后 WF-60/61/62）、`docs/TROUBLESHOOTING.md`（§177/§178 让号）。
+相关：§179、WF-61（基线闸门）、WF-60（接手自检三件）。

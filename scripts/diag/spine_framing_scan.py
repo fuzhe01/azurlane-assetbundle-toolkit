@@ -26,6 +26,12 @@ import sys, os, json, time, subprocess, urllib.request, argparse
 
 sys.stdout.reconfigure(encoding='utf-8')
 import websocket
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
@@ -180,7 +186,7 @@ JS = r"""
 
 
 def spawn():
-    proc = subprocess.Popen([
+    proc = chrome_tree.launch([
         CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
         '--remote-allow-origins=*',
         f'--user-data-dir={os.path.join(ROOT, ".diag", "chrome_framing_scan")}',

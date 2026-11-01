@@ -34,8 +34,8 @@ def manifest_path(codec):
     return os.path.join(P.ROOT, 'ledger', f)
 # ↑ 台账入库：删掉 wav 之后，这是唯一能逐份证明「这个 ogg 当时由那个 md5 的 wav 转出来」的东西，
 #    所以不放 .diag（临时区，无 git 兜底）。
-FFMPEG = P.tool('AL_FFMPEG', 'ffmpeg')
-FFPROBE = FFMPEG.replace('ffmpeg', 'ffprobe') if FFMPEG else ''
+FFMPEG = P.FFMPEG   # 走 paths.py 的候选列表（PATH 里没有 ffmpeg 时也能命中本机安装位）
+FFPROBE = os.path.join(os.path.dirname(FFMPEG), 'ffprobe.exe') if FFMPEG else ''
 
 
 def md5(p):

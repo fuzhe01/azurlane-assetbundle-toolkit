@@ -13,7 +13,13 @@ import websocket
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
 import cdp_slot            # 端口 / profile 不写死：写死会让两个会话灌进同一个页面（见该模块 docstring）
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
 import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
+
 CHROME = P.chrome_or_die()
 PORT, DEBUG_DIR = cdp_slot.slot(ROOT, 'voicecut')
 BASE = 'http://127.0.0.1:8777/gallery_v2/index.html'
@@ -47,7 +53,7 @@ window.__AUD = [];
 })();
 """
 
-proc = subprocess.Popen([
+proc = chrome_tree.launch([
     CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
     '--remote-allow-origins=*', f'--user-data-dir={DEBUG_DIR}',
     '--no-first-run', '--no-default-browser-check',
@@ -55,6 +61,7 @@ proc = subprocess.Popen([
     '--use-angle=swiftshader', '--autoplay-policy=no-user-gesture-required',
     '--window-size=1280,900', 'about:blank',
 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 
 
 def wait_ws():

@@ -25,10 +25,29 @@ SRC = {'lua_json': os.path.join(ROOT, '.diag', 'sharecfg_re', 'lua_json'),
        'cfg_json_scalar': os.path.join(ROOT, '.diag', 'sharecfg_re', 'cfg_json_scalar')}
 DST = os.path.join(ROOT, 'inputs', 'gamecfg')
 
+
+def _game_version():
+    """版本号只认 files/version.txt 这一个权威来源（2026-10-23 起）。
+
+    此前这里和 SPECS 的说明文字都硬编码 '9.7.385'，游戏更新到 9.7.395 后
+    数据是新的、台账标注仍是旧的 —— 台账自相矛盾比没有台账更危险。
+    """
+    p = os.path.join(ROOT, 'files', 'version.txt')
+    try:
+        v = open(p, encoding='utf-8-sig').read().strip()
+        if v:
+            return v
+    except OSError:
+        pass
+    return 'unknown'
+
+
+GAME_VERSION = _game_version()
+
 # (产物名, 源表名, 台账说明, 消费方, 源子目录)
 SPECS = [
     ('voice_actor_cn.json', 'voice_actor_cn',
-     '声优 code → 中文姓名（游戏本体 9.7.385，525 条）',
+     '声优 code → 中文姓名',
      ['scripts/build_ship_meta.py'], 'lua_json'),
     ('character_voice.json', 'character_voice',
      '台词字段 key ↔ Live2D 动作组 l2d_action ↔ ACB 资源名 resource_key ↔ Spine 动作 ↔ 中文语音名（85 条）',
@@ -106,7 +125,7 @@ def main():
     os.makedirs(DST, exist_ok=True)
     ledger = {'schema_version': 1,
               'purpose': '从游戏本体 sharecfg 容器直接解出的权威映射，管线以此为准（优于社区快照与语义推断）',
-              'provenance': {'game_version_local_assets': '9.7.385',
+              'provenance': {'game_version_local_assets': GAME_VERSION,
                              'container_grammar': 'docs/TROUBLESHOOTING.md §33/§34',
                              'regenerate_via': ['tools/sharecfg_re/34_www_four_modes.py',
                                                 'tools/sharecfg_re/35_export_sharecfg_lua.py',

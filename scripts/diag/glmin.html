@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>glmin</title>
+<canvas id="c" width="800" height="600"></canvas>
+<script>
+/* 极简 WebGL 页面：不含任何产品代码。用途见 .diag/stall_attribution_diag.py 的 C2。
+   量两件事：rAF 帧计数（是否衰减）、单帧最大间隔（是否偶发整段停顿）。 */
+(function () {
+  var c = document.getElementById('c');
+  var gl = c.getContext('webgl2') || c.getContext('webgl');
+  window.__info = gl ? gl.getParameter(gl.VERSION) : 'NO_GL';
+  window.__rafc = { n: 0, t0: performance.now(), gapMax: 0, prev: 0 };
+  function loop() {
+    var now = performance.now();
+    if (window.__rafc.prev) {
+      var g = now - window.__rafc.prev;
+      if (g > window.__rafc.gapMax) window.__rafc.gapMax = g;
+    }
+    window.__rafc.prev = now;
+    window.__rafc.n++;
+    if (gl) { gl.clearColor(0.1, 0.1, 0.1, 1); gl.clear(gl.COLOR_BUFFER_BIT); }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>

@@ -1,7 +1,7 @@
 ---
 name: spine-web-runtime-integration
 description: 在网页里集成 Spine 3.8 (spine-webgl) 运行时做动态立绘渲染与批量出图，覆盖 .skel/.json 骨架分流、atlas 多页加载、必须 setSkin（否则命名 skin 独有部件整块不显示）、**多层之间的绘制序（层名后缀启发式必翻车，只能取引擎层级；含"某一层整块看不见"如何区分是没渲染还是被盖住）**、setup pose 与动画第 0 帧是两种语义、相机视口与 fit 包围盒陷阱（含"恒不渲染的巨幕遮罩撑爆取景"与"不透明纯色黑底撑爆取景"两类，以及判据必须落在取景那一刻）、readPixels 在实时 viewer 里不可用、0 秒占位动画过滤、TDZ 变量遮蔽、无头 CDP 验收判据。当需要让 .skel/.atlas 模型在浏览器里动起来、反馈"模型缺胳膊少腿/比例怪/层加载失败/导出出来是中间一小块四周全黑/**少了个人/被另一块盖住**"、或要批量渲染 Spine 立绘成 PNG 时使用。触发词：Spine 网页播放、spine-webgl、spine-all.js、SkeletonBinary、SkeletonJson、atlas 图集页、setSkin、皮肤、SceneRenderer、比例怪、缺下半身、部件不显示、setup pose、CG 导出、层失败、动态立绘渲染、骨骼动画截图、取景、包围盒、画面太小、只占中间一小块、四周全黑、fit、层序、绘制序、遮挡、少了个人、谁压谁。不适用于 AssetBundle 侧的 Spine 资源还原与页纹理补齐（那是 unity-assetbundle-painting-restore），也不适用于 Live2D 网页集成（live2d-web-runtime-integration）。
-version: 1.1.7
+version: 1.1.8
 ---
 
 # Spine 网页运行时集成与批量出图
@@ -451,6 +451,26 @@ headless 里"等 16 秒"实际只推进约 2 秒动画。给页面加 `__seekAni
 应该做成**显式可切换**（对准角色 ↔ 完整场景，两种模式都照常渲染所有层），
 并且文案不许用"已剔除"这类像删了东西的词。切换后记得把 `zoom` 复位，
 否则用户停在旧机位上，点了等于没点。
+
+## 14. DPR 校正：**不要**在设置 buffer 后再调 `SceneRenderer.resize()`（2026-10-19）
+
+spine-all.js 3.8 的 `SceneRenderer.resize()` 会**无条件**执行
+`canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight`（源码 L9881-9888），
+把刚乘过 DPR 的 buffer 当场改回 CSS 尺寸。若你在它之前写了 `cv.width = clientWidth * dpr`，
+等于白设；每帧的"尺寸不一致就 resize"检查还会因此**每帧重设画布**。
+
+正确写法（自己做 resize() 唯一需要的两件事）：
+
+```js
+cv.width  = Math.max(2, Math.round(wrap.clientWidth  * dpr));
+cv.height = Math.max(2, Math.round(wrap.clientHeight * dpr));
+gl.viewport(0, 0, cv.width, cv.height);
+scene.camera.setViewport(cv.width, cv.height);
+```
+
+**判据**：强制 `--force-device-scale-factor=2` 后必须 `buffer / CSS ≈ 2.00`；
+只在无头默认 DPR=1 下测会**假绿灯**（Spine 的期望值就是 dpr=1，1x 天然满足）。
+碧蓝画廊 yunlong_2 实测：修前 1.00（DPR=2 仍糊），修后 2.00。
 
 ## 涉及文件与延伸
 

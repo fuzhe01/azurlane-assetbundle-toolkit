@@ -13,12 +13,12 @@ _p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
 import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 import time
 
-# 配置
+# 配置：路径统一走 scripts/paths.py（换盘符/换用户名不再炸；可用 AL_VGMSTREAM / AL_FFMPEG 覆盖）
 VGMSTREAM_CLI = P.VGMSTREAM
 FFMPEG = P.FFMPEG
-INPUT_DIR = os.path.join(P.AB, "cue")
+INPUT_DIR = os.path.join(P.AB, 'cue')
 OUTPUT_DIR = P.AUDIO_OUT
-TEMP_DIR = os.path.join(P.OUT, "_audio_temp")
+TEMP_DIR = os.path.join(P.OUT, '_audio_temp')
 
 # 分类前缀映射
 CATEGORY_MAP = {

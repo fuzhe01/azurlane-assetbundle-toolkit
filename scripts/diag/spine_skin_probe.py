@@ -9,6 +9,12 @@ import sys, os, json, time, subprocess, urllib.request
 
 sys.stdout.reconfigure(encoding='utf-8')
 import websocket
+import chrome_tree        # 整树清理：atexit + profile 回读（见该模块 docstring）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.join(_HERE, '..')):
+    _p = os.path.abspath(_p)
+    if _p not in sys.path: sys.path.insert(0, _p)
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, 'scripts'))
@@ -20,12 +26,13 @@ FOLDER = sys.argv[1] if len(sys.argv) > 1 else 'aluomangshi_2'
 MATCH = sys.argv[2] if len(sys.argv) > 2 else 'datui'
 BASE = 'http://127.0.0.1:8777/gallery_v2/index.html'
 
-proc = subprocess.Popen([
+proc = chrome_tree.launch([
     CHROME, '--headless=new', f'--remote-debugging-port={PORT}',
     '--remote-allow-origins=*', f'--user-data-dir={DEBUG_DIR}',
     '--no-first-run', '--no-default-browser-check', '--enable-unsafe-swiftshader',
     '--use-angle=swiftshader', '--window-size=1280,900', BASE,
 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 
 ws = None
 for _ in range(80):

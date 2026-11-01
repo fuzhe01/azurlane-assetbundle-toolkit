@@ -492,6 +492,8 @@ main{position:relative;z-index:1}
     <button data-k="voice" title="点击立绘 / Live2D 部位时是否播放语音">点击出声</button>
     <button data-k="lines" title="播放台词时是否在画面下方显示中文正文">显示台词</button>
     <button data-k="remember" title="记住每个皮肤上次的缩放与位置，下次打开直接回到那里">记住视角</button>
+    <button data-k="eye" title="鼠标移动时模型视线是否跟随（与游戏同款；关闭后回正）">眼神跟随</button>
+    <button data-k="login" title="打开 Live2D 时先播 login 动作（与游戏登录画面一致；播完按回落规则走）">开场 login</button>
   </div></div>
   <div class="ctl"><label>配色</label><div class="opt" id="gTheme" title="昼 / 夜配色（状态会记住）">
     <button data-t="light">昼</button><button data-t="dark">夜</button>
@@ -556,7 +558,7 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)');   // 动效总开关�
    没有"需要关掉的花哨"，所以那颗按钮按用户要求删掉了（2026-09-28）。
    老用户 localStorage 里残留的 `bgfx:false` 会被 Object.assign 塞进来，但没人再读它——
    不清理是故意的：清它要写迁移代码，而那个键无害。 */
-let OPT = {voice:true, lines:true, remember:true};
+let OPT = {voice:true, lines:true, remember:true, eye:true, login:true};
 try{ Object.assign(OPT, JSON.parse(localStorage.getItem(OPT_KEY) || '{}')); }catch(e){}
 function saveOpt(){ try{ localStorage.setItem(OPT_KEY, JSON.stringify(OPT)); }catch(e){} }
 function paintOpt(){ document.querySelectorAll('#gOpt button')
@@ -615,11 +617,19 @@ function vmemCommitter(key, read){ let t = null;
             flush(){ if(t){ clearTimeout(t); t = null; vmemSet(key, read()); } } }; }
 
 /* ---------- 工具 ---------- */
-function thumbOf(skin){ return skin.cg ? ('thumbs/' + skin.key + '_cg.webp') : skin.image ? ('thumbs/' + skin.key + '.webp') : ''; }
-function fullOf(skin){ return skin.cg ? (P + skin.cg) : skin.image ? (P + skin.image) : ''; }
+/* 秘书舰 NPC 三族（tbniang / lingyangzhe32_3 / tansuozhe32_3）在索引里是 category='story' 且
+   skins=[]：它们确实没有随包下发的立绘资源（见 build_gallery_index.py L682）。所以下面这几个取
+   默认皮肤的小工具**必须**能接住 null —— 曾经的写法 `skin.cg` / `s.skins[0]` 会抛
+   `TypeError: Cannot read properties of undefined (reading 'cg')`，而 makeCard 抛错是发生在
+   `list.forEach` 里 ⇒ 整批渲染中断，那三张剧情卡的缩略图/卡片一个都不出（分区标题还在，
+   底下空白，极易被误判成"索引少了条目"）。更远的连带：apply() 与页面底部的 ?ship= 直达 IIFE
+   在同一个 <script> 块里，renderGrid() 一抛错，后面的 IIFE 就再也不会注册 ⇒ `?ship=` 全部静默失效。 */
+function thumbOf(skin){ if(!skin) return ''; return skin.cg ? ('thumbs/' + skin.key + '_cg.webp') : skin.image ? ('thumbs/' + skin.key + '.webp') : ''; }
+function fullOf(skin){ if(!skin) return ''; return skin.cg ? (P + skin.cg) : skin.image ? (P + skin.image) : ''; }
 function hasSpine(s){ return s.spineSkins && s.spineSkins.length; }
 function hasL2d(s){ return s.live2dSkins && s.live2dSkins.length; }
-function defSkin(s){ return s.skins[0]; }
+function defSkin(s){ return (s.skins && s.skins[0]) || null; }
+function skinCount(s){ return (s.skins || []).length; }
 function rarClass(r){ return r ? ('rar-'+r) : ''; }
 
 /* ---------- 筛选下拉填充 ---------- */
@@ -641,12 +651,12 @@ function makeCard(s){
   const badges=[]; if(hasSpine(s))badges.push('<span class="b-spine">SPINE</span>'); if(hasL2d(s))badges.push('<span class="b-l2d">L2D</span>'); if(s.voiceCount)badges.push('<span class="b-voice">🔊'+s.voiceCount+'</span>');
   const tags=[]; if(s.rarity)tags.push(`<span class="tag ${rarClass(s.rarity)}">${s.rarity}</span>`); if(s.faction)tags.push(`<span class="tag f">${s.faction}</span>`); if(s.type)tags.push(`<span class="tag s">${s.type}</span>`);
   card.innerHTML=`<div class="thumb">${th?`<img loading="lazy" src="${th}">`:'<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#555;font-size:12px">无立绘</div>'}<div class="badge">${badges.join('')}</div></div>
-    <div class="body"><div class="nm">${s.name}</div><div class="py">${s.id} · ${pseudoKind(s)||s.skins.length+'皮肤'}</div><div class="tags">${tags.join('')}</div></div>`;
+    <div class="body"><div class="nm">${s.name}</div><div class="py">${s.id} · ${pseudoKind(s)||skinCount(s)+'皮肤'}</div><div class="tags">${tags.join('')}</div></div>`;
   /* 卡片可 Tab 聚焦：以前整张网格只有鼠标一条路，键盘走不到任何一张卡（§6.18 ④）。
      Enter/Space 的激活走 mainEl 上的**一个**委托监听器，不给千张卡各挂一个。 */
   if(GLASS_IO) GLASS_IO.observe(card); else card.classList.add('g');   // 毛玻璃按需挂载
   card.tabIndex=0; card.setAttribute('role','button');
-  card.setAttribute('aria-label',s.name+' · '+(pseudoKind(s)||s.skins.length+' 个皮肤'));
+  card.setAttribute('aria-label',s.name+' · '+(pseudoKind(s)||skinCount(s)+' 个皮肤'));
   card.onclick=()=>openShip(s,card);
   /* 缩略图淡入：懒加载的图到货那一刻不该"啪"地跳出来。
      complete 分支必须有 —— 命中缓存时 load 事件根本不会再发。 */
@@ -863,8 +873,8 @@ document.addEventListener('keydown',e=>{
 });
 
 function buildSkinList(s){
-  const el=document.getElementById('mSkins'); el.innerHTML='<div class="lab">皮肤 / 变体 ('+s.skins.length+')</div>';
-  s.skins.forEach(sk=>{
+  const el=document.getElementById('mSkins'); el.innerHTML='<div class="lab">皮肤 / 变体 ('+skinCount(s)+')</div>';
+  (s.skins||[]).forEach(sk=>{
     const sp=s.spineSkins.includes(sk.key), l2=s.live2dSkins.includes(sk.key);
     const d=document.createElement('div'); d.className='skin'+(sk===curSkin?' on':''); d.dataset.k=sk.key;
     const th=thumbOf(sk);
@@ -875,6 +885,19 @@ function buildSkinList(s){
 }
 function setSkin(sk){ curSkin=sk; paintSrc='cg'; const s=curShip;
   const nameEl=document.getElementById('mName'), pyEl=document.getElementById('mPy'), metaEl=document.getElementById('mMeta');
+  /* 无皮肤的空卡（秘书舰 NPC 三族，skins=[]）：弹层里除了标题没有可看的东西。
+     必须早退 —— 下面每一行都要读 sk.key / sk.image，sk 为 null 直接抛。 */
+  if(!sk){
+    nameEl.textContent=s.name; pyEl.textContent=s.id; metaEl.innerHTML='';
+    const tag=document.createElement('span');
+    tag.textContent='该角色在本地资产里没有立绘 / 动态资源（npc 条目：只有名字与配音档）';
+    metaEl.appendChild(tag);
+    document.getElementById('mTabs').innerHTML='';
+    viewEl.innerHTML='<div class="note">索引里这张卡没有皮肤条目。<br>'
+      +'它们是秘书舰 NPC（领航员-TB / 领洋者-娜比娅 / 探索者-艾普洛），'
+      +'游戏侧只有名字与台词档，立绘资源未随 AssetBundle 下发。</div>';
+    return;
+  }
   if(s.sil){
     /* 剪影不是皮肤：标题位给"这是什么"，来源做成可点入口跳回本体船 —— 用户要的就是
        "别混在皮肤区，但要能找到、能管理"（§88 / 2026-10-03 拍板）。 */
@@ -981,10 +1004,9 @@ function mountImageViewer(){
   curVM=vm;
   function relayout(){ const r=stage.getBoundingClientRect();
     if(!img.naturalWidth) return false;
-    /* 上限 2 倍而不是 1：立绘原件多为 800~1100px 宽，在 2560 屏放大后的弹窗里
-       按「不放大」只能画到自然尺寸 → 四周大片留白，就是用户说的「缩得有点小」。
-       像素保真没有丢：双击仍然是 1:1 像素（下面 dblclick 用 naturalWidth/clientWidth 反算）。 */
-    const k=Math.min(r.width/img.naturalWidth, r.height/img.naturalHeight, 2);
+    /* 上限 1 倍（不放大）：>1 只是把源图硬拉大，必然糊（用户 2026-10-19 判据：不能模糊）。
+       小于视口的图会留白，想看大图用滚轮/双击 1:1；640/4402 张源宽 <1000px 的图不再二次放大。 */
+    const k=Math.min(r.width/img.naturalWidth, r.height/img.naturalHeight, 1);
     img.style.width=Math.round(img.naturalWidth*k)+'px';
     img.style.height=Math.round(img.naturalHeight*k)+'px';
     return true; }
@@ -1079,6 +1101,46 @@ function renderVoice(){
   };
   Promise.all([loadVoiceMap(), loadWords()]).then(draw,draw);
 }
+/* ---------- 换装参数表（costume_params.json，由 scripts/diag/l2d_costume_export.py 产出）----------
+   结构 {模型key: [{id,label,kind:'switch'|'slider',vals:[...]}, ...]}。
+   来源是全库 motion3.json 的定值曲线分析：只收「在不同动作间被锁成不同档位」的参数
+   （恒定值的参数没有可调空间，已被导出侧过滤）。
+   ⚠️ 这是**方案 A**：不逐个接 HitAreas 互动区，而是把模型自带的装扮参数直接列成面板，
+      一次性覆盖全部 192 个有换装能力的模型；命中率不依赖人工确认语义。
+   全库 262 个模型里有 158 个 moc3 只有 head/body/special 三个 Touch，游戏本身没有换装交互。 */
+let _costumeP=null, COSTUME=null;
+/* ---------- 全部互动区清单（touchareas.json，由 scripts/diag/l2d_toucharea_export.py 产出）----------
+   结构 {模型key: {drag:[{drawable,registered,group}], idle:[...], hitarea_names:[...]}}。
+   来源是 **moc3 里的 Touch* drawable**（互动区存在与否的第一性证据），
+   而不是 model3.json 的 HitAreas —— 实测 ougen_8 有 44 个 Touch drawable，
+   HitAreas 只登记了 3 个；未登记的 1299 个互动区前端原本完全点不到。
+   ⚠️ 该清单只回答「有哪些互动区 / 登记没登记 / 有无同名动作组」，
+      **不回答「点了什么效果」**：效果映射只存在于游戏代码，资产里推不出来。 */
+let _touchP=null, TOUCHAREAS=null;
+try{ Object.defineProperty(window,'TOUCHAREAS',{get:()=>TOUCHAREAS,configurable:true}); }catch(e){}
+function loadTouchAreaMap(){ return _touchP||(_touchP=(async()=>{
+    try{ const r=await fetch('./touchareas.json'); if(!r.ok) return {};
+      const j=await r.json(); return (j&&typeof j==='object')?j:{}; }catch(e){ return {}; }
+    })().then(j=>{ TOUCHAREAS=j; return j; })); }
+/* 暴露给探针/调试台：模块级 let 不会挂到 window，验证脚本读不到（2026-10-23 实测踩到）。
+   只读引用，不提供改写入能力。 */
+try{ Object.defineProperty(window,'COSTUME',{get:()=>COSTUME,configurable:true}); }catch(e){}
+function loadCostumeMap(){ return _costumeP||(_costumeP=(async()=>{
+    try{ const r=await fetch('./costume_params.json'); if(!r.ok) return {};
+      const j=await r.json(); return (j&&typeof j==='object')?j:{}; }catch(e){ return {}; }
+    })().then(j=>{ COSTUME=j; return j; })); }
+/* ---------- 参数 → 它驱动的 drawable 索引（param_drawables.json，由 scripts/diag/map_param_to_drawables.py 产出）----------
+   结构 {模型key: {参数id: [drawable 序号, ...]}}。
+   索引是 **coreModel 的 drawable 序号**（与 getDrawableVertexPositions / getDrawableOpacity 同一编号空间，
+   由 map_param_to_drawables 用「设参数 hi/lo 两态、逐 drawable 比顶点位移」判定得到，不依赖截图差分）。
+   用途：参数型互动区的热区几何 = 该参数驱动的这些 drawable 的**顶点并集包围盒**（每帧重算：
+   部件会随呼吸/物理/动作位移，缓存的框会点空——与本文件判定区那条教训同源）。 */
+let _paramDrawP=null, PARAM_DRAWABLES=null;
+try{ Object.defineProperty(window,'PARAM_DRAWABLES',{get:()=>PARAM_DRAWABLES,configurable:true}); }catch(e){}
+function loadParamDrawables(){ return _paramDrawP||(_paramDrawP=(async()=>{
+    try{ const r=await fetch('./param_drawables.json'); if(!r.ok) return {};
+      const j=await r.json(); return (j&&typeof j==='object')?j:{}; }catch(e){ return {}; }
+    })().then(j=>{ PARAM_DRAWABLES=j; window.__paramDrawables=j; return j; })); }
 /* ---------- 皮肤语音（skin_voice.json，由 scripts/extract_cv_voice.py 从 cue/cv-*.b 导出）----------
    结构 {皮肤key: {cv, idx, src, l2d:{动作组:[路径]}, tap:{touch_body|touch_special|touch_head: 路径},
                   lines:[{cat,label,f,ev}]}}。
@@ -1171,6 +1233,107 @@ function mountSkinVoice(barEl, clickEl, keyOf){
   Promise.all([loadVoiceMap(), loadWords()]).then(draw,draw);
 }
 /* ---------- Live2D（pixi 6.5.2 + pixi-live2d-display 0.4.0 + cubismcore 5.1.0，均为 vendor/live2d/ 本地脚本） ---------- */
+/* ---------- 状态切换交互（§132，2026-10-20）：部分 TouchDrag* 不是「动作」而是「状态开关」 ----------
+    首例 ougen_8 touch_drag17（拖鞋）：ShoseOff 参数（显示名「脱鞋」）在该模型 55 个 motion 里
+    **零曲线驱动** —— 它是游戏代码直接 set 的纯状态参数；穿/脱鞋的局部过渡动画由 moc3 keyform
+    随参数值渐变自然产生，不经过任何 motion。误把它当「动作」轮转播 touch_drag1..3（屁股回弹）
+    是错误的（用户按游戏画面指正，取证 docs/TROUBLESHOOTING.md §132）。
+    两种接线形态（全库取证结论，扫描器 scripts/diag/l2d_state_param_scan.py）：
+      ① 区名→参数名不对应（ougen_8 特例）：TouchDrag17 区 → ShoseOff 参数；
+      ② 区名同名参数（aersasi_2/3、antu_2 通用模式）：点 TouchDragN 区 = 播同名 motion
+         （若有）+ 游戏代码 set 同名 touch_dragN 参数（0..1 开关、零 motion/physics 驱动，
+         显示名即语义，如 aersasi_2 touch_drag1「墨镜TMD」、aersasi_3 touch_drag12「丝袜弹出」）。
+     判据：零 motion 驱动 + 零 physics 驱动 + 0..1 值域；候选清单须经游戏画面对照确认语义才接线。
+     ⚠️ EMIT_CONST 换入后「零 motion 驱动」判据失效（constant 定值曲线进了 motion）——扫描器
+     需按「两态定值 + 无中段渐变曲线」改判据（§134 续）。
+     配置表驱动（多条目，每模型可接多个状态）：trigger 写 moc3 补区形态的编号名（touchdragN；
+     model3 登记的 touch_dragN 会被归一）。运行态（_on/_tw）挂在条目对象上。
+     on/off 值：**省略即运行时解析**（on=参数 max、off=参数 min）——硬编码会踩值域坑
+     （2026-10-21 实锤：aersasi_2 墨镜 touch_drag1 值域 0..10，写 on:1 只到 10% 渐变位，
+     观感「墨镜只变深浅」。ShoseOff 值域 0..1 时运行时解析结果与旧硬编码一致）。
+     mode:'slider'（可选）：拖拽调节型状态——不是穿戴开关而是**拖动位移连续调参数值**
+     （如某些 drag 调颜色深浅），按下后水平位移映射 [min,max]，松手保持当前值；
+     默认（无 mode / mode:'toggle'）为点击/拖一下切换两端。 */
+const STATE_TOGGLES = {
+  'ougen_8': [
+    { trigger:'touchdrag17', id:'ShoseOff', dur:0.5, label:'脱鞋 / 穿鞋' }
+  ],
+  'aersasi_2': [
+    { trigger:'touchdrag1', id:'touch_drag1', dur:0.5, label:'墨镜' }
+  ]
+};
+/* ---------- 装扮参数「产品层默认档」（2026-10-29，需求①：ougen_8 左脚/第二套鞋件消失）----------
+   结构 {模型key: {参数id: 默认值}}。与 COSTUME 表里的 `def` **分工不同，不要合并**：
+     · `def` = moc3 自带的默认值**事实**（导出侧读出来的），面板「↺ 复位默认」用它，热区两态
+       起点也用它 ⇒ 改它等于篡改数据、并且会把「点击切换的起手值」一起带偏。
+     · 本表 = **产品决定**：素材把某个部位做成缺省关闭，但游戏里玩家看得见，我们补一档打开。
+   ougen_8 / Param233 的取证链（docs/TROUBLESHOOTING.md §163）：
+     · `Param233` 是 16 个图元的**唯一总开关**，moc3 里 `def=0`；idle / idle9 真实播放 220 帧
+       全程 0，16 件 vis=0 ⇒ 第二套鞋件（角色自身左脚那只，含鞋底与高跟）默认不显示。
+     · 55 个 motion 里 46 个有它的曲线，其中 **42 个恒 0**；只剩 touch_idle2/4/10/18 是
+       「1 秒渐入 → 停 3 秒 → 瞬间归 0」的短暂穿上 ⇒ 想让它默认就在，只能由产品层每帧钉值，
+       数据层无解（改 motion 文件会污染原素材）。
+   ⚠️ 只在 pins 里**没有**该键时写入（`===undefined` 判断）：pins 挂在 window 上按模型隔离、
+   会跨 renderLive2D 存活，用户手动关掉鞋再换皮肤回来应当保持关着，不能被默认档覆盖。 */
+/* ---------- 装扮参数「产品层默认档」（2026-10-29）----------
+   结构 {模型key: {参数id: 默认值}}。与 COSTUME 表里的 `def` **分工不同，不要合并**：
+     · `def` = moc3 自带的默认值**事实**（导出侧读出来的），面板「↺ 复位默认」用它，热区两态
+       起点也用它 ⇒ 改它等于篡改数据。
+     · 本表 = **产品决定**：只在「素材把某个部位做成缺省关闭，但游戏里玩家看得见」时才补一档。
+
+   🔴 2026-10-29 用户实测纠错：**这张表已清空**。
+   曾经写过 `{'ougen_8': {Param233: 1}}`（依据 §163 的"少一只鞋"定性），结果：
+     · idle 等动作的 `Param233` 曲线定值是 **0**，产品强行钉 1 ⇒ 与动作的默认姿态不符；
+     · 而"少一只鞋"的真根因其实是 `ShoseOff` 三态参数被钳到残缺档（见 §169），
+       与 `Param233` 无关。
+   ⇒ 装扮参数的初始态**一律以 moc3/动作为准**，不要用产品层硬钉。真要默认打开某个装扮，
+     必须先把该动作里这个参数的定值也改掉，否则就是"产品与数据互相打架"。
+   （`stateCurOn`/`costumeTarget` 已改成认默认档，三态参数不会再被钳到残缺档。） */
+const COSTUME_DEFAULT_ON = {};
+/* ---------- 装扮参数「成组联动」（2026-10-30，需求①：ougen_8 点一次要同时脱穿**双脚**）----------
+   结构 {模型key: {主参数id: [从参数id, ...]}}。点主参数的热区时，从参数跟着切到**同一个目标档**。
+
+   ★ 为什么必须成组而不是靠数据自动发现（本轮穷举取证，结论与上一轮**相反**）：
+     上一轮曾写「`ShoseOff` 与 `Param233` 逐件镜像配对 0 命中 ⇒ 不是同一件东西的左右两侧，
+     不能写联动」，那个否证**只否掉了「同一批件被两个参数驱动」**，没有否掉「两批件分属左右脚」。
+     本轮改按几何分箱重测（idle9 冻结态、全 582 参数逐参数 min↔max、全 842 件可见性）：
+       · `ShoseOff` 驱动 15 件，x ∈ [-10.5, -0.3] —— **全部在左脚侧**；
+       · `Param233` 驱动 16 件，x ∈ [+6.1, +10.8] —— **全部在右脚侧**；
+       · 两者驱动集**交集为空**，且**没有任何单一参数**能同时改变两侧可见性（582 个全扫，0 命中）。
+     ⇒ 双脚是**两套独立件 + 两个独立参数**，数据层不存在联动，只能在产品层成组。
+     这与游戏里的行为一致：点一下左右脚一起换，是游戏代码同时 set 了两个参数。
+
+   ★ 为什么从参数的目标档要跟主参数走，而不是各自算：
+     两个参数的语义是同一件事（穿/脱），各自按「离当前值更远」算会在某一侧已经到位时
+     反向切回，出现「点一次一只脚穿一只脚脱」。目标档由主参数统一决定后再广播。
+
+   ⚠️ `ShoseOff` 是三态（min=-1 / def=0 / max=1），目标档必须走 `costumeTarget` 的
+     「默认档 ↔ 最大档」逻辑（见该函数注释），不能直接取 min。 */
+const COSTUME_LINK = {
+  'ougen_8': { ShoseOff: ['Param233'] }
+};
+/* ---------- 「拖动型参数互动区」（2026-10-30，需求②：idle8 分屏线可左右拖动改占比）----------
+   结构 {模型key: [{id, label, lo, hi, dir:'x', band:带宽(px), prio}]}。
+   与 COSTUME 表（点击切两态）**并列但不同语义**：这里是**连续拖动**调一个值域很宽的参数，
+   按下后横向位移线性映射到 [lo,hi]，松手保持当前值（不回弹、不切换）。
+
+   ★ `ougen_8` / `Param373` 的取证链（本轮，全部可复跑）：
+     · idle8 画面上确实有一条**斜分屏线**（逐行检测最强竖直边，x 从 735 单调左移到 571）；
+       idle9 没有。这与用户描述「idle8 有分屏线」一致。
+     · 该线由遮罩件 `FanMeng`(#633) 决定：顶点 `(5.1,15.1)(-2.0,-11.9)(48.4,-12.1)(48.3,15.2)`，
+       左侧两点连线就是那条斜边；它被 **25 个件**当遮罩（fan-in=25，是唯一的大面积结构遮罩）。
+     · 全 582 个参数逐参数 min↔max 比对 `FanMeng` 顶点，只有 5 个能改它：
+       `Param147/148/149/162`（各驱动 667 件 = 整模级相机参数，改它们整模都动）与
+       **`Param373`（只驱动 `FanMeng` 一件）** ⇒ 只有 `Param373` 是纯粹的「分屏占比」。
+     · 实测 `Param373` 0→20 时左边界顶点 x 从 18.17 → -24.73 **单调线性移动**，
+       画面差分包围盒从 `[888,78..1105,700]` 扩到 `[25,78..1105,700]`，变化像素 8.9% → 65.4%。
+       默认值两次测量完全一致（阴性对照通过）。
+     · 55 个 motion 里 38 个含 `Param373` 曲线，其中 36 个是**恒 0 的占位**，
+       只有 `idle8`（0→9.42）与 `touch_idle17`（1→10）真正驱动它 ⇒ 不拖它时行为不变。
+   值域取运行时 min/max（0..20），不硬编码。 */
+const COSTUME_DRAG = {
+  'ougen_8': [{ id:'Param373', label:'分屏占比', dir:'x', lo:0, hi:20, band:26, prio:9 }]
+};
 let l2State = null;
 function stopLive2D(){ if(l2State){ l2State.cancelled=true; if(l2State.off)try{l2State.off()}catch(e){}
   if(l2State.app)try{l2State.app.destroy(true,{children:true,baseTexture:true,texture:true})}catch(e){} l2State=null; } }
@@ -1206,10 +1369,44 @@ async function renderLive2D(s, sk){
   const wrap=document.getElementById('l2wrap');
   wrap.style.cssText='position:absolute;inset:0;bottom:44px';
   try{
-    const app=new PIXI.Application({backgroundAlpha:0, resizeTo:wrap, antialias:true});
+    /* 画质：强制 ≥2x 渲染（vendored pixi RESOLUTION 默认 1，高 DPI 屏会糊）。
+       resolution = max(2, devicePixelRatio)：标准屏至少 2x，P1440/4K 屏再顶到 DPR 倍率。
+       autoDensity=true 让 canvas 的 CSS 尺寸仍等于视口、只把后端 buffer 放大 → 清晰且不撑垮布局。
+       与下方 refit()/contentBox() 全用 CSS 尺寸（clientWidth/Height）无关：那只是取景数学，不碰渲染分辨率。
+       ---- 渲染 A/B 诊断开关（2026-10-21 手掌消失排查）----
+       真实 GPU 上 8778 新前端手消失而 8777 旧前端完整（headless swiftshader 全正常，无法远程复现）。
+       二分定位三个新前端独有渲染项，URL 参数一键切换（默认全开=现状）：
+         ?noaa   → antialias:false（关 WebGL MSAA）
+         ?res1   → resolution:1（回到旧前端 1x 渲染）
+         ?nomask → 跳过 mask buffer 调大（用 Cubism 默认，=旧前端行为） */
+    const _AB=new URLSearchParams(location.search);
+    const _L2D_DPR=(window.devicePixelRatio||1);
+    const app=new PIXI.Application({backgroundAlpha:0, resizeTo:wrap,
+      antialias:!_AB.has('noaa'),
+      resolution:_AB.has('res1')?1:Math.max(2,_L2D_DPR), autoDensity:true});
     wrap.appendChild(app.view); my.app=app;
     const L2M=PIXI.live2d.Live2DModel;
     const mdl=await L2M.from(P+model+'/'+sk.live2dBase+'.model3.json',{autoInteract:false});
+    /* 裁剪遮罩缓冲：Cubism 把多个 mask 铺在同一张正方形 RT 上（每块约 N/⌈√maskCount⌉），
+       所以 N 必须 ≥ 画布长边 × √maskCount 才能 1:1；只按 DPR 给 1024/2048 在 mask 多时仍会放大出阶梯。
+       统一按模型实际 mask 数算（不需要逐模型配置），上限 8192。 */
+    try{
+      if(_AB.has('nomask')){
+        try{ window.__maskDbg={skipped:true}; }catch(e){}
+      }else{
+      const _r=mdl.internalModel.renderer;
+      let _mc=1;
+      try{ const _cm=_r._clippingManager;
+        _mc=(_cm&&_cm._clippingContextListForMask&&_cm._clippingContextListForMask.length)||1; }catch(e){}
+      let _long=2098;
+      try{ _long=Math.max(_r.gl.drawingBufferWidth||0,_r.gl.drawingBufferHeight||0)||_long; }catch(e){}
+      const _need=Math.ceil(_long*Math.sqrt(Math.max(1,_mc)));
+      let _n=1024;
+      while(_n<_need && _n<8192) _n*=2;   // 2 的幂；mask 多时自动到 8192
+      _r.setClippingMaskBufferSize(_n);
+      try{ window.__maskDbg={mc:_mc,long:_long,n:_n}; }catch(e){}
+      }
+    }catch(e){ try{ window.__maskDbg={err:String(e)}; }catch(_){} }
     if(my.cancelled||seq!==_l2seq){ app.destroy(true,{children:true}); return; }
     app.stage.addChild(mdl);
     /* fit 基准必须用 internalModel.width/height（= Cubism 画布单位 × pixelsPerUnit）。
@@ -1277,6 +1474,147 @@ async function renderLive2D(s, sk){
     const mm=mdl.internalModel.motionManager;
     const MP=(PIXI.live2d&&PIXI.live2d.MotionPriority)||{IDLE:1,NORMAL:2,FORCE:3};
     const idleGroup=['idle','main','home'].find(g=>groups.includes(g))||groups[0]||null;
+    /* ---------- 方案B 动作回落（2026-10-17，WF-32 §119）----------
+       非 idle 动作播完 → 按 motion_chain.json 落到「最衔接的 idle 待机变体组」，而不是固定 idle。
+       ① 库的回落点在动作播完的下一次 update()：startRandomMotion(this.groups.idle, IDLE)。
+          调用前 state.complete() 已把 currentGroup 清空 → 拿不到"刚播完的动作组"，
+          故在 mm.startMotion 层记录 lastGroup，再包一层 startRandomMotion 把回落目标换成映射表 best。
+       ② 凡"固定 idle"的判断全部换成 idleSet（= 映射表 idle_groups ∪ idleGroup）：
+          变体组同样是循环待机、同样参与残留复位，不再只认单个 idleGroup。
+       ③ 样本闸：本阶段只对 aersasi_2/aersasi_3 生效；目视通过后把 SAMPLE_ONLY 改成 [] 即全量。 */
+    const SAMPLE_ONLY=[];
+    const chainSrc=(location.protocol!=='file:' && (SAMPLE_ONLY.length===0 || SAMPLE_ONLY.includes(sk.key)))
+      ? await fetch('./motion_chain.json').then(r=>r.ok?r.json():null).catch(()=>null) : null;
+    const chainModel=(chainSrc&&chainSrc.models&&chainSrc.models[sk.key])||null;
+    const idleSet=new Set(chainModel?chainModel.idle_groups:[]);
+    if(idleGroup) idleSet.add(idleGroup);
+    /* 形态开关参数集（§134 续，motion_chain.json v2 的 switch_params）：
+       两态定值参数 = 装饰/形态开关（如 antu_2/Param148=0|10）。游戏语义是**状态保持**
+       （拖完戴着，切 idle 不摘）——restTick 复位必须豁免它们，否则回落瞬间装饰消失
+       （= 用户报的「touch_drag11/12 回落完全不衔接」真根因）。 */
+    const switchParams=new Set(Object.keys((chainModel&&chainModel.switch_params)||{}));
+    /* 跨动作独立状态（2026-10-27 用户定案）：与 pose_keep（回落姿势）分离。
+       · stateParams = restTick 豁免全集（装扮 + 明确动作状态）
+       · stateSetByGroup = 某动作明确写出的**非零**状态（普通 0 曲线不是“明确关闭”）
+       生命周期：直到互动区或另一个动作明确改变；按 skin key 隔离，重进同模型继续保持。 */
+    const stateParams=new Set(Object.keys((chainModel&&chainModel.state_params)||{}));
+    const stateSetByGroup=(chainModel&&chainModel.state_set_by_group)||Object.create(null);
+    const actionStateByModel=(window.__actionStatePinsByModel=
+      window.__actionStatePinsByModel||Object.create(null));
+    if(!actionStateByModel[sk.key]) actionStateByModel[sk.key]=Object.create(null);
+    const actionStatePins=actionStateByModel[sk.key];
+    /* 在**离开动作 A 的那一刻**抓 A 当前实际值，而不是播放 A 时立即钉末值：
+       KissShow 这类参数要在动作内部从 0→7 完成局部过渡；若 play(A) 前就写 7，
+       口红印会瞬间出现，等于把动作曲线绕掉。直接切到 B / 回落 idle 都先走这一出口。 */
+    const captureActionState=(g)=>{
+      const defs=stateSetByGroup[g]; if(!defs) return;
+      const c=l2State&&l2State.app&&l2State.app.stage.children[0];
+      const core=c&&c.internalModel&&c.internalModel.coreModel; if(!core) return;
+      for(const k in defs){ try{ const v=+core.getParameterValueById(k);
+        if(Math.abs(v)>0.5) actionStatePins[k]=v; }catch(e){} }
+    };
+    /* lastGroup = **页面主动请求的动作组**。回落目标绝不回写它。
+       历史坑：旧版回落函数自己也调 startMotion，把 lastGroup 覆盖成回落目标，
+       于是同一变量既当「刚播完的动作」又当「当前动作」，查表查到的是 idle 变体 →
+       恒落空 → 落回默认 idle 第 0 帧（= 用户报的「回落成功后闪回初始待机」）。 */
+    let lastGroup=null;
+    let _inFb=false;   /* 回落内部发起的 startMotion 不回写 lastGroup */
+    let _fbFor=null;   /* 已经为哪个动作组执行过回落（同一动作只回落一次） */
+    const _origStartMotion=mm.startMotion.bind(mm);
+    mm.startMotion=(g,i,p)=>{ if(!_inFb) lastGroup=g; return _origStartMotion(g,i,p); };
+    const _origRandomMotion=mm.startRandomMotion.bind(mm);
+    /* 回落的手工修正表（2026-10-23 用户按游戏行为确认）：
+       '__hold__' = 播完**不回落**，停在最后一帧（effect 类语义是「暂停当前动作」，回落反而打断它）；
+       组名 = 强制回落到该组，覆盖 motion_chain.json 里按「末帧 vs idle 首帧差异度」算出的 best。
+       为什么需要覆盖：差异度是几何量，算不出「游戏里作者安排的衔接」——ougen_8 的 touch_idle14
+       算法给 idle5(norm=2.53)，但游戏实际回 idle9，用户实测 idle5 明显不衔接。 */
+    /* 回落的手工修正表（2026-10-23 用户按游戏行为确认）：
+       '__hold__' = 播完**不回落**，停在最后一帧（effect 类语义是「暂停当前动作」，回落反而打断它）；
+       组名 = 强制回落到该组，覆盖 motion_chain.json 算出的 best。
+       历史：这里曾有一条 touch_idle14:'idle9' 用来绕过 norm 口径的错误选择；
+       2026-10-23 全库表已切到 raw_sse（§138），算法自己就能选出 idle9，故该条已删除。
+       保留机制本身，用于「算法算不出、但游戏行为明确」的个别动作。 */
+    const FALLBACK_FIX={
+      ougen_8:{ effect:'__hold__' }
+    };
+    const _ff=FALLBACK_FIX[sk.key]||null;
+    /* ================= 唯一回落出口（2026-10-24 合并两段回落）=================
+       旧版有**两条**回落路径，各自选组、各自写 pose_keep，互相踩踏：
+         路径A `_fallback()`：库 startRandomMotion + 一个 1200ms 防抖 ticker 看门狗；
+                             只放行 /^touch_(idle|drag)/ 的动作查表，其它一律固定回 idle；
+                             用 NORMAL(2) 优先级，且**不写 pose_keep**。
+         路径B `_fallbackToIdle()`：setTimeout(duration+0.6s) 定时器，读 chain 表选组。
+       两者交错时：A 先跑把 lastGroup 改写成 idle 变体 → B 查表恒落空 → 落回默认 idle 第 0 帧。
+       实测（touch_idle14）同一动作出现**两次**回落：3.08s idle9(NORMAL，A 正确)
+       → 3.63s idle(IDLE，B 落错)。路径 B 先跑则正确，说明根因是竞争而非选组算法。
+
+       现在合并为单一 `_fallbackOnce()`：
+         ① 选组判据统一（FALLBACK_FIX > chain.best > idleGroup），**不再按动作名分类**；
+         ② 用 `_fbFor` 保证一个动作只回落一次，从结构上消除竞争；
+         ③ 选组永远基于 `lastGroup`（页面请求的动作），回落内部 startMotion 不回写它；
+         ④ pose_keep 与回落放在同一处写，且**命中才写**，不命中不清空（避免踩掉别的路径的 pin）。
+       ⚠️ 用 IDLE(1) 优先级：库 MotionState.start() 对 priority>1 要求
+          group===reservedGroup && index===reservedIndex（我们不走 reserve 流程，必被拒）。
+       ⚠️ 不要删掉末尾的 state.complete()+优先级归零：动作是 FORCE(3) 播的，
+          reserveMotion 会拒绝 priority<=currentPriority 的请求（§143 实测 curPri 恒 3）。 */
+    const _fallbackOnce=()=>{
+      const lg=lastGroup;
+      if(!lg || idleSet.has(lg)) return false;      /* 待机组自身循环，不需要回落 */
+      if(_fbFor===lg) return true;                  /* 本动作已回落过：吞掉重复请求（库/看门狗都会再问一次） */
+      captureActionState(lg);                       /* 离开动作前抓它产生的独立状态 */
+      const _fix=(_ff&&_ff[lg])||null;
+      if(_fix==='__hold__'){ _fbFor=lg; return true; }   /* effect 类：停在末帧是语义要求 */
+      let dst=null;
+      if(_fix && (mm.definitions[_fix]||[]).length) dst=_fix;
+      if(!dst){ const c=chainModel&&chainModel.chain&&chainModel.chain[lg];
+        if(c && c.best && (mm.definitions[c.best]||[]).length) dst=c.best; }
+      if(!dst) dst=idleGroup;
+      if(!dst) return false;
+      const defs=mm.definitions[dst]||[];
+      if(!defs.length) return false;
+      /* pose_keep 必须在选组之后、startMotion 之前写：它挂的是**动作组**（lg），
+         不是回落目标 —— 回落目标恰恰是那条缺姿态曲线的 idle。
+         ⚠️ 语义是「**当前这个动作**要保住哪些参数」，所以不命中时必须清掉：
+         否则先播 touch_idle14（有 pk）再播 mission（无 pk），回落时会带着上一个动作的
+         姿势参数一起复位，把 mission 自己的末帧姿势顶掉。现在是唯一写入点，清空安全。 */
+      try{
+        const pk=(chainModel&&chainModel.chain&&chainModel.chain[lg]||{}).pose_keep;
+        const pins=(window.__posePinsByModel=window.__posePinsByModel||Object.create(null));
+        const ex=(window.__poseKeepKeys=window.__poseKeepKeys||Object.create(null));
+        if(pk && Object.keys(pk).length){ pins[sk.key]=pk;
+          ex[sk.key]=new Set(Object.keys(pk)); }   /* restTick 据此豁免，否则两边每帧打架 */
+        else { delete pins[sk.key]; delete ex[sk.key]; }
+      }catch(e){}
+      try{
+        if(mm.state && mm.state.complete) mm.state.complete();
+        if(mm.state){ mm.state.currentPriority=0; mm.state.reservePriority=0; }
+        mm.currentPriority=0; mm.reservePriority=0;
+      }catch(e){}
+      const idx=Math.floor(Math.random()*defs.length);
+      _fbFor=lg;
+      _inFb=true;                                   /* 回落目标不覆盖 lastGroup */
+      let p=null;
+      try{ p=mm.startMotion(dst,idx,(MP&&MP.IDLE)||1); }catch(e){ p=null; }
+      finally{ _inFb=false; }
+      /* ⚠️ mm.startMotion 是 async（内部 await loadMotion 之后才调 state.start），
+         返回值是 Promise 而不是 boolean。库在 state.start() 被拒时 resolve(false)，
+         所以必须等它 resolve 才知道成没成 —— 只 catch 同步异常会漏掉「被拒」这种情况。
+         失败就清掉 _fbFor，让下一轮还能再试，否则画面会永久停在动作末帧。 */
+      if(p && typeof p.then==='function'){
+        p.then(r=>{ if(r===false){ if(_fbFor===lg) _fbFor=null; } },
+               ()=>{ if(_fbFor===lg) _fbFor=null; });
+      }else if(p===false && _fbFor===lg){ _fbFor=null; }
+      try{ const h=document.getElementById('l2Curr'); if(h) h.textContent=dst; }catch(e){}
+      return true;
+    };
+    /* 库的回落请求（MotionManager.update → startRandomMotion(groups.idle, IDLE)）
+       全部改由我们接管：库只会回 groups.idle，而正确目标是 chain.best。
+       注意这条只是**兜底**：本工程实测库里 isFinished() 恒 false（见 §21 注释），
+       真正生效的触发器是 `_scheduleFallback` 的定时器。
+       ⚠️ 不再加 ticker 看门狗：旧看门狗用 `mm.state.isFinished`（MotionState 根本没有这个方法）
+       且不区分「动作还没 load 完」与「已播完」，会在 play() 后第一帧就误触发回落。 */
+    mm.startRandomMotion=(g,i,p)=>{ if(_fallbackOnce()) return true; return _origRandomMotion(g,i,p); };
+
     /* ---------- 动作语音 ----------
        ⚠️ 不要走库的 `definitions[g][0].Sound`：那条通道由 SoundManager 托管，
        下一条动作一 startMotion 就把上一条 dispose 掉。而 idle 播完会自动回落 idle，
@@ -1302,10 +1640,16 @@ async function renderLive2D(s, sk){
     /* 每个 group 实际驱动的参数名集合，在 createMotion 拿到原始 json 时顺手登记（零额外请求）。
        下面的「残留复位」和 motion3.json 的曲线绑定集是同一份数据，不另开文件。 */
     const paramSets=Object.create(null);
+    /* 循环接管：idle 组按 Meta.Loop 循环。
+       （原 forcedLoop 用于「Ctrl 拖拽按住期间强制 loop」，该功能已于 2026-10-23 按用户要求移除） */
     const curveId=(c)=>{ const i=c&&c.Id; return typeof i==='string'? i : (i&&i.string)||null; };
     const origCreateMotion=mm.createMotion.bind(mm);
     mm.createMotion=(json,group,def)=>{ const m=origCreateMotion(json,group,def);
-      if(group===idleGroup&&json&&json.Meta&&json.Meta.Loop&&m.setIsLoop){
+      /* 只有 idle 变体是循环待机：采纳 Meta.Loop 让其播完不触发回落（库检测到 loop 就持续回绕）。
+         touch_drag 与长动画（touch_head/touch_body/complete 等）虽 Meta.Loop 恒 True，但 vendored 库从不据此自动 loop——
+         setIsLoop 必须手动调用；这里**只给 idle 组合调**，drag/长动画不 setLoop → 播完由 complete→
+         shouldRequestIdleMotion 逐帧接管回落（touch_drag/touch_idle→best，其它长动作→idle），就是方案B的行为。 */
+      if(idleSet.has(group)&&json&&json.Meta&&json.Meta.Loop&&m.setIsLoop){
         m.setIsLoop(true); if(m.setIsLoopFadeIn) m.setIsLoopFadeIn(false); }
       try{ if(json&&json.Curves){ const s=paramSets[group]||(paramSets[group]=new Set());
           for(const c of json.Curves) if(c.Target==='Parameter'){ const id=curveId(c); if(id) s.add(id); } } }catch(e){}
@@ -1335,10 +1679,101 @@ async function renderLive2D(s, sk){
        用户触发的动作一律 FORCE：库的 state.reserve() 会拒绝 ≤ 当前优先级的请求（idle 占 IDLE=1），
        不 FORCE 就连点第二个部位都放不出来。回落 idle 交给运行时（见 ②），不再需要定时器。 */
     const played=new Set();
-    const play=g=>{ if(!g) return false;
-      try{ playVoice(g);
-        mm.startMotion(g,0,MP.FORCE);
-        if(g!==idleGroup) played.add(g); return true; }catch(e){ return false; } };
+    const playedAt=Object.create(null);
+    /* ---------- 非循环动作播完 → 回落到 idle（2026-10-23 定案）----------
+       为什么必须我们自己安排：本项目导出的 motion3.json 忠实写了 Unity 的 m_LoopTime
+       （ougen_8 实测 55/55 与源数据一致），于是 login/touch_* 等动作 Loop=False、
+       到 duration 后结束。而库的自动回落挂在
+         MotionManager.update(): if (isFinished()) { state.complete();
+                                                     if (shouldRequestIdleMotion()) startRandomMotion(...) }
+       实测这条路在本工程的库版本 + FORCE 播放下从不成立：
+       queueManager 里的条目 getEndTime() 恒为 -1、_finished 从不置位，
+       qmFinished 恒 false → motionFinish 从不 emit → currentGroup 停在刚播的组上。
+       旧画廊是靠**错误的 Meta.Loop=True**（41/55 个 clip 与 Unity 真值不符）让动作
+       永不结束来回避这个问题的；那是数据错误，不抄。
+       这里的做法：用 motion_chain.json 的 durations（建表时从 Meta.Duration 提取）
+       定时触发回落；优先级用库的 IDLE(1)（见 _fallbackOnce 里的说明）。 */
+    let _fallbackTimer=null;
+    let _lastCurr=null;
+    const _durs=(chainModel&&chainModel.durations)||{};
+    /* 回落实现已合并到上面的 _fallbackOnce()（唯一定时器/看门狗/库请求共用出口）。
+       此处原来是一个独立的 _fallbackToIdle()：它自己选组、自己写 pose_keep、自己 startMotion，
+       并且把 lastGroup 改写成回落目标 —— 于是它在路径A 之后跑时查表恒落空，落回默认 idle 第0帧。
+       删掉整段，只保留定时器调度（_scheduleFallback）。 */
+    const _scheduleFallback=(g)=>{
+      if(_fallbackTimer){ clearTimeout(_fallbackTimer); _fallbackTimer=null; }
+      if(!g || idleSet.has(g)) return;             /* 待机组自身循环，不需要回落 */
+      const fix=(_ff&&_ff[g])||null;
+      if(fix==='__hold__') return;                  /* effect 类：停在末帧是语义要求 */
+      const d=_durs[g];
+      if(!(d>0)) return;
+      /* +0.6s 余量：覆盖淡出尾巴，避免在最后一帧抖动时被切走 */
+      _fallbackTimer=setTimeout(()=>{ _fallbackTimer=null; _fallbackOnce(); },
+                                Math.round((d+0.6)*1000));
+    };
+    const play=(g,pr)=>{ if(!g) return false;
+      try{
+        captureActionState(lastGroup);              /* 直接 A→B：B 覆盖前先抓 A 当前状态 */
+        playVoice(g);
+        /* 动作状态不在这里预写：动作内部要自己完成 0→非零的局部过渡；
+           只在离开动作时由 captureActionState() 把当时实值接管成持久状态。 */
+        /* 动态标签：播出即同步显示当前组（非待机动作播放中显示动作名，便于回落前后对照） */
+        const _l2c=document.getElementById('l2Curr'); if(_l2c) _l2c.textContent=g;
+        /* 开场 login 用 FORCE 才压得过初始 idle；用户一动手先把它标 complete，否则同级 priority
+           会让动作被 reserve 拒掉（实测 FORCE 才能在 currentGroup 里看到 login）。 */
+        try{ if(g!=='login' && mm.state && mm.state.currentGroup==='login' && mm.state.complete) mm.state.complete(); }catch(e){}
+        mm.startMotion(g,0,pr||MP.FORCE);
+        if(!idleSet.has(g)){ played.add(g); playedAt[g]=performance.now(); }
+        _lastCurr=g; _fbFor=null; _scheduleFallback(g);
+        return true; }catch(e){ return false; } };
+    try{ window.__l2play=play; }catch(e){}
+    /* 待机组集合（只读出口）：验收要判断「点击是否**新起了非待机动作**」。
+       动作组名不固定（idle / idle2 / touch_idle7 …），探针无法靠字符串猜，必须问页面。
+       ⚠️ 不能改成「currentGroup 前后相等」：探针会先 stopAllMotions() 把 currentGroup 清成 null，
+       库随后自己恢复待机 ⇒ 恒出现 null→idle，那是库的正常行为，不是热区播了动作（假红）。 */
+    try{ window.__l2IdleSet=()=>{ const a=[]; idleSet.forEach(g=>a.push(g)); return a; }; }catch(e){}
+    /* 当前舞台上的**活模型**（只读出口，2026-10-28）。
+       为什么必须由页面给：`l2State` 是模块级 `let`，**不在 window 上**，探针写
+       `window.l2State.app...` 恒为 undefined；于是它们退到「自己 addChild 时抓下来存着」的
+       兜底变量，而那个变量在换肤/重建模型后指向已销毁对象（读到 undefined 或恒 NO_MODEL）。
+       这类「仪器指错对象」的假红/假绿本项目已踩多次 —— 判据必须问产品当前真实的那一个。
+       用函数而不用属性：值会随换肤变化，属性会被定格在注册那一刻。 */
+    try{ window.__l2ModelRef=()=>{
+      const a=l2State&&l2State.app;
+      const m=a&&a.stage&&a.stage.children&&a.stage.children[0];
+      return (m&&m.internalModel)?m:null; }; }catch(e){}
+    /* ticker 存活探针（只读，2026-10-28）。
+       为什么需要：本页面所有「逐帧」行为（pins 重申 / tween 推进 / 动作回落）都跑在
+       `l2State.app.ticker` 上。headless 下 rAF 可能被浏览器节流甚至停摆，
+       此时参数会**冻在最后一次 tick 的值**：pin 写不进去、tween 不推进、画面零变化。
+       探针若不做这一步就先报「0 差异 / 参数没变」，得到的其实是"仪器停摆"，
+       而不是产品缺陷 —— 本项目已因此误判过多次。
+       判据：连续两次取样的 lastTime 必须递增，否则结论一律作废。 */
+    try{ window.__l2TickerState=()=>{
+      const a=l2State&&l2State.app;
+      if(!a||!a.ticker) return null;
+      return {started:!!a.ticker.started, lastTime:+a.ticker.lastTime||0,
+              delta:+a.ticker.deltaMS||0, fps:+a.ticker.FPS||0}; }; }catch(e){}
+    /* ticker **活对象**出口（只读，2026-10-28）。
+       为什么返回对象本身而不是快照：与 `__l2ModelRef` 同一个教训 —— 快照拿不到
+       `stop()` / `update()`，探针就无法把渲染循环从 rAF 解耦。实测 headless 下浏览器
+       会在页面加载 18–25 秒后把出帧源降到精确 1 Hz（`gapMax` 193→1016 ms），此时
+       产品代码**本身**没问题（`core.update` 6 ms / `render` 11 ms 全程平稳），
+       只是没被喂帧。有了这个出口，探针可以 `stop()` + `autoStart=false` 后自己
+       用定时器 `update(now)` 推帧，从而把「产品慢」与「浏览器不发帧」彻底分开。 */
+    try{ window.__l2Ticker=()=>{
+      const a=l2State&&l2State.app;
+      return (a&&a.ticker)||null; }; }catch(e){}
+    /* ---------- 眼神跟随 ----------
+       不用 mdl.focus()：它绕 focusController，实测 target 变了但 x 不更新（headless 与真机都可能），
+       且部分模型没有标准 ParamEyeBallX。这里直接每帧写 ParamEyeBallX/Y（有就生效，没有就 no-op），
+       位置按画布中心归一化到 [-1,1]；ticker 监听排在内置 model update 之后，不会被动作曲线覆盖。 */
+    const eyeT={x:0,y:0}; try{ window.__eyeT=eyeT; }catch(e){}
+    wrap.addEventListener('pointermove', e=>{ if(!OPT.eye) return;
+      try{ const r=app.view.getBoundingClientRect();
+        eyeT.x=Math.max(-1,Math.min(1,(e.clientX-r.left-r.width/2)/(r.width/2)));
+        eyeT.y=Math.max(-1,Math.min(1,(e.clientY-r.top-r.height/2)/(r.height/2))); }catch(err){} });
+    wrap.addEventListener('pointerleave', ()=>{ eyeT.x=0; eyeT.y=0; });
     /* ---------- 非 idle 动作的参数残留复位（docs/TROUBLESHOOTING.md §21 末段） ----------
        touch_idle1（安土「午夜的瑰色电梯」）动画 252 条曲线，其中 15 条 idle 从不驱动；clip 播完
        没有任何曲线把它们写回去 → 整体位移停在末帧 → 57 个判定区全部被甩出画布，用户「进去就出不来」。
@@ -1346,41 +1781,191 @@ async function renderLive2D(s, sk){
        的参数回落到 moc3 默认值（= 加载时的静止位，因为这些参数在静止态本就没人动）。
        两条约束防止误伤：① 只碰播过的 clip 驱动过的参数，物理/眨眼/口型等 clip 无关参数一律不动；
        ② 只在回到 idle（或队列空）时才复位，且先等 REST_DELAY 让上一条 clip 的淡出跑完，再线性渐变过去。 */
-    const REST_DELAY=400, REST_MS=700, cm=im.coreModel;
-    let rest=null;
-    const restTick=()=>{ const cg=mm.state&&mm.state.currentGroup;
-      if(cg&&cg!==idleGroup){ rest=null; return; }
-      if(!rest){ const idleS=paramSets[idleGroup]; if(!idleS||!played.size) return;
-        const want=new Set(); played.forEach(g=>{ (paramSets[g]||new Set()).forEach(p=>{ if(!idleS.has(p)) want.add(p); }); });
-        played.clear();
-        const items=[];
-        want.forEach(p=>{ let i=-1; try{ i=cm.getParameterIndex(p); }catch(e){}
-          if(i>=0) try{ items.push([i, cm.getParameterValueByIndex(i), cm.getParameterDefaultValue(i)]); }catch(e){} });
-        if(!items.length) return;
-        rest={items, t0:performance.now()+REST_DELAY}; return; }
-      const el=performance.now()-rest.t0; if(el<0) return;
-      const k=Math.min(1, el/REST_MS);
-      for(const it of rest.items) try{ cm.setParameterValueByIndex(it[0], it[1]+(it[2]-it[1])*k); }catch(e){}
-      if(k>=1) rest=null; };
+     const REST_DELAY=400, REST_MS=700, cm=im.coreModel;
+     let rest=null;
+      const restTick=()=>{ const cg=mm.state&&mm.state.currentGroup;
+        if(cg&&!idleSet.has(cg)){ rest=null; return; }
+        if(!rest){ const idleS=paramSets[(cg&&idleSet.has(cg))?cg:idleGroup]||paramSets[idleGroup]; if(!idleS||!played.size) return;
+          /* play() 到 createMotion 登记之间有网络加载窗口：startMotion 是 async，played 先加、
+             paramSets[g] 后到。不等的话本帧就消费 played → 空集 → clear() 把动作吞掉，残留永不复位
+             （2026-10-20 铁证：__REST 日志 ['build','idle',1,0]+['empty',0]）。等登记或超时再消费。 */
+          let loading=false; const nowMs=performance.now();
+          played.forEach(g=>{ if(!paramSets[g] && (mm.motionGroups[g]||[])[0]===undefined
+              && nowMs-(playedAt[g]||0)<5000) loading=true; });
+          if(loading) return;
+          const want=new Set();
+          /* pose_keep 里的参数不交给 restTick 复位：它们由下面的 LOW ticker 每帧 pin 住，
+             两边同时写会逐帧互相覆盖（肉眼是姿势抖动）。见 _fallbackOnce() 里的说明。 */
+          const keepS=(window.__poseKeepKeys||{})[sk.key]||null;
+          played.forEach(g=>{ (paramSets[g]||new Set()).forEach(p=>{
+            if(!idleS.has(p) && !switchParams.has(p) && !stateParams.has(p)
+                && !(keepS&&keepS.has(p))) want.add(p); }); });
+          played.clear();
+          const items=[];
+          want.forEach(p=>{ let i=-1; try{ i=cm.getParameterIndex(p); }catch(e){}
+            if(i>=0) try{ items.push([i, cm.getParameterValueByIndex(i), cm.getParameterDefaultValue(i)]); }catch(e){} });
+          if(!items.length) return;
+          rest={items, t0:performance.now()+REST_DELAY}; return; }
+         const el=performance.now()-rest.t0; if(el<0) return;
+         const k=Math.min(1, el/REST_MS);
+         for(const it of rest.items) try{ cm.setParameterValueByIndex(it[0], it[1]+(it[2]-it[1])*k); }catch(e){}
+        if(k>=1) rest=null; };
     app.ticker.add(restTick);
+    /* ---------- 跨动作独立状态：唯一 LOW 写入出口（2026-10-27 用户定案）----------
+       三类语义必须分开：
+       · costume pins：玩家互动区写入的鞋/丝袜/衣服/戒指状态，优先级最高；
+       · action-state pins：动作明确写出的**非零**独立状态（吻痕/口红印），普通 0 曲线不清；
+       · pose_keep：只服务回落姿势，不在这里混进状态表。
+
+       时机（2026-10-28 A/B/C/D 四组对照后修正，原注释「只挂 LOW 就够」已被推翻）：
+       一次 `internalModel.update()` 的固定顺序是
+         motionManager.update（动作曲线写值）→ saveParameters（存档）
+         → beforeModelUpdate（本文件的 stateApply 在这里写 pin）
+         → core.update()（按当前参数算 drawable 不透明度/可见性）→ loadParameters（把参数复原成存档值）。
+       ⇒ **画什么由 beforeModelUpdate 决定**（core.update 之前那一刻的值），
+         **读回什么由 LOW 决定**（loadParameters 之后重申）。
+       只挂 LOW 的后果是「参数读回正确、画面仍按动作曲线算」（实测 Param233 读回 1、16 件 0/220 帧可见）；
+       两处都写才两边都对（`l2d_pin_timing_ab.py` D 组 450/450 可见且读回 1）。
+       LOW 这一份仍有必要：它保证 loadParameters 之后参数值是真值，供其它探针/交互读取，
+       并且 tween 渐变、面板显示都依赖读回值。
+       这里曾逐字重复注册了两份 costume ticker，面板构建又注册第三份，每帧写 3 遍。
+       现在全模型唯一出口是 app.__statePinTick；同一参数若两边都有，先写 action state、
+       后写 costume，保证用户刚做的互动操作高于动作状态。 */
+    if(!app.__statePinTick){
+      /* ⚠️ **不要在这里调 core.update()**（2026-10-28 A/B 实测否证）。
+         一度以为「Cubism 只在参数变化时重算 keyform，pin 每帧写同值就不刷新」，
+         于是补了一次 `c2.update()`；但对照实验显示：
+           · 旧行为（只写、不 update）在动作停稳后同样能让 Paramring 的 drawable 796 不透明度 0→1；
+           · 之前读到的「恒为 0」是在 login 动作**仍在播放**时取的。
+         **本段前半解释已被同日后续取证改写**（保留原文以免重犯）：真正原因不是「动作曲线覆盖
+         参数」也不是 keyform 刷新，而是**写在 core.update() 之后** —— 动作曲线在帧初写 0，
+         core.update 用 0 算完不透明度，LOW 才把参数改成 1，于是读回 1、画面仍是隐藏。
+         证据：B 组只把写入挪到 beforeModelUpdate，同一参数同一动作就从 0 帧可见变 450/450。
+         ⇒ 结论不变（仍不需要手动 update），但改由「两处都写」解决，见上方 stateApply 的注释。
+         「参数对了但画面没变」的正确排查顺序：先确认动作是否还在跑（currentGroup / 曲线是否
+         驱动该参数）→ 再确认**写入是否发生在 core.update() 之前** → 最后才怀疑 keyform。 */
+      const stateTick=()=>{
+        try{
+          const m2=l2State&&l2State.app&&l2State.app.stage.children[0];
+          const c2=m2&&m2.internalModel&&m2.internalModel.coreModel;
+          if(!c2) return;
+          const as=(window.__actionStatePinsByModel||{})[sk.key];
+          if(as) for(const k in as){ try{ c2.setParameterValueById(k, as[k]); }catch(e){} }
+          const cs=(window.__costumePinsByModel||{})[sk.key];
+          if(cs) for(const k in cs){ try{ c2.setParameterValueById(k, cs[k]); }catch(e){} }
+        }catch(e){}
+      };
+      app.__statePinTick=stateTick;
+      app.ticker.add(stateTick, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+    }
+    /* ---------- 回落姿势保持（2026-10-24 用户定案：touch_idle14 → idle9 闪回问题）----------
+       问题链路（逐帧取证得到，不是推测）：
+         touch_idle14 是 Loop=False、Duration=3.017 的动作，末帧状态是侧躺、头转向一边
+         （ParamAngleX=-18.367 / Param194=10 / Param207=-8.2 / Param315=-7 …）。
+         它的**正确**回落目标是 idle9 —— 末帧与 idle9 首帧共同的 108 个参数差值**精确为 0**，
+         是制作方刻意对齐的铁证，SSE 比第二名(709)低得多。
+         但 idle9 只有 109 条曲线，全是首尾闭合的细微摆动（幅度 ±2），一条姿态曲线都没有。
+         于是回落瞬间 model.loadParameters() 按 moc3 默认值把那 305 个无曲线参数复位成 0
+         → 侧躺姿势塌回直立，视角瞬间翻转（= 用户说的「回落后立马闪回初始默认 idle」）。
+
+       两处执行者，都必须处理：
+         ① loadParameters() —— 每帧重置，只能靠 LOW ticker 在它之后重申；
+         ② restTick —— 会主动把这批参数在 400ms 后用 700ms 线性拉回默认值，必须排除（已改）。
+
+       位置：与装扮 pin、restTick 同一个 LOW 优先级槽位——在模型 update（含 loadParameters）
+       之后、渲染之前。写在这里的值本帧就生效，不会被覆盖。 */
+    app.ticker.add(()=>{
+      try{
+        const pm=(window.__posePinsByModel||{})[sk.key];
+        if(!pm) return;
+        const m2=l2State&&l2State.app&&l2State.app.stage.children[0];
+        const c2=m2&&m2.internalModel&&m2.internalModel.coreModel;
+        if(!c2) return;
+        /* 只在待机组生效：动作播放中让曲线自由驱动，不要锁死姿态
+           （否则动作会在自己应该动的那些参数上被钉住）。 */
+        const cg=m2.internalModel.motionManager&&m2.internalModel.motionManager.state
+                 &&m2.internalModel.motionManager.state.currentGroup;
+        if(cg && !idleSet.has(cg)) return;
+        for(const k in pm){ try{ c2.setParameterValueById(k, pm[k]); }catch(e){} }
+      }catch(e){}
+    }, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+    /* ---------- 「当前动作」标签跟随库的真实状态（2026-10-23）----------
+       为什么需要：`play()` 只在"主动播动作"那一刻写 #l2Curr；动作播完由**库自己**
+       回落 idle（MotionManager.update → startRandomMotion(groups.idle, IDLE)），
+       这条路径不经过 play()，于是标签一直停在刚播的那个组名上。
+       用户看到"标签还写着 login、却已经回到待机"会以为回落失效——实测用像素比对
+       确认画面确实回到 idle（B≈C），纯属标签滞后。
+       这里每帧读 mm.state.currentGroup 回写，让标签始终等于实际画面状态。
+       只在值变化时写 DOM，避免每帧触发重排。 */
+    { let _localCurr='';
+      app.ticker.add(()=>{
+        try{
+          const g=(mm.state&&mm.state.currentGroup)||null;
+          /* ⚠️ 每次都要**重新查 DOM**：下方 `bar.innerHTML=...` 会重建整个工具条，
+             把 #l2Curr 换成新节点；持有旧引用写 textContent 写进的是已脱离文档的孤儿节点，
+             页面上看不到任何变化（2026-10-23 实测：ticker 读到的 g 已是 idle、_localCurr
+             也已同步，但屏幕上的标签仍是 login —— 就是这个原因）。 */
+          const el=document.getElementById('l2Curr');
+          if(g && g!==_localCurr){ _localCurr=g; if(el) el.textContent=g; }
+        }catch(e){}
+      }, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+    }
+    /* 眼睛参数用 **LOW 优先级的 ticker** 写：它在 Live2DModel.update（NORMAL）之后、
+       app.render 之前执行，此时 loadParameters 已经把动作/物理值铺完，写进去才留到本帧绘制。
+       写在 model.update 里会被随后的 loadParameters 覆盖（实测）。 */
+    app.ticker.add(()=>{ if(!OPT.eye) return;
+      try{ cm.setParameterValueById('ParamEyeBallX', eyeT.x);
+           cm.setParameterValueById('ParamEyeBallY', -eyeT.y); }catch(e){} },
+      null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
     const bar=document.getElementById('l2bar');
-    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · <b>Ctrl+滚轮</b>缩放 / 拖拽平移 / 双击复位</span>`;
+    bar.innerHTML=`<label>动作</label><select id="l2Motion"></select><button id="l2Replay">重播</button><button id="l2SeqAll" title="从当前组开始逐个播完全部动作，每组约 6 秒（305 组约半小时一轮）；再点一次或手动选动作即停">▶ 全部</button><button id="l2Fit">复位</button><button id="l2Full">全屏</button><button id="l2AreasBtn" class="tg">判定区</button><button id="l2PanelBtn" class="tg">参数·部件</button><span class="pill" id="l2Hit">点击角色部位可触发对应动作</span><span class="pill">${groups.length} 组动作</span><span class="pill" id="l2Voice">语音加载中…</span><span class="pill" id="l2Curr">—</span><span class="hint">点头部/身体等部位=对应反应（同游戏） · 拖拽=拖动互动 · <b>Ctrl+拖拽</b>平移 · <b>Ctrl+滚轮</b>缩放 · 双击复位</span>`;
     const sel=document.getElementById('l2Motion');
     const fillSel=()=>{ const cur=sel.value;
       sel.innerHTML=groups.map(g=>`<option value="${g}">${g}${voice[g]?'（语音）':''}</option>`).join('');
       if(cur) sel.value=cur; };
     fillSel();
+    { const _l2c=document.getElementById('l2Curr'); if(_l2c) _l2c.textContent=idleGroup; }
+    /* 开场 login：与游戏一致先播登录动作；播完仍走同一套回落（不改变 lastGroup 语义）。
+       延迟 300ms 让 fit/贴图先稳定；用户已切走则不播。 */
+    if(OPT.login && groups.includes('login')){
+      setTimeout(()=>{ if(my.cancelled||seq!==_l2seq) return;
+        try{ sel.value='login'; play('login', MP.FORCE); }catch(e){} }, 300);
+    }
     /* 表是异步来的（本地小文件），回填后只刷新下拉标签与语音计数，不阻塞模型加载主流程。
        计数只算「模型里真的有的组」，否则会把表里其它类别（战斗/强化…）算进来说话数虚高。 */
-    Promise.all([loadVoiceMap(), loadWords()]).then(([m])=>{ const e=m[sk.key]||{}, map=e.l2d||{};
+    Promise.all([loadVoiceMap(), loadWords(), loadCostumeMap(), loadTouchAreaMap()]).then(([m])=>{ const e=m[sk.key]||{}, map=e.l2d||{};
       for(const g in map) if(Array.isArray(map[g])&&map[g].length)
         voice[g]=map[g].map(p=>new URL(P+p,location.href).href);
       const vp=document.getElementById('l2Voice');
       const n=groups.filter(g=>voice[g]).length;
       const tc=talkCount(sk.key);
       if(vp) vp.textContent=(n?('语音 '+n+' 组'):'该皮肤无语音')+(tc?' · '+tc:'');
-      fillSel(); });
-    sel.onchange=()=>{ play(sel.value); };
+      fillSel();
+      /* 换装表可能比语音表晚到；数据到齐后若面板已开着，重建一次让它出现「换装」分区。
+         （面板只在打开时构建，不重建就会永久缺这一区，2026-10-23 实测踩到） */
+      try{ if(typeof rebuildPanelIfOpen==='function') rebuildPanelIfOpen(); }catch(e){} });
+    /* ---------- 「▶ 全部」顺序播放（目视验收用，2026-10-20）----------
+       从当前选中组开始逐个播完 groups 全部动作；每组固定 6s——够看姿态与运动过程（长动作
+       main 类只能看前段，目视完整时长请手动选组）；播完/再点一次/手动选动作/切皮肤即停。
+       idle 类自循环无所谓时长，非 idle 类 6s 后被下一组 FORCE 打断符合目视节奏。 */
+    let seqAllOn=false, seqAllT=0, seqAllIdx=0;
+    const SEQ_ALL_MS=6000;
+    const stopSeqAll=(btn)=>{ seqAllOn=false; clearTimeout(seqAllT);
+      const b=btn||document.getElementById('l2SeqAll'); if(b){ b.textContent='▶ 全部'; b.classList.remove('on'); } };
+    const stepSeqAll=()=>{ if(!seqAllOn) return;
+      if(seqAllIdx>=groups.length){ stopSeqAll();
+        const pill=document.getElementById('l2Hit'); if(pill) pill.textContent='顺序播放完毕（'+groups.length+' 组）';
+        return; }
+      const g=groups[seqAllIdx];
+      if(play(g)){ sel.value=g;
+        const pill=document.getElementById('l2Hit');
+        if(pill) pill.textContent=g+'  ['+(seqAllIdx+1)+'/'+groups.length+'] ▸ 顺序播放'; }
+      seqAllIdx++;
+      seqAllT=setTimeout(stepSeqAll, SEQ_ALL_MS); };
+    document.getElementById('l2SeqAll').onclick=(e)=>{ if(seqAllOn){ stopSeqAll(e.target); return; }
+      seqAllOn=true; seqAllIdx=Math.max(0, groups.indexOf(sel.value));
+      e.target.textContent='■ 停止'; e.target.classList.add('on'); stepSeqAll(); };
+    sel.onchange=()=>{ stopSeqAll(); play(sel.value); };
     document.getElementById('l2Replay').onclick=()=>{ play(sel.value); };
     document.getElementById('l2Fit').onclick=resetFraming;
     document.getElementById('l2Full').onclick=()=>{ if(document.fullscreenElement) document.exitFullscreen(); else viewEl.requestFullscreen().catch(()=>{}); };
@@ -1404,6 +1989,25 @@ async function renderLive2D(s, sk){
       let idx=-1; try{ idx=core.getDrawableIndex(a.Id); }catch(e){}
       return idx<0 ? null : {name:a.Name, idx};
     }).filter(Boolean);
+    /* 拖拽互动区：moc3 里的 TouchDrag1..20 是可见的拖拽标记，model3 的 HitAreas 只登记了 3 个。
+       这里把所有尚未登记的 TouchDrag* drawable 补成互动区（退化框由 geomOf 统一挡掉）；
+       ougen_8 补全后 30 + 14 = 44 个互动区。点击/拖拽都走同一套 hitAt。 */
+    try{
+      const _ids=core.getDrawableIds?core.getDrawableIds():(core._model&&core._model.drawables&&core._model.drawables.ids)||[];
+      const _known=new Set(hitAreas.map(h=>String(h.name).toLowerCase()));
+      for(let i=0;i<_ids.length;i++){
+        const id=String(_ids[i]);
+        if(!/^TouchDrag(\d+)$/i.test(id)) continue;
+        const _dn=parseInt(id.match(/(\d+)$/)[1],10);
+        if(_dn===19 || _dn===20) continue;   // 19/20 是场景外拖拽标记，不计入 44 个可见互动区
+        const nm=id.toLowerCase();
+        if(_known.has(nm)) continue;
+        let ix=-1; try{ ix=core.getDrawableIndex(id); }catch(e){}
+        if(ix<0) continue;
+        hitAreas.push({name:nm, idx:ix});
+        _known.add(nm);
+      }
+    }catch(e){}
     const triIn=(x,y,a,b,c)=>{ const d=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
       if(Math.abs(d)<1e-12) return false;
       const l=((b[1]-c[1])*(x-c[0])+(c[0]-b[0])*(y-c[1]))/d, m=((c[1]-a[1])*(x-c[0])+(a[0]-c[0])*(y-c[1]))/d;
@@ -1453,9 +2057,565 @@ async function renderLive2D(s, sk){
     /* 产品自己的「可用判定框」清单（=几何非退化、能参与竞选的那些）。
        验证脚本拿它对齐"画了几个框"，而不是自己再算一遍面积——判定/可视化/探针必须同一个源。 */
     window.__L2_HITUSE=()=>hitAreas.filter(h=>!!geomOf(h)).map(h=>h.name);
+    /* 判定区**明细**出口（2026-10-24 加）：给探针按名定位到具体 drawable。
+       之前踩坑：`TouchDrag17` 是 moc3 的 hitArea 名、不是 drawable 名（drawable 叫 ArtMesh*），
+       而补区（touchdrag11~18）只在页面内部数组里、不在 internalModel.hitAreas 对象里，
+       探针两个来源都取不到。这里把 {name, idx, 画布坐标} 一并暴露。 */
+    window.__L2_HITINFO=()=>hitAreas.map(h=>{
+      const g=geomOf(h);
+      return {name:h.name, idx:h.idx,
+              canvas: g? {x0:g.x0,y0:g.y0,x1:g.x1,y1:g.y1, cx:(g.x0+g.x1)/2, cy:(g.y0+g.y1)/2} : null};
+    });
+    /* 判定区 → 屏幕坐标出口（2026-10-24 加）。
+       为什么要页面自己算：外面重写换算公式反复出错（toGlobal / ppu / cux 的语义很容易错，
+       实测算出过 138339 这种越界值和全 null 的命中）。
+       这里直接用 localHit 的**逆运算**：二分搜索屏幕点，命中目标名即返回。
+       与用户真实点击走同一条 localHit 路径，不存在口径漂移。 */
+    window.__L2_SCREENOF=(nameWanted)=>{
+      const want=String(nameWanted||'').toLowerCase().replace(/_/g,'');
+      const r=wrap.getBoundingClientRect();
+      const step=6;
+      const xa=Math.ceil(r.left)+3, ya=Math.ceil(r.top)+3;
+      const nx=Math.floor((r.right-3-xa)/step)+1, ny=Math.floor((r.bottom-3-ya)/step)+1;
+      if(nx<1||ny<1) return null;
+      const mask=new Uint8Array(nx*ny);
+      let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9,n=0;
+      for(let j=0;j<ny;j++){
+        const y=ya+j*step;
+        for(let i=0;i<nx;i++){
+          const x=xa+i*step;
+          const nm=localHit(x,y);
+          if(nm && String(nm).toLowerCase().replace(/_/g,'')===want){
+            mask[j*nx+i]=1; n++;
+            if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+          }
+        }
+      }
+      if(!n) return null;
+      /* 同 __costumeScreenOf 的语义修正（2026-10-28）：返回**自身地盘内离边缘最远**的点，
+         而不是包围盒几何中心 —— 判定区被邻居切出缺口时，中心会落进邻居的区里。
+         完整推导见 __costumeScreenOf 处的注释。 */
+      const d=new Int32Array(nx*ny);
+      for(let j=0;j<ny;j++) for(let i=0;i<nx;i++){
+        const k=j*nx+i; if(!mask[k]){ d[k]=0; continue; }
+        const up=(j>0? d[k-nx] : 0), lf=(i>0? d[k-1] : 0);
+        d[k]=1+Math.min(up,lf); }
+      for(let j=ny-1;j>=0;j--) for(let i=nx-1;i>=0;i--){
+        const k=j*nx+i; if(!d[k]) continue;
+        const dn=(j<ny-1? d[k+nx] : 0), rt=(i<nx-1? d[k+1] : 0);
+        const m=1+Math.min(dn,rt); if(m<d[k]) d[k]=m; }
+      const gcx=Math.round((x0+x1)/2), gcy=Math.round((y0+y1)/2);
+      let bi=0,bj=0,bd=-1,bsp=1e18;
+      for(let j=0;j<ny;j++) for(let i=0;i<nx;i++){
+        const k=j*nx+i; if(!mask[k]) continue;
+        const sp=Math.pow(xa+i*step-gcx,2)+Math.pow(ya+j*step-gcy,2);
+        if(d[k]>bd || (d[k]===bd && sp<bsp)){ bi=i; bj=j; bd=d[k]; bsp=sp; }
+      }
+      return {n, cx:xa+bi*step, cy:ya+bj*step, box:[x0,y0,x1,y1], edge:bd};
+    };
     /* 兜底只给「没有判定区」的模型用；有 HitAreas 的模型点空白处不播任何动作（与游戏一致），
        否则会随机触发一个 touch_drag* 动作，用户会觉得「点哪都乱动」 */
     const fallbackG=hitAreas.length ? null : (groups.find(g=>/^(tap|touch)/i.test(g))||null);
+    /* ---------- 参数型互动区（2026-10-24 需求 3）：点画面上的鞋/丝袜/衣服/戒指等**局部**，切对应参数 ----------
+       与 STATE_TOGGLES 的区别：那条路是人工按模型逐个接线（trigger 区名 → 参数），一次只能接一个模型；
+       这里用数据表自动覆盖全部有换装参数的模型：
+         · costume_params.json  给出该模型有哪些可调参数、两态值（lo / hi）、语义标签
+         · param_drawables.json 给出每个参数**驱动哪些 drawable**（由 map_param_to_drawables 用
+           「设参数 hi/lo 两态、逐 drawable 比顶点位移」判定，纯几何、不受呼吸相位影响）
+       热区几何 = 该参数驱动的这些 drawable 的**顶点并集包围盒**，走的是 Cubism 画布坐标（V 空间，
+       画布中心为原点、y 向上），与 hitAreas 的判定同一坐标系（换算统一走 P2V）。
+       每帧重算一份（缓存进 window.__costumeHitsByModel[模型key]）供可视化/探针；**点击那一刻再算一次**
+       用新鲜值判命中——框会随呼吸/物理/动作位移，用上几帧的缓存会点空（同文件判定区那条教训）。
+       命中后不播 motion：这类互动在游戏里不是动作，播 motion 会把角色姿态一起改掉；
+       只写 pins + tween 渐变，局部过渡由 moc3 keyform 随参数渐变自然产生。 */
+    const costumePins=()=>{ const pm=(window.__costumePinsByModel=window.__costumePinsByModel||Object.create(null));
+      return pm[sk.key]||(pm[sk.key]=Object.create(null)); };
+    /* ---------- 装扮参数「产品层默认档」落地（见表定义处 COSTUME_DEFAULT_ON 的取证注释）----------
+       只在 pins 里**尚无该键**时写一次，之后由 app.__statePinTick 每帧重申。
+       为什么不写进 COSTUME 的 `def`：`def` 同时是热区两态起点与面板「复位默认」的目标值，
+       改它会让「点一下切到另一端」的语义错位（ougen_8 的 ShoseOff 就吃过这种亏）。
+       明确不做的两件事：
+         · 不在这里写 coreModel —— 此刻动作/物理还没跑过一帧，写了也会被下一次
+           loadParameters 覆盖；重申出口只有一个（__statePinTick）。
+         · 不做「当前动作有没有曲线驱动它」的条件判断：BASE_PINS 那套条件是给
+           **姿势**用的；装扮参数要的是「无论播什么动作都保持用户选的那一档」（需求④），
+           动作曲线若短暂写它（touch_idle2 等 4 条的 3 秒穿鞋），pin 会在同一帧末尾夺回。 */
+    { const dflt=COSTUME_DEFAULT_ON[sk.key];
+      if(dflt){ const pins=costumePins();
+        for(const id in dflt){
+          try{ if(pins[id]===undefined) pins[id]=dflt[id]; }catch(e){}
+        } } }
+    /* 参数驱动的 drawable 必须落在当前模型的编号范围内（表是按模型导出的，换模型/换数据版本会错位） */
+    const _cosNd=(()=>{ try{ return core.getDrawableCount(); }catch(e){ return 0; } })();
+    /* ---------------- 热区几何：多边形命中（2026-10-28 重做） ----------------
+       为什么不再用「包围盒 + 面积 / 嵌套 / 绘制序」这套启发式：包围盒是顶点并集的
+       **轴对齐外接矩形**，一个细长件的盒会覆盖大片它自己根本**不占据**的边角。实测三套
+       基于盒的优先级只是把「抢」从一对热区搬到另一对（同一份可达率基线）：
+         · 面积最小者（原规则）→ NeckMoney 59.4%（自身 276 点里 112 被 Cloth3 抢）
+         · 按绘制序 z（上一版）→ NeckMoney 100%，但 Cloth1 100%→41.2%、Cloth3 100%→50%
+       口径错了，不是权重错了。⇒ 判定改为**真实的三角形包含测试**：点落在哪一片可见
+       图元上，就归哪个参数 —— 这正是游戏侧 CubismRaycaster 的做法。
+       包围盒只剩两个用途：① 粗筛（免掉逐三角遍历）；② 兜底（见 costumeHitV 注释）。
+
+       drawable 的三角索引是 moc3 里的**静态**数据 ⇒ 取到就缓存；
+       顶点位置每帧变 ⇒ 每次重建几何时现取**并拷贝**（core 的视图会被下一帧覆盖）。 */
+    const _triCache=Object.create(null);
+    const triOf=(i)=>{ if(_triCache[i]!==undefined) return _triCache[i];
+      let out=null;
+      try{
+        const ic=(core.getDrawableVertexIndexCount?core.getDrawableVertexIndexCount(i):0)||0;
+        if(ic>=3){
+          const g=core.getDrawableVertexIndices(i);
+          /* Cubism 的索引缓冲是**三角形列表**（每 3 个一组）。个别版本给的是 strip，
+             这里按「3 个一组」切并断言整除；不整除就不当多边形用（退回包围盒），
+             绝不让一个猜错的分组去参与命中判定。 */
+          if(g&&g.length>=3&&g.length%3===0){ out=Array.from(g); }
+        }
+      }catch(e){ out=null; }
+      _triCache[i]=out; return out; };
+    /* 渲染序：getDrawableRenderOrders(i) 返回的是**整张表**（实测 842 长，即 drawable 数），
+       i 只是入口索引。表随模型重建而变，故按 drawable 数做失效标记。 */
+    let _roArr=null, _roNd=-1;
+    const renderOrders=()=>{ if(_roArr&&_roNd===_cosNd) return _roArr;
+      try{ const a=core.getDrawableRenderOrders(0);
+        if(a&&a.length){ _roArr=a; _roNd=_cosNd; } }catch(e){}
+      return _roArr; };
+    /* 点在三角形内（重心坐标）。e 是**接缝容差**：相邻两个三角形共用一条边，
+       浮点误差会让边界上的点同时落空 ⇒ 全部热区都点不到。0.004 ≈ 0.4% 重心分量。 */
+    const inTriV=(x,y,ax,ay,bx,by,cx,cy)=>{
+      const d=(by-cy)*(ax-cx)+(cx-bx)*(ay-cy);
+      if(Math.abs(d)<1e-12) return false;
+      const l=((by-cy)*(x-cx)+(cx-bx)*(y-cy))/d;
+      const m=((cy-ay)*(x-cx)+(ax-cx)*(y-cy))/d;
+      const e=-0.004;
+      return l>=e && m>=e && (l+m)<=1-2*e;
+    };
+    /* 几何代次：ticker 每 4 帧 +1。命中判定用缓存快照（每点重取 50 个图元的位置
+       会让一次网格扫描从 ~1 s 涨到分钟级），4 帧 ≈ 66 ms 的迟到完全被 2% 容差吸收。 */
+    let _cosGen=0;
+    const _cosGeoBy=(window.__costumeGeoByModel=window.__costumeGeoByModel||Object.create(null));
+    const COS_MIN_SIDE=0.5;
+    const buildCosGeo=()=>{
+      const rows=(COSTUME&&COSTUME[sk.key])||[];
+      const map=(PARAM_DRAWABLES&&PARAM_DRAWABLES[sk.key])||null;
+      if(!rows.length||!map||!_cosNd) return [];
+      const ro=renderOrders();
+      /* ── 标记件必须剔出热区几何（2026-10-29）──
+         `Touch*` 是 moc3 里为点击/拖拽判定放置的四边形标记，**不是可见部件**。它出现在某条
+         参数的驱动清单里，只是「物理/呼吸让整张顶点表跟着动」的连带结果；而隐藏件的顶点
+         位置经常是未初始化残值。实测 ougen_8：`TouchDrag16` 在 Stock1 里读到 (-293, 288)，
+         整模顶点范围只有 -448..154、鞋在 x≈-10.8..-0.4 ⇒ 一条本该 5×5 的热区被撑成
+         290×290，整块画布都成了「丝袜开关」，点哪儿都切丝袜、动作判定区全被吞掉。
+         这正是用户报的「互动区互相覆盖、点了没反应」的一类真实成因。
+         判据用 IdName 前缀：标记件语义上从不参与画面，剔除不改变任何可见几何。 */
+      const dNames=(()=>{ try{ return core._model.drawables.ids; }catch(e){ return null; } })();
+      const isMarker=i=>{ try{ return !!(dNames && /^touch/i.test(String(dNames[i]||''))); }catch(e){ return false; } };
+      const out=[];
+      for(const it of rows){
+        const idxs=map[it.id]; if(!idxs||!idxs.length) continue;   /* 映射为空的参数（如眼睛类）没有热区 */
+        let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9,n=0,zOrd=-1,nVis=0,nMark=0;
+        const parts=[];
+        for(const i of idxs){
+          if(!(i>=0&&i<_cosNd)) continue;
+          if(isMarker(i)){ nMark++; continue; }
+          let p=null; try{ p=core.getDrawableVertexPositions(i); }catch(e){ p=null; }
+          if(!p||p.length<2) continue;
+          const pos=Float32Array.from(p);
+          let vis=true;
+          try{ if(core.getDrawableDynamicFlagIsVisible) vis=!!core.getDrawableDynamicFlagIsVisible(i); }catch(e){}
+          if(vis) nVis++;
+          let op=1; try{ op=+core.getDrawableOpacity(i); if(!isFinite(op)) op=1; }catch(e){ op=1; }
+          const ord=(ro&&typeof ro[i]==='number')?ro[i]:i;
+          let px0=1e9,py0=1e9,px1=-1e9,py1=-1e9;
+          for(let k=0;k+1<pos.length;k+=2){
+            if(pos[k]<px0)px0=pos[k]; if(pos[k]>px1)px1=pos[k];
+            if(pos[k+1]<py0)py0=pos[k+1]; if(pos[k+1]>py1)py1=pos[k+1]; }
+          if(px0<x0)x0=px0; if(px1>x1)x1=px1;
+          if(py0<y0)y0=py0; if(py1>y1)y1=py1;
+          if(ord>zOrd) zOrd=ord;
+          parts.push({i, ro:ord, op, vis, pos, tris:triOf(i), pb:{x0:px0,y0:py0,x1:px1,y1:py1}});
+          n++; }
+        if(!n) continue;
+        let w=x1-x0, h=y1-y0;
+        /* COS_MIN_SIDE 兜底：退化多边形用包围盒 + 扩张边作为 fallback */
+        if(w<COS_MIN_SIDE){ const c=(x0+x1)/2; x0=c-COS_MIN_SIDE/2; x1=c+COS_MIN_SIDE/2; w=COS_MIN_SIDE; }
+        if(h<COS_MIN_SIDE){ const c=(y0+y1)/2; y0=c-COS_MIN_SIDE/2; y1=c+COS_MIN_SIDE/2; h=COS_MIN_SIDE; }
+        out.push({
+          id:it.id, label:it.label, kind:it.kind, lo:+it.lo, hi:+it.hi, def:+it.def,
+          n:n, nVis, nMark, zOrd, parts,
+          triTotal:parts.reduce((s,p)=>s+(p.tris?Math.floor(p.tris.length/3):0),0),
+          area:w*h, box:{x0:x0,y0:y0,x1:x1,y1:y1}
+        });
+      }
+      _cosGen++;
+      return out;
+    };
+    /* 对外清单 = 最近一次 ticker 快照（探针与 toggle 都用它）。
+       没有快照（模型刚换、第一帧还没到）时现场建一份并写入，保证调用方永远拿到数据。 */
+    const costumeBoxes=()=>{
+      const m=(window.__costumeGeoByModel=window.__costumeGeoByModel||Object.create(null));
+      const g=m[sk.key];
+      if(g&&g.length) return g;
+      const fresh=buildCosGeo(); m[sk.key]=fresh; return fresh; };
+    /* 几何快照：ticker 每 4 帧刷新一次（避免每次点击都重算 50+ 个图元的顶点坐标）。
+       `__costumeGeoFreeze` 仅供探针使用：可达率扫描要 ~300 ms，期间每 4 帧重建会让
+       同一份读数里的点用到**不同的几何**（实测扫描前后盒哈希 754446283→754354988，
+       几何稳定闸直接红）。冻结后 hitV 读到的仍是最后一份快照，口径才自洽。
+       产品路径永远不设这个标志，点击照旧走 4 帧最新的快照。 */
+    (function(){
+      const geoBy=(window.__costumeGeoByModel=window.__costumeGeoByModel||Object.create(null));
+      let fc=0;
+      app.ticker.add(()=>{
+        if(fc++%4!==0||window.__costumeGeoFreeze) return;
+        try{ geoBy[sk.key]=buildCosGeo(); }catch(e){}
+      }, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW)||-25);
+    })();
+    /* 点击那一刻的**新鲜几何**（2026-10-28）。上面的 4 帧快照只服务于高频调用
+       （探针网格扫描、`__costumeScreenOf` 反解上百次），**不能用于真实点击**：
+       实测（ougen_8/ShoseOff）可见鞋件仅 17 个顶点、面积 6.47（V 空间），idle 的呼吸+物理
+       能让它在 80 ms 内挪出同一个屏幕点 —— 实测同一点 pointerdown 时 `__costumeHit` 判 null，
+       仅 80 ms 后的 pointerup 就判 ShoseOff。用户看到的画面是**当帧**的，判定用 4 帧前的
+       姿态就等于「点空了」，表现正是"互动区点不到/时灵时不灵"。
+       代价：一次点击重建约 50 个图元的顶点拷贝（实测 ~1–2 ms），远低于点击频率，可接受。 */
+    const freshGeo=()=>{
+      const m=(window.__costumeGeoByModel=window.__costumeGeoByModel||Object.create(null));
+      try{ const g=buildCosGeo(); if(g&&g.length){ m[sk.key]=g; return g; } }catch(e){}
+      return m[sk.key]||null; };
+    /* 判定用的几何：默认取**当帧新鲜值**（用户看到的就是当帧）；
+       `__costumeGeoFreeze` 时退回快照 —— 探针做网格扫描必须冻结，否则同一份读数里的点
+       用的几何各不相同（实测扫描前后盒哈希就变了），而扫描期间又不能每点重建（上万点 ×1.5 ms）。
+       冻结是**探针专属**开关，产品路径永不设置。 */
+    const pickGeo=()=>{
+      if(window.__costumeGeoFreeze) return (window.__costumeGeoByModel||{})[sk.key]||null;
+      return freshGeo(); };
+    /* 屏幕点 → 命中哪个参数热区（V 空间判，多边形命中 + 盒预筛）：
+       ---------- 判定流程（2026-10-28 重做）----------
+       ① 粗筛：遍历当前模型的几何快照（geoBy[sk.key]），用**包围盒 +2% 容差**快速排除。
+          这一步只做剪枝，不改变命中结论。
+       ② 第一遍（**可见**部件）：对每个候选热区枚举其可见驱动图元的三角形，逐三角测包含。
+          命中的记录按**渲染序 ord** 取最上层（大者胜），同层比 opacity（高者胜），
+          再退回面积小者、id 字典序 —— 同一坐标必得同一结论。这就是游戏侧
+          CubismRaycaster「取最上面那个被点到的图元」的直接翻译。
+       ③ 第二遍（**幽灵区**，仅在第一遍完全没命中时）：不可见部件的三角形照样可以赢。
+          **这一遍是必需的，不是保险**：`Paramring`（戒指）与 `NeckMoney`（项圈）在
+          ougen_8 待机态下 `vis=false op=0`（实测部件 796 / 502 全隐）⇒ 它们的多边形在
+          第一遍里贡献 0 个覆盖点，热区等于**不存在**；用户关掉一次戒指就再也点不回来
+          （这是"互动区失效"的一类真实成因，不是几何精度问题）。隐藏件在最上层语义下
+          必然输给任何可见件，所以只让它在"没有任何可见件被点到"的地方获胜 —— 不抢地盘。
+       ④ 兜底：两遍都无命中（顶点快照迟到 / 图元退化）时，回退到盒预筛集合上的
+          「内嵌必胜」语义，避免用户报「一点都点不到」。
+       性能：842 个图元逐三角会太慢，先盒预筛只测少数几个热区的三角；几何每 4 帧刷一次。 */
+    const costumeHitV=(vx,vy,geoIn)=>{
+      try{
+        const geo=geoIn||(window.__costumeGeoByModel||{})[sk.key]; if(!geo||!geo.length) return null;
+        const cands=[];
+        for(const b of geo){
+          const g=b.box;
+          const hw=Math.max(1e-6,(g.x1-g.x0)/2), hh=Math.max(1e-6,(g.y1-g.y0)/2);
+          if(vx<g.x0-hw*0.02||vx>g.x1+hw*0.02||vy<g.y0-hh*0.02||vy>g.y1+hh*0.02) continue;
+          cands.push(b); }
+        if(!cands.length) return null;
+        /* 两遍：先可见件，再幽灵件。两遍共用同一套裁决（渲染序 → 透明度 → 面积 → id）。 */
+        for(const passVis of [true,false]){
+          let best=null;
+          for(const b of cands){
+            if(passVis&&!b.nVis) continue;
+            if(!passVis&&!(b.n-b.nVis)) continue;   /* 没有隐藏件就不用跑第二遍的那一半 */
+            let bOrd=-Infinity, bOp=-1;   /* 该热区里命中的最上层部件的指标 */
+            for(const pt of b.parts){
+              if(passVis&&!pt.vis) continue;
+              if(pt.ro<bOrd) continue;    /* 已有更上层的命中件，这个赢不了 */
+              if(!pt.tris||pt.tris.length<3) continue;
+              const pos=pt.pos, tr=pt.tris;
+              let found=false;
+              for(let t=0;t+2<tr.length;t+=3){
+                const a=pos[tr[t]*2],   ay=pos[tr[t]*2+1];
+                const c=pos[tr[t+1]*2], cy=pos[tr[t+1]*2+1];
+                const e=pos[tr[t+2]*2], ey=pos[tr[t+2]*2+1];
+                if(inTriV(vx,vy,a,ay,c,cy,e,ey)){ found=true; break; } }
+              if(found){ bOrd=pt.ro; bOp=pt.op; } }
+            if(bOrd===-Infinity) continue;
+            if(!best || bOrd>best.ord ||
+               (bOrd===best.ord && bOp>best.op) ||
+               (bOrd===best.ord && bOp===best.op && b.area<best.area) ||
+               (bOrd===best.ord && bOp===best.op && b.area===best.area &&
+                String(b.id)<String(best.id)))
+              best={to:b, ord:bOrd, op:bOp, area:b.area};
+          }
+          if(best) return best.to;
+        }
+        /* 兜底：**只在几何退化时**启用，不是"盒覆盖就算"。
+           ⚠️ 这里曾错放过一次（实测 ShoseOff 可达率 135.9% > 100%：赢下 390 点而自己
+           只覆盖 287 点）。原因是把「落在盒内」当成兜底条件 —— 而盒覆盖里有一大半是
+           **多边形根本没有的边角**（本轮实测 ougen_8：多边形覆盖 6233 点，仅盒覆盖 8916 点，
+           后者是前者的 1.43 倍）。让兜底在这些点上跑"内嵌必胜/面积最小"，等于把真正的
+           皮肤/背景区域判给某个斜置的部件（ShoseOff 的盒 2.5×2.7 但鞋形是斜的）。
+           ⇒ 兜底条件收窄为「该热区**所有**部件都没有可用三角形」= 真正的几何退化，
+           此时它的盒是唯一能用的信息。正常热区（有三角形）一律不再走兜底：
+           点在盒虚增区里就该返回 null（点背景不该触发装扮切换）。 */
+        const degraded=cands.filter(b=>!b.triTotal);
+        if(!degraded.length) return null;
+        const within=(a,b)=>{ const g=a.box, h=b.box;
+          const hw=Math.max(1e-6,(h.x1-h.x0)/2), hh=Math.max(1e-6,(h.y1-h.y0)/2);
+          return g.x0>=h.x0-hw*0.02 && g.x1<=h.x1+hw*0.02 &&
+                 g.y0>=h.y0-hh*0.02 && g.y1<=h.y1+hh*0.02; };
+        const better=(a,b)=>{
+          const ab=within(a,b), ba=within(b,a);
+          if(ab&&!ba) return true; if(ba&&!ab) return false;
+          if(a.area!==b.area) return a.area<b.area;
+          return String(a.id)<String(b.id); };
+        let fb=degraded[0];
+        for(let i=1;i<degraded.length;i++){ if(better(degraded[i],fb)) fb=degraded[i]; }
+        return fb;
+      }catch(e){ return null; }
+    };
+    /* 覆盖集合（2026-10-28 新增）：这个 V 坐标被**哪些热区的多边形**真正覆盖。
+       为什么必须有这个出口：可达率 = 实得点 / 应得点，「应得」过去的算法是「落在几个
+       **包围盒**里」—— 而本轮已经证明盒口径本身就是错的（实测 ougen_8 盒覆盖 9392 点里
+       有相当部分是多边形根本没有的边角）。用盒算 own、用多边形算 win，比值天然失真。
+       这里把「应得」也换成多边形口径，**判定逻辑与 costumeHitV 共用 inTriV**，
+       不另写一份几何（另写一份就会自证）。
+       ov=被多边形的**可见**部件覆盖（产品的第一遍）；gh=只被**隐藏**部件覆盖（第二遍幽灵区）。
+       分开统计才能看出「这个热区是不是全靠幽灵区在撑」= 用户关掉它就点不回来了。 */
+    window.__costumeHitAllV=(vx,vy)=>{
+      try{
+        const geo=pickGeo(); if(!geo||!geo.length) return null;
+        const ov=[], gh=[], bx=[];
+        for(const b of geo){
+          const g=b.box;
+          const hw=Math.max(1e-6,(g.x1-g.x0)/2), hh=Math.max(1e-6,(g.y1-g.y0)/2);
+          const inBox=(vx>=g.x0-hw*0.02&&vx<=g.x1+hw*0.02&&vy>=g.y0-hh*0.02&&vy<=g.y1+hh*0.02);
+          const test=(onlyVis)=>{ if(!b.parts) return false;
+            for(const pt of b.parts){
+              if(onlyVis&&!pt.vis) continue;
+              if(!pt.tris||pt.tris.length<3) continue;
+              const pos=pt.pos, tr=pt.tris;
+              for(let t=0;t+2<tr.length;t+=3){
+                const a=pos[tr[t]*2],   ay=pos[tr[t]*2+1];
+                const c=pos[tr[t+1]*2], cy=pos[tr[t+1]*2+1];
+                const e=pos[tr[t+2]*2], ey=pos[tr[t+2]*2+1];
+                if(inTriV(vx,vy,a,ay,c,cy,e,ey)) return true; } }
+            return false; };
+          if(test(true)) ov.push(b.id);
+          else if(test(false)) gh.push(b.id);
+          else if(inBox) bx.push(b.id);
+        }
+        return {ov:ov, gh:gh, bx:bx};
+      }catch(e){ return null; }
+    };
+    const costumeHitAt=(cx,cy,geoIn)=>{
+      try{
+        const r=wrap.getBoundingClientRect();
+        const lp=mdl.toLocal(new PIXI.Point(cx-r.left, cy-r.top));
+        const pv=P2V(lp.x/ppu, lp.y/ppu);
+        return costumeHitV(pv.x, pv.y, geoIn);
+      }catch(e){ return null; }
+    };
+    /* 两态目标：取「离当前值更远」的那一端（当前值取 pins 快照优先，因为参数值在帧末会被动作拉回）。
+       值域用运行时 min/max 校正：表的 lo/hi 是按数据导出的，个别模型运行时值域不同（0..10 那类坑）。 */
+    const costumeTarget=(it)=>{
+      let lo=it.lo, hi=it.hi;
+      try{ const ix=core.getParameterIndex(it.id);
+        if(ix>=0){ const mn=core.getParameterMinimumValue(ix), mx=core.getParameterMaximumValue(ix);
+          lo=Math.max(mn,Math.min(lo,mx)); hi=Math.max(mn,Math.min(hi,mx)); } }catch(e){}
+      if(!(hi>lo)) return hi;
+      /* 🔴 三态参数的两端必须用「默认档 ↔ 最大档」，不能用 min（2026-10-29）。
+         `ShoseOff` 值域 -1/0/1，三档语义实测各不相同：
+             0  = 穿鞋（`#194/195/466/841` 可见）
+             1  = 脱鞋 / 黑丝光脚（换 `#468/840` 可见）
+            -1  = 残缺档（该批件全隐 → 用户看到"左脚鞋不见"）
+         旧写法 `lo=-1` 会让切换走 0 → 1 → **-1** → 1…：点第二下"穿鞋"落到残缺档。
+         判据：默认值严格落在 (min,max) 之间 ⇒ 视为三态，关端取默认值。 */
+      let offV=lo;
+      try{ const ix2=core.getParameterIndex(it.id);
+        if(ix2>=0){ const dv=core.getParameterDefaultValue(ix2);
+          if(typeof dv==='number'&&isFinite(dv)&&dv>lo&&dv<hi) offV=dv; } }catch(e){}
+      const pins=costumePins();
+      let cur=pins[it.id];
+      if(cur===undefined) try{ cur=core.getParameterValueById(it.id); }catch(e){ cur=it.def; }
+      if(typeof cur!=='number'||!isFinite(cur)) cur=it.def;
+      /* 等距时取 hi（三态 0 到 0/1 两端等距的情形已由 offV=默认档消解） */
+      return (Math.abs(cur-hi)<Math.abs(cur-offV)) ? offV : hi;
+    };
+    const costumeToggle=(it)=>{
+      try{
+        const to=costumeTarget(it);
+        const pins=costumePins();
+        const tws=(window.__costumeTweens=window.__costumeTweens||Object.create(null));
+        const tw=(tws[sk.key]=tws[sk.key]||Object.create(null));
+        /* 成组联动（见 COSTUME_LINK 定义处的取证注释）：把**主参数算出的目标档**广播给从参数。
+           从参数一律用同一个 `to`，不各自算「离谁更远」——否则一侧已到位时会反向切回，
+           表现就是「点一次一只脚穿一只脚脱」。
+           从参数若是三态，同样只取「默认档 ↔ 最大档」这两端（`to` 已由 costumeTarget 保证）。 */
+        const group=[it.id].concat(((COSTUME_LINK[sk.key]||{})[it.id])||[]);
+        const targets={};
+        for(const gid of group){
+          if(gid===it.id){ targets[gid]=to; continue; }
+          let lo=0, hi=1;
+          try{ const ix=core.getParameterIndex(gid);
+            if(ix>=0){ lo=core.getParameterMinimumValue(ix); hi=core.getParameterMaximumValue(ix); } }catch(e){}
+          /* 从参数没有自己的两态表项时，用运行时值域：to 落在主参数 hi 侧 ⇒ 取 hi，否则取 lo */
+          let t=to;
+          try{ const ix2=core.getParameterIndex(gid);
+            if(ix2>=0){ const dv=core.getParameterDefaultValue(ix2);
+              const offV=(typeof dv==='number'&&isFinite(dv)&&dv>lo&&dv<hi)?dv:lo;
+              t=(Math.abs(to-it.hi)<1e-6)?hi:offV; } }catch(e){}
+          targets[gid]=t;
+        }
+        for(const gid of group){
+          const gto=targets[gid];
+          let gfrom=pins[gid];
+          if(gfrom===undefined) try{ gfrom=core.getParameterValueById(gid); }catch(e){ gfrom=0; }
+          if(typeof gfrom!=='number'||!isFinite(gfrom)) gfrom=0;
+          pins[gid]=gfrom;   /* 立刻接管：之后的每帧由 pins 重申 + 下方 tween 推进 */
+          for(const t of (STOGS||[])){ if(t.id===gid){ t._costumeOwned=true; t._tw=null; } }
+          tw[gid]={from:gfrom, to:gto, t0:performance.now(), dur:Math.max(120,(it.dur||0.45)*1000)};
+          try{ window.__costumeLog=(window.__costumeLog||[]).concat([[gid,gfrom,gto,Date.now()]]); }catch(e){}
+        }
+        const pill=document.getElementById('l2Hit');
+        if(pill) pill.textContent=(it.label||it.id)+' · '+group.join('+')+' → '+to;
+        return true;
+      }catch(e){ return false; }
+    };
+    /* tween 推进：挂 LOW 优先级（模型 update 之后、渲染之前）。
+       ⚠️ 注册顺序说明（2026-10-28 实测）：本段在源码里位于 stateTick **之后**，
+       但两者同属 LOW 档，`stateTick` 只重申 `pins[id]` 的当前值，而本段每帧先把
+       `pins[id]` 更新成**新渐变值**再写 coreModel —— 所以下一帧 stateTick 重申的就是
+       最新值，不会把渐变打回旧值。实测（ougen_8/ShoseOff）点击后 tween 正常推进到 1。
+       若将来把 tween 改成「只写 coreModel、不更新 pins」，则必须挪到 stateTick 之前。
+       这里也直接写一次 coreModel：即使 stateTick 因故没跑，本帧渲染也已是渐变值。 */
+    app.ticker.add(()=>{
+      try{
+        const twBy=window.__costumeTweens&&window.__costumeTweens[sk.key];
+        if(!twBy) return;
+        const pins=(window.__costumePinsByModel||{})[sk.key];
+        for(const id in twBy){
+          const t=twBy[id];
+          const k=Math.min(1,(performance.now()-t.t0)/t.dur);
+          const e=k<.5? 2*k*k : 1-Math.pow(-2*k+2,2)/2;   /* easeInOutQuad，与 stateApply 一致 */
+          const v=t.from+(t.to-t.from)*e;
+          if(pins) pins[id]=v;
+          try{ cm.setParameterValueById(id, v); }catch(e){}
+          if(k>=1){ if(pins) pins[id]=t.to; try{ cm.setParameterValueById(id, t.to); }catch(e){} delete twBy[id]; }
+        }
+      }catch(e){}
+    }, null, (PIXI.UPDATE_PRIORITY && PIXI.UPDATE_PRIORITY.LOW) || -25);
+    /* 热区的**可见多边形覆盖面积**（V 空间），用于与动作判定区做「谁更具体」的裁决。
+       为什么不用已有的 `b.area`：那是包围盒面积，对斜置的鞋/丝袜会虚高数倍（实测
+       ShoseOff 盒 82.4 而真实多边形只有 5.4），拿盒面积去比会把细长热区判成"不具体"。
+       只用可见且不透明度 >2% 的部件：隐藏件的多边形在画面外/是残值，不该算成占地。 */
+    const costumeAreaOf=(b)=>{
+      try{
+        let s=0;
+        for(const p of (b.parts||[])){
+          if(!p.vis || !(p.op>0.02)) continue;
+          const q=p.pos, tr=p.tris; if(!tr||tr.length<3) continue;
+          for(let t=0;t+2<tr.length;t+=3){
+            const ax=q[tr[t]*2],   ay=q[tr[t]*2+1];
+            const bx=q[tr[t+1]*2], by=q[tr[t+1]*2+1];
+            const cx2=q[tr[t+2]*2], cy2=q[tr[t+2]*2+1];
+            s+=Math.abs((bx-ax)*(cy2-ay)-(cx2-ax)*(by-ay))/2; } }
+        return s;
+      }catch(e){ return Infinity; } };
+    /* 探针出口（验收脚本按产品自己的判定走，不另写一份几何）：
+       __costumeBoxes()   当前热区清单（V 空间包围盒 + 面积 + 驱动部件数）
+       __costumeHit(cx,cy) 屏幕点命中的热区（与 onUp 同一函数）
+       __costumeToggle(id) 按参数 id 切换（等同点击命中）
+       __costumeScreenOf(id) 屏幕坐标化：二分/网格搜索命中该参数热区的屏幕点 */
+    window.__costumeBoxes=()=>costumeBoxes();
+    window.__costumeHit=(cx,cy)=>costumeHitAt(cx,cy,pickGeo());
+    /* V 空间直判入口（2026-10-28）：验收要在**模型坐标**上扫网格，而 __costumeHit 吃的是
+       屏幕坐标；用 __costumeScreenOf 反解太慢且受当前相机影响。这里直接暴露同一判定函数，
+       避免探针自己复算一份几何（复算版与产品不一致就会自证）。 */
+    window.__costumeHitV=(vx,vy)=>costumeHitV(vx,vy,pickGeo());
+    /* 状态机条目接管标记只读出口（2026-10-28）：排查「装扮热区点击后渐变是否真的到达渲染」时，
+       唯一无法从外部观察到的是 STOGS 条目的 `_costumeOwned`（它是 renderLive2D 内部数组）。
+       不给出口时探针只能靠"update 入口有没有中间值"间接推断，而那个读数本轮实测**不稳定**
+       （同页面同操作 2 次里 1 次只看到 [-1,0,1]）——不确定的仪器不能当选判据。 */
+    window.__stateTogglesInfo=()=>(STOGS||[]).map(t=>({
+      id:t.id, trigger:t.trigger, owned:!!t._costumeOwned, tw:!!t._tw,
+      on:t._on, onV:t._onV, offV:t._offV }));
+    window.__costumeToggle=(id)=>{ const b=costumeBoxes().find(o=>o.id===id); return b?costumeToggle(b):false; };
+    /* 拖动型互动区（分屏线）出口（2026-10-30）：探针需要「此刻这条线在屏幕哪」以及
+       「按某个参数值反解出的屏幕 x」，否则只能靠猜坐标点，验不出真实行为。 */
+    window.__splitInfo=()=>splitCfg().map(it=>{
+      let cur=null, lo=it.lo, hi=it.hi, mask=-1, cal=null;
+      try{ cur=+core.getParameterValueById(it.id); }catch(e){}
+      try{ const ix=core.getParameterIndex(it.id);
+        if(ix>=0){ lo=core.getParameterMinimumValue(ix); hi=core.getParameterMaximumValue(ix); } }catch(e){}
+      try{ mask=splitMaskOf(it.id); }catch(e){}
+      /* 界限也一起导出：验收脚本必须能读到「夹在哪」，否则只能间接推断 */
+      try{ cal=splitCalib(it); }catch(e){}
+      return {id:it.id, label:it.label, band:it.band, cur, lo, hi, mask,
+              vMin: cal? cal.vMin : null, vMax: cal? cal.vMax : null,
+              edgeV: cal? cal.edgeV : null, canvasV: cal? cal.canvasV : null};
+    });
+    window.__splitScreenX=(id, val, clientY)=>{
+      const it=splitCfg().find(o=>o.id===id); if(!it) return null;
+      return splitScreenX(it, val, clientY);
+    };
+    window.__splitHitAt=(cx,cy)=>{ const r=splitHitAt(cx,cy); return r?{id:r.it.id, sx:r.sx, v0:r.v0}:null; };
+    window.__costumeScreenOf=(idWanted)=>{
+      const want=String(idWanted||'');
+      const tgt=costumeBoxes().find(o=>o.id===want);
+      if(!tgt) return null;
+      const r=wrap.getBoundingClientRect();
+      /* 搜索窗口用目标热区自身的包围盒收窄（换算只用来缩小范围；最终是否命中仍由
+         costumeHitAt —— 与 onUp 完全同一个函数 —— 判定，口径不漂移）。
+         ⚠️ toS 返回的是**相对 canvas 左上角**的 stage 坐标，而 costumeHitAt 吃的是 client 坐标，
+            所以这里必须加 r.left/r.top 再与视口比（首版忘了加，窗口算成 left>right、
+            循环一次都不跑 → 恒返回 null，看着像"热区点不到"）。 */
+      const toS=(vx,vy)=>{ const s=mdl.scale.x;
+        return [mdl.x+(vx+cux/2)*ppu*s, mdl.y+(cuy/2-vy)*ppu*s]; };
+      const c0=toS(tgt.box.x0,tgt.box.y1), c1=toS(tgt.box.x1,tgt.box.y0);
+      const xa=Math.max(Math.ceil(r.left)+3, Math.round(r.left+Math.min(c0[0],c1[0]))),
+            xb=Math.min(Math.floor(r.right)-3, Math.round(r.left+Math.max(c0[0],c1[0]))),
+            ya=Math.max(Math.ceil(r.top)+3, Math.round(r.top+Math.min(c0[1],c1[1]))),
+            yb=Math.min(Math.floor(r.bottom)-3, Math.round(r.top+Math.max(c0[1],c1[1])));
+      const step=6;
+      const nx=Math.floor((xb-xa)/step)+1, ny=Math.floor((yb-ya)/step)+1;
+      if(nx<1||ny<1) return null;
+      /* 反解一次要判上千个点：几何**取一次**给整个循环用（一次重建 ~1.5 ms × 上千点 = 秒级，
+         而且每点重建会让同一份反解结果内部口径不一致）。冻结标志仍然优先（探针口径）。 */
+      const G=pickGeo();
+      const mask=new Uint8Array(nx*ny);
+      let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9,n=0;
+      for(let j=0;j<ny;j++){
+        const y=ya+j*step;
+        for(let i=0;i<nx;i++){
+          const x=xa+i*step;
+          const b=costumeHitAt(x,y,G);
+          if(b&&b.id===want){ mask[j*nx+i]=1; n++;
+            if(x<x0)x0=x; if(y<y0)y0=y; if(x>x1)x1=x; if(y>y1)y1=y; }
+        }
+      }
+      if(!n) return null;
+      /* ⚠️ **不能返回包围盒几何中心**（2026-10-28 修，起因见 TROUBLESHOOTING §158 续三）。
+         命中区域可以不是矩形：外层热区被内层抢走一块后是个「环」，环的包围盒中心恰好落在
+         内层的地盘里 —— 于是 `__costumeScreenOf('Stock2')` 返回的点实测命中 Stock1。
+         全部依赖它的验收脚本因此都在验错对象（探针红/绿与产品行为无关）。
+         正确语义 = 该参数**自己的地盘内、离边缘最远**的那个点：既保证真的命中，
+         又对几何抖动（呼吸/物理/相机）最不敏感。用棋盘距离变换求，O(nx*ny)。 */
+      const d=new Int32Array(nx*ny);
+      for(let j=0;j<ny;j++) for(let i=0;i<nx;i++){
+        const k=j*nx+i; if(!mask[k]){ d[k]=0; continue; }
+        const up=(j>0? d[k-nx] : 0), lf=(i>0? d[k-1] : 0);
+        d[k]=1+Math.min(up,lf); }
+      for(let j=ny-1;j>=0;j--) for(let i=nx-1;i>=0;i--){
+        const k=j*nx+i; if(!d[k]) continue;
+        const dn=(j<ny-1? d[k+nx] : 0), rt=(i<nx-1? d[k+1] : 0);
+        const m=1+Math.min(dn,rt); if(m<d[k]) d[k]=m; }
+      const gcx=Math.round((x0+x1)/2), gcy=Math.round((y0+y1)/2);
+      let bi=0,bj=0,bd=-1,bsp=1e18;
+      for(let j=0;j<ny;j++) for(let i=0;i<nx;i++){
+        const k=j*nx+i; if(!mask[k]) continue;
+        const sp=Math.pow(xa+i*step-gcx,2)+Math.pow(ya+j*step-gcy,2);
+        if(d[k]>bd || (d[k]===bd && sp<bsp)){ bi=i; bj=j; bd=d[k]; bsp=sp; }
+      }
+      return {n:n, cx:xa+bi*step, cy:ya+bj*step, box:[x0,y0,x1,y1], edge:bd};
+    };
+    /* 数据是异步来的（本地小文件）：提前点一次把表拉进缓存，避免用户第一次点击时还没到 */
+    loadCostumeMap(); loadParamDrawables();
     /* ---------- 判定区可视化（l2d.su 同款）：把 HitAreas 的**真实四边形**画在模型上 ----------
        画包围盒会让人以为「框里都能点」，而实际判定已按四边形走 → 可视化必须与判定同源（geomOf）。 */
     const AREA_COL={head:0x4fc3f7,body:0x81c784,special:0xffb74d};
@@ -1503,11 +2663,16 @@ async function renderLive2D(s, sk){
     /* ---------- 参数/部件检查器（l2d.su 同款）：手调参数=变相表情，部件透明度=换装调试 ---------- */
     const idName=id=>(id&&id.string)||(typeof id==='string'?id:(id&&id.toString())||'?');
     let panelBuilt=false;
+    /* 数据晚到时要能重建面板：用「先声明后赋值」的容器跨过 TDZ
+       （rebuildPanelIfOpen 定义在下方，直接引用会 ReferenceError）。 */
+    let _rebuildPanel=null;
+    const requestPanelRebuild=()=>{ try{ if(_rebuildPanel) _rebuildPanel(); }catch(e){} };
     document.getElementById('l2PanelBtn').onclick=()=>{ const pn=document.getElementById('l2panel');
       const on=pn.classList.toggle('on'); document.getElementById('l2PanelBtn').classList.toggle('on',on);
-      if(on&&!panelBuilt){ panelBuilt=true;
+      if(on){ panelBuilt=true;
         try{ buildL2Panel(pn); }catch(e){ pn.innerHTML='<div style="padding:10px;color:#f66">面板构建失败：'+(e.message||e)+'</div>'; } } };
     const buildL2Panel=(pn)=>{
+      /* 数据晚到时重建：面板已开则立即重建一次（本函数定义后才有 _rebuildPanel 的值） */
       const pids=core._parameterIds||[], cids=core._partIds||[];   // 实测 wrapper 的自有数组（元素即名字符串）
       pn.innerHTML='<div class="pf"><input type="text" placeholder="过滤名称，如 cheek / hong / 脸红拼音…"></div>';
       const filter=pn.querySelector('.pf input');
@@ -1525,32 +2690,781 @@ async function renderLive2D(s, sk){
         b.onclick=()=>{ s.value=def; set(+def); v.textContent=(+def).toFixed(2); };
         r.append(n,s,v,b); return r; };
       const gp=mkSec('参数 '+core.getParameterCount());
+      /* ⚠️ 这一区**全量**列出（582 条里有大量在当前姿态下不影响画面的参数）：
+         它们是模型的完整参数表，用于定位与调试。拖动大多数条目画面不会变，
+         因为该参数此刻没有驱动任何可见件（或被动作曲线每帧覆盖）。
+         真正"能看见效果"的调参入口是上面的「换装」区。标题里点明，免得用户以为坏了。
+         （实测判据：`ParamAngleX` 拖到 max，画面变化 27259 px ⇒ 参数通路本身完全正常。） */
+      { const h5=gp.previousElementSibling;
+        if(h5) h5.textContent='参数 '+core.getParameterCount()+'（调试用；多数条目在当前姿态下无可见效果）'; }
       for(let i=0;i<core.getParameterCount();i++){ const nm=idName(pids[i])||('Param'+i);
         gp.append(mkRow(nm, core.getParameterMinimumValue(i), core.getParameterMaximumValue(i), core.getParameterDefaultValue(i),
           ()=>core.getParameterValueByIndex(i), x=>core.setParameterValueByIndex(i,x))); }
+      /* ---------- 换装分区（方案 A，2026-10-23）----------
+         把该模型自带的装扮参数（衣服/丝袜/鞋/眼镜/手套/裙/翅膀…）列在最前面：
+         开关型给按钮（点一下切到下一档），渐变型给滑块（拖动实时生效），并给「复位默认」。
+         这些参数在游戏里就是靠动作里的**定值曲线**锁档，所以这里写值 + 每帧重申即可稳定。
+         ⚠️ 写值必须每帧重申：动作的 loadParameters 会把参数拉回曲线值，只在 oninput 里写会被下一帧覆盖。 */
+      let gs=null, pins=null;
+      try{ const cos=(COSTUME&&COSTUME[sk.key])||[];
+        /* 换皮肤/换模型必须**按模型隔离**钉值：pins 曾经是全局单例，
+           切模型后旧模型的参数值会写进新模型（同名参数串味），
+           实测把 ougen_8 的 ArtMesh255~258 写成了隐藏态。
+           改为 window.__costumePinsByModel[sk.key]，一个模型一份。 */
+        const _pinsByModel=(window.__costumePinsByModel=window.__costumePinsByModel||Object.create(null));
+        if(!_pinsByModel[sk.key]) _pinsByModel[sk.key]=Object.create(null);
+        if(cos.length){
+          gs=mkSec('换装 '+cos.length);
+          /* 状态重申只有一个出口：模型初始化时注册的 app.__statePinTick。
+             面板只更新当前 skin 的 pins，禁止再挂第二个 ticker（旧版总共重复写 3 遍/帧）。 */
+          pins=_pinsByModel[sk.key];
+          for(const it of cos){
+            const ix=core.getParameterIndex(it.id);
+            if(ix<0) continue;
+            const lo=core.getParameterMinimumValue(ix), hi=core.getParameterMaximumValue(ix);
+            const dflt=core.getParameterDefaultValue(ix);
+            /* 关端 = 默认档（三态参数的正确关端）——与 `stateCurOn` / `costumeTarget` 保持一致口径。 */
+            const domOff=(typeof dflt==='number'&&isFinite(dflt)&&dflt>lo&&dflt<hi)?dflt:lo;
+            /* 🔴 三态参数在面板里也必须按「开关」呈现（2026-10-29 用户实测：拖到 -1 就掉进残缺档）。
+               `ShoseOff` 表里登记的是 `kind:'slider', lo:-1`，于是面板给了一个能滑到 -1 的滑块，
+               用户一拖就落到素材里没人用的残缺档（可见鞋件 3/15，而 0/1 档是 7/15 与 5/15）。
+               判据：值域含中间档 ⇒ 它本来就是离散档位，不是连续量 ⇒ 一律按 switch 渲染，
+               两档取「默认档 ↔ 最大值」，与点击切换完全同一语义。 */
+            const isTristate=(typeof dflt==='number'&&isFinite(dflt)&&dflt>lo&&dflt<hi);
+            if(it.kind==='switch' || isTristate){
+              const vals=isTristate?[domOff,hi]:((it.vals&&it.vals.length)?it.vals:[lo,hi]);
+              const r=document.createElement('div'); r.className='prow'; r.dataset.nm=it.id.toLowerCase();
+              const n=document.createElement('span'); n.className='nm';
+              n.title=it.id+(it.label?'（'+it.label+'）':'')+(isTristate?'　三态参数，只用默认档与最大档':'');
+              n.textContent=it.id;
+              const b=document.createElement('button'); b.style.width='auto'; b.style.padding='0 6px';
+              const cur=()=>{ try{ return +core.getParameterValueById(it.id); }catch(e){ return lo; } };
+              const paint=()=>{ b.textContent=String(cur()); };
+              /* 🔴 面板按钮必须走 `costumeToggle`，不能直接写值（2026-10-30 用户实测：右脚无过渡）。
+                 直写 `pins[id]=v; setParameterValueById(id,v)` 的两个后果（本轮逐帧实测对照）：
+                   ① **没有过渡动画**：值一帧从 0 跳到 1（采样「唯一值 2 个、中间帧 0 个」），
+                      而画面点击路径是「唯一值 15 个、中间帧 12 个」。
+                      用户看到的「右脚没过渡、左脚有」就是这个差异的观感：面板里**两个参数都没过渡**，
+                      只是左脚那批件是几何渐变（`ShoseOff` = GEO 型，阶跃时仍有位移感），
+                      右脚那批是透明度渐变（`Param233` = ALPHA 型，阶跃时就是硬闪）。
+                   ② **不走成组联动**：点 `ShoseOff` 时 `Param233` 完全不动（实测唯一值 1 个），
+                      于是面板能造出「左脚脱了右脚还穿着」这种画面点击永远造不出的状态。
+                 改用 `costumeToggle` 后，面板与画面点击走**同一条**路径（tween + COSTUME_LINK），
+                 两条入口不可能再漂移。目标档由 `costumeTarget` 算，不在这里自己算「下一档」。 */
+              b.onclick=()=>{ try{ costumeToggle(it); }catch(e){} paint(); };
+              const rb=document.createElement('button'); rb.textContent='↺'; rb.title='复位默认 ('+dflt+')';
+              /* 复位也走 tween（否则「复位」是一次硬闪）；目标值直接指定，不经过 costumeTarget */
+              rb.onclick=()=>{ try{
+                const tws=(window.__costumeTweens=window.__costumeTweens||Object.create(null));
+                const tw=(tws[sk.key]=tws[sk.key]||Object.create(null));
+                const grp=[it.id].concat(((COSTUME_LINK[sk.key]||{})[it.id])||[]);
+                for(const gid of grp){
+                  let from=pins[gid];
+                  if(from===undefined) try{ from=core.getParameterValueById(gid); }catch(e){ from=dflt; }
+                  if(typeof from!=='number'||!isFinite(from)) from=dflt;
+                  pins[gid]=from;
+                  let to=dflt;
+                  if(gid!==it.id){ try{ const gi=core.getParameterIndex(gid);
+                    if(gi>=0) to=core.getParameterDefaultValue(gi); }catch(e){} }
+                  tw[gid]={from:from, to:to, t0:performance.now(), dur:420};
+                }
+              }catch(e){} paint(); };
+              paint(); r.append(n,b,rb); gs.append(r);
+            } else {
+              const row=mkRow(it.id+'', lo, hi, dflt,
+                ()=>core.getParameterValueById(it.id),
+                /* 滑块是**连续**调节（拖动中每帧都写），本来就没有"过渡"可言，保留直接写值；
+                   但同样要参与成组联动，否则拖左脚滑块右脚不动。 */
+                x=>{ pins[it.id]=x; try{ core.setParameterValueById(it.id, x); }catch(e){}
+                  for(const gid of (((COSTUME_LINK[sk.key]||{})[it.id])||[])){
+                    pins[gid]=x; try{ core.setParameterValueById(gid, x); }catch(e){} } });
+              gs.append(row);
+            }
+          }
+        }
+      }catch(e){ if(gs){ const w=document.createElement('div'); w.style.cssText='color:#f66;padding:4px';
+        w.textContent='换装区构建失败：'+(e.message||e); gs.append(w); } }
+      /* ---------- 全部互动区（方案 A+，2026-10-23）----------
+         模型自带的 Touch* drawable 全量列出（含 model3.json 未登记的）：
+         · 已登记 + 有同名动作组 → 点击直接播该动作组（等同图上点按钮）
+         · 已登记 + 无动作组     → 只做定位高亮（点了不会有动作）
+         · 未登记               → 灰显 + 标记「未登记」，点它只高亮位置，供定位用
+         目的：把 1299 个原本前端完全点不到/看不见的互动区暴露出来，
+         而不是继续依赖人工一条条猜。 */
+      try{ const ta=(TOUCHAREAS&&TOUCHAREAS[sk.key])||null;
+        if(ta && ((ta.drag||[]).length || (ta.idle||[]).length)){
+          const all=[...(ta.drag||[]), ...(ta.idle||[])];
+          const reg=all.filter(x=>x.registered).length;
+          const gt=mkSec('互动区 '+all.length+'（已登记 '+reg+'）');
+          let hlG=null;
+          const highlight=(drw)=>{
+            try{
+              const ix=core.getDrawableIndex(drw); if(ix<0) return false;
+              const p=core.getDrawableVertexPositions(ix);
+              if(!p||p.length<4) return false;
+              const im2=mdl.internalModel, ppu2=im2.pixelsPerUnit||1;
+              const cux2=im2.width/ppu2, cuy2=im2.height/ppu2, s2=mdl.scale.x;
+              const toStage2=(vx,vy)=>[mdl.x+(vx+cux2/2)*ppu2*s2, mdl.y+(cuy2/2-vy)*ppu2*s2];
+              let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+              for(let k=0;k+1<p.length;k+=2){ const st=toStage2(p[k],p[k+1]);
+                if(st[0]<x0)x0=st[0]; if(st[0]>x1)x1=st[0];
+                if(st[1]<y0)y0=st[1]; if(st[1]>y1)y1=st[1]; }
+              if(!hlG){ hlG=new PIXI.Graphics(); app.stage.addChild(hlG); }
+              hlG.clear(); hlG.lineStyle(2,0xffaa33,0.95).drawRect(x0,y0,x1-x0,y1-y0);
+              setTimeout(()=>{ try{ hlG.clear(); }catch(e){} },1600);
+              return true;
+            }catch(e){ return false; }
+          };
+          for(const it of all){
+            const r=document.createElement('div'); r.className='prow';
+            r.dataset.nm=it.drawable.toLowerCase();
+            const n=document.createElement('span'); n.className='nm';
+            n.title=it.drawable+(it.registered?'（已登记）':'（未登记）')+(it.group?' → '+it.group:'');
+            n.textContent=it.drawable;
+            if(!it.registered) n.style.opacity='0.55';
+            const b=document.createElement('button'); b.style.width='auto'; b.style.padding='0 6px';
+            const playable=!!(it.group && (mm.definitions[it.group]||[]).length);
+            b.textContent=playable?'▶':(it.registered?'定位':'未登记');
+            b.title=playable?('播放 '+it.group):(it.registered?'仅有判定区，无同名动作组':'未登记进 HitAreas');
+            b.onclick=()=>{ const ok=highlight(it.drawable);
+              if(playable && play){ play(it.group); try{ const s3=document.getElementById('l2Motion');
+                if(s3) s3.value=it.group; }catch(e){} } };
+            r.append(n,b);
+            gt.append(r);
+          }
+        }
+      }catch(e){ /* 互动区清单失败不影响其它分区 */ }
       const gc=mkSec('部件 '+core.getPartCount());
-      for(let i=0;i<core.getPartCount();i++){ const nm=idName(cids[i])||('Part'+i);
-        gc.append(mkRow(nm, 0, 1, 1, ()=>core.getPartOpacityByIndex(i), x=>core.setPartOpacityByIndex(i,x))); }
+      /* 🔴 只列**真的挂了 drawable 的部件**（2026-10-29 用户实测反馈：拖部件没反应）。
+         原因不是渲染通路坏了（实测把 `Part34` 的 opacity 调到 0.05，画面变化 520470 px，
+         通路完全正常），而是面板把 310 个部件**全部**列了出来，其中大多数是空的：
+         实测 `ougen_8` 的 `Part406` 名下挂 **0 个** drawable —— 拖它当然毫无变化，
+         用户看到的就是"部件可调但调了没反应"。
+         ⇒ 用 `parentPartIndices` 统计每个部件实际挂了多少 drawable，只列 >0 的。
+           标题里同时给出"有内容的部件 / 全部部件"，让人一眼看出被折叠掉多少空部件。 */
+      let _partLive=0;
+      try{
+        const dis=core._model&&core._model.drawables;
+        const par=dis&&dis.parentPartIndices;
+        const pc=core.getPartCount();
+        const cnt=new Array(pc).fill(0);
+        if(par) for(let k=0;k<par.length;k++){ const p=par[k]; if(p>=0&&p<pc) cnt[p]++; }
+        for(let i=0;i<pc;i++){
+          if(!cnt[i]) continue;            /* 空部件不列 */
+          _partLive++;
+          const nm=idName(cids[i])||('Part'+i);
+          gc.append(mkRow(nm, 0, 1, 1, ()=>core.getPartOpacityByIndex(i),
+                          x=>core.setPartOpacityByIndex(i,x)));
+        }
+        gc.parentElement; /* 无操作，仅保持结构 */
+        const h5=gc.previousElementSibling;
+        if(h5) h5.textContent='部件 '+_partLive+'（有内容 / 全部 '+pc+'）';
+      }catch(e){
+        /* 拿不到 parentPartIndices 时退回原行为（全列），并显式说明，不静默降级 */
+        for(let i=0;i<core.getPartCount();i++){ const nm=idName(cids[i])||('Part'+i);
+          gc.append(mkRow(nm, 0, 1, 1, ()=>core.getPartOpacityByIndex(i), x=>core.setPartOpacityByIndex(i,x))); }
+        const h5=gc.previousElementSibling;
+        if(h5) h5.textContent='部件 '+core.getPartCount()+'（无法过滤空部件）';
+      }
       filter.oninput=()=>{ const q=filter.value.trim().toLowerCase();
         pn.querySelectorAll('.prow').forEach(r=>{ r.style.display=(!q||r.dataset.nm.includes(q))?'':'none'; }); };
+    };
+    /* 面板已定义完成 → 挂上「数据晚到就重建」的钩子（见上方 requestPanelRebuild 的注释）。
+       换装表/语音表都是异步 fetch，面板可能先被打开；不挂这个钩子会永久缺「换装」分区。 */
+    _rebuildPanel=()=>{
+      const pn=document.getElementById('l2panel');
+      if(!pn || !pn.classList.contains('on')) return;
+      try{ buildL2Panel(pn); }catch(e){}
     };
     const clampPan=()=>{ const cw=wrap.clientWidth||1, ch=wrap.clientHeight||1;
       const lim=Math.max(cw,ch)*0.6;
       ox=Math.max(-lim,Math.min(lim,ox)); oy=Math.max(-lim,Math.min(lim,oy)); };
-    let dragging=false,px=0,py=0,moved=0;
-    const onDown=e=>{ if(e.button!==0) return; dragging=true; moved=0; px=e.clientX; py=e.clientY; };
-    const onMove=e=>{ if(!dragging)return; const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
-      ox+=dx; oy+=dy; px=e.clientX; py=e.clientY; clampPan(); apply(); };
-    const onUp=e=>{ if(!dragging) return; dragging=false; if(moved>=6||e.button!==0){ vm.touch(); return; }
+    /* ---------- 状态切换区（§132）：命中配置 trigger 的区不播动作，直接切参数状态 ----------
+        写参数挂在 internalModel 的 beforeModelUpdate 事件上（vendor 源码 5451 行：physics/pose
+        之后、model.update() 渲染之前 emit）——帧末 loadParameters 会把参数拉回 motion 末态，
+        但下一帧事件里会再写，渲染永远读到状态值；不与 motionManager 抢管线，零 monkey-patch。
+        切换动画 = tween 期间逐帧写中间值，moc3 keyform 随参数渐变（=游戏里那段局部过渡）。
+        多条目：每模型可配置多个状态（见 STATE_TOGGLES 头注释），运行态 _on/_tw 挂条目自身。
+        ⚠️ STATE_TOGGLES 是模块级常量、_on/_tw 会跨 renderLive2D 残留——每次进模型必须重置，
+        否则重进皮肤带着上一场的状态（_on=1 直接写新模型，跳过 stateCurOn 初始化）。 */
+    const STOGS=STATE_TOGGLES[sk.key]||[];
+    /* ---------- 姿势基线钉值（2026-10-23 已停用，勿重新启用）----------
+       曾试图把 ougen_8 的 Param211 每帧钉到 30（依据：=30 时腿 10/10 可见、=0 时全隐藏）。
+       ❌ 用户实测否决：钉值把 idle 的双腿动作**直接改变了**，而原本缺的左脚仍未出现。
+       说明 Param211 不是「该不该显示腿」的开关，而是**腿部的姿势/形态参数**（30 与 0 是两种腿姿，
+       不是显/隐）；把它钉死等于强行摆一个固定姿势，把 idle 本身的腿部动画盖掉。
+       教训：findop 只能证明「这个参数会改变该 mesh 的 opacity」，**不能证明它是显示开关**——
+       姿势参数也会通过换 keyform 改变可见部件的形状/遮挡，从而让 opacity 跟着变。
+       真正的判据必须同时满足：①改它能看到目标部件出现；②改它不会破坏该动作自身的其他部件表现。 */
+    const BASE_PINS={};
+    for(const t of STOGS){ t._on=undefined; t._tw=null; t._sl=null; t._costumeOwned=false; t._last=null;
+      /* on/off 运行时解析：省略时 on=参数 max / off=参数 min（值域坑见 STATE_TOGGLES 头注释） */
+      try{ const ix=core.getParameterIndex(t.id);
+        t._onV = (t.on!==undefined)?t.on:core.getParameterMaximumValue(ix);
+        t._offV = (t.off!==undefined)?t.off:core.getParameterMinimumValue(ix);
+        /* 中间档：数值严格落在 (off,on) 之间**且**等于 moc3 默认值时才认（2026-10-29）。
+           `ougen_8/ShoseOff` 就是这种三态参数（-1 / 0 / 1），三档语义各不相同（实测可见鞋件）：
+             =  0  → 7/15  **穿鞋：完整一双红底高跟鞋**（= moc3 默认）
+             =  1  → 5/15  **脱鞋：黑丝光脚**
+             = -1  → 3/15  残缺档，左脚那只不见
+           不用"中点"当阈值：不同参数三档间距不一定对称，只有默认值本身是语义确定的。 */
+        const dv = core.getParameterDefaultValue(ix);
+        t._midV = (typeof dv==='number' && isFinite(dv)
+                   && dv>t._offV && dv<t._onV) ? dv : null;
+        /* 🔴 三态参数的正确两端：**关 = 默认档，开 = 最大值**（2026-10-29 第二轮修正）。
+           第一版只把启动值改回默认档，但点击循环仍是 `to = _on===_onV ? _offV : _onV`，
+           于是走 0 → 1 → -1 → 1 → -1… **永远回不到 0**：用户点第二次"穿鞋"就落到 -1 残缺档，
+           表现正是"穿鞋后左脚高跟鞋不见了"。
+           语义上也支持这么定：参数名叫 `ShoseOff`（脱鞋），所以 1 = 脱、0 = 穿（默认），
+           最小值 -1 是素材里未被使用的残缺档——不该让它参与切换。
+           `t.off` 显式配置时尊重用户选择，不自动改写。 */
+        if(t._midV!==null && t.off===undefined) t._offV = t._midV;
+      }catch(e){ t._onV=(t.on!==undefined)?t.on:1; t._offV=(t.off!==undefined)?t.off:0; t._midV=null; } }
+    const normHit=n=>String(n||'').toLowerCase().replace(/^touch_drag(\d+)$/,'touchdrag$1');
+    const stateFind=n=>{ const h=normHit(n); return STOGS.find(t=>t.trigger===h)||null; };
+    const stateCurOn=t=>{ try{ const cur=core.getParameterValueById(t.id);
+        /* 两端即「脱/穿」两个真实语义档（初始化时已把 `_offV` 校正为默认档，见 STOGS 初始化处）。
+           三态参数（`ShoseOff` = -1/0/1）靠这条校正就能正确归类：
+             cur=0 → 0（穿）   cur=1 → 1（脱）   cur=-1 → 0（残缺档归到"穿"，不留半只鞋）
+           这里**不再需要**单独的"中间档"分支：`_offV` 一旦等于默认档，中段判断就恒为假，
+           留着只会让后来人误以为三态还有第三条路径。 */
+        return Math.abs(cur-t._onV)<Math.abs(cur-t._offV)?t._onV:t._offV; }catch(e){ return t._offV; } };
+    const stateApply=()=>{ for(const t of STOGS){
+      try{
+        if(t._costumeOwned){
+          /* 已让渡给装扮热区（见 costumeToggle 里的接管注释）。这里**只重放、不落旧值**：
+             本事件在 LOW ticker 之后跑，若继续写 `_on`（-1）就把刚推进的渐变值盖掉 ——
+             实测（ougen_8/ShoseOff，真 GPU 60fps，打桩记录 coreModel.setParameterValueById）：
+               tween 每帧 0→0.003→0.062→…→1 正常推进，
+               但每帧末尾 2468 行都写一次 -1，`core.update` 入口 distinct 恒为 [-1]、中间值 0 个。
+             重放装扮值 = 取 `pins[id]`（tween 每帧已更新）→ 渐变得以到达渲染。
+             未让渡的条目行为完全不变，故对大面其它模型零影响。 */
+          const pm=(window.__costumePinsByModel||{})[sk.key];
+          const v=pm&&pm[t.id];
+          if(typeof v==='number'&&isFinite(v)){ core.setParameterValueById(t.id, v); t._last=v; }
+          continue;
+        }
+        if(t._tw){
+          const k=Math.min(1,(performance.now()-t._tw.t0)/1000/t.dur);
+          const e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;   // easeInOutQuad
+          const v=t._tw.from+(t._tw.to-t._tw.from)*e;
+          core.setParameterValueById(t.id, v);
+          t._last=v;                    // 供下次 toggleState 取 tween 起点（见那里的注释）
+          if(k>=1) t._tw=null;
+        }else{
+          if(t._on===undefined||t._on===null) t._on=stateCurOn(t);
+          core.setParameterValueById(t.id, t._on);   // 每帧重申：防任何外部路径把它拉走
+          t._last=t._on;
+        }
+      }catch(e){} }
+      /* 装扮参数跨动作保留**在这里也要写一次**（2026-10-28 修正错误结论，见下）。
+         旧结论（本轮推翻）：「本事件在 loadParameters 之前触发，写进去会被覆盖，所以只挂 LOW」。
+         那句只验证了**读回值**，没验证**渲染**。A/B/C/D 四组对照（`l2d_pin_timing_ab.py`，
+         动作 idle / Param233 / 目标件 405,413,665 / 150 帧）实测：
+           C 谁都不写            → 参数[0,0]   可见帧 0
+           A 只写 LOW（旧产品行为） → 参数[1,1]   可见帧 0     ← 读回对、画面错
+           B 只写 beforeModelUpdate → 参数[0,0]   可见帧 450/450
+           D 两处都写            → 参数[1,1]   可见帧 450/450
+         逐帧原因（vendor 顺序固定）：
+           motionManager.update 把曲线值写下 → saveParameters 存档 → 本事件（写 pin=1）
+           → core.update() 用 pin=1 算出 drawable 不透明度=可见 → loadParameters 把参数复原成存档值。
+         ⇒ 本事件决定**这一帧画什么**，LOW 决定**下一轮读回看到什么**，两者缺一不可。 */
+      { const as=(window.__actionStatePinsByModel||{})[sk.key];
+        if(as) for(const k in as){ try{ core.setParameterValueById(k, as[k]); }catch(e){} }
+        const cs=(window.__costumePinsByModel||{})[sk.key];
+        if(cs) for(const k in cs){ const v=cs[k];
+          if(typeof v==='number'&&isFinite(v)) try{ core.setParameterValueById(k, v); }catch(e){} } }
+    };
+    mdl.internalModel.on('beforeModelUpdate', stateApply);
+    /* 姿势基线钉值落地：只钉「当前动作组没有曲线驱动」的参数，避免盖掉动作曲线。
+       动作组集合在模型加载后即固定（mm.definitions），每帧只做一次 Set 查询。 */
+    { const _pins=BASE_PINS[sk.key]||null;
+      if(_pins){
+        const _pinKeys=Object.keys(_pins);
+        const _pinT=()=>{ try{
+          const cur=mm.state&&mm.state.currentGroup;
+          const defs=(cur&&mm.definitions&&mm.definitions[cur])||[];
+          /* 动作曲线清单：从已解析的 motion 对象拿参数 id 集合（拿不到就退化为「无驱动」） */
+          let drove=null;
+          try{
+            const m=defs[0]&&defs[0]._motion;
+            if(m&&m._model&&m._model.curves){
+              drove=new Set();
+              for(const c of m._model.curves){
+                const id=c._targetId||(c.target&&c.target._id)||c._id;
+                if(id) drove.add(id);
+              }
+            }
+          }catch(e){}
+          for(const k of _pinKeys){
+            if(drove && drove.has(k)) continue;     // 当前动作在驱动它 → 不覆盖
+            try{ core.setParameterValueById(k, _pins[k]); }catch(e){}
+          }
+        }catch(e){} };
+        mdl.internalModel.on('beforeModelUpdate', _pinT);
+      } }
+    /* ?freezehand 诊断开关（2026-10-21 手掌消失排查终局对照）：
+       把所有参数名含 Hand 的参数每帧钉回 moc3 默认值 = 模拟 EMIT_CONST 换入前
+       （无 constant 曲线、参数停默认位）的手部状态。用户真实浏览器对照：
+       手恢复完整 → 「手掌消失」= 手型曲线的数据语义（源动画持信手型），
+       非渲染 bug；仍消失 → 渲染层问题（mask/GPU），另查。 */
+    if(_AB.has('freezehand')){
+      const _frz=()=>{ try{
+        /* coreModel 没有 getParameterIds 方法（实测 undefined）——参数 ID 的
+           唯一来源是内部 _model.parameters.ids（582 个，含 ShoseOff 等） */
+        const ids=(core._model&&core._model.parameters&&core._model.parameters.ids)||[];
+        for(let i=0;i<ids.length;i++){
+          if(/Hand/i.test(String(ids[i])))
+            core.setParameterValueByIndex(i, core.getParameterDefaultValue(i));
+        }
+      }catch(e){} };
+      mdl.internalModel.on('beforeModelUpdate', _frz);
+      try{ const _p=document.getElementById('l2Hit');
+        if(_p) _p.textContent='[诊断] Hand 参数已冻结为默认值'; }catch(e){}
+    }
+    /* ?handdebug[=mesh,mesh,...] 手掌消失可视化诊断（2026-10-22）：
+       对指定 mesh（默认 ougen_8 手部清单+ArtMesh29）实时画框 + 左上角数值板。
+       绿框=mesh 状态正常（op≥0.05 且 vis=1），红框=状态异常（op=0 / vis=0）。
+       判读：框内无像素但数值全正常 → 渲染层裁剪（mask/blend/GPU 路径）；
+       数值异常（op=0/vis=0）→ 状态层（参数/数据驱动它隐藏）。
+       blend 数值：0=Normal 1=Additive 2=Multiplicative（Additive 浅色内容在亮页面上近似隐形）。
+       底部附全局统计：当前 vis=0 的 drawable 总数。
+       用法：?handdebug（默认清单）或 ?handdebug=ArtMesh29,ArtMesh111（其它模型）。 */
+    if(_AB.has('handdebug')){
+      const _hdspec=_AB.get('handdebug');
+      const _HD=_hdspec?_hdspec.split(',').map(s=>s.trim()).filter(Boolean)
+        :['ArtMesh111','ArtMesh112','ArtMesh114','ArtMesh117','ArtMesh119',
+          'ArtMesh359','ArtMesh159','ArtMesh29'];
+      const _hdG=new PIXI.Graphics(); app.stage.addChild(_hdG);
+      const _hdBox=document.createElement('div');
+      _hdBox.id='l2handdbg';   /* 稳定 id：headless 验证靠它取数（旧选择器 div[style*=z-index:30] 匹配不到） */
+      _hdBox.style.cssText='position:absolute;left:8px;top:8px;z-index:30;'
+        +'background:rgba(10,13,24,.85);color:#7fff7f;font:11px/1.6 Consolas,monospace;'
+        +'padding:6px 9px;border-radius:4px;pointer-events:none;white-space:pre';
+      wrap.appendChild(_hdBox);
+      const _hdTick=()=>{ try{
+        _hdG.clear();
+        const lines=[]; let ros=[]; try{ ros=core.getDrawableRenderOrders()||[]; }catch(e){ ros=[]; }
+        /* 必须保留 this：解构方法引用（const f=obj.m; f()）会让 this=undefined，
+           内部 this._model 直接炸（2026-10-23 实证：数值板一直空白就是这个）。 */
+        const dvis=(i)=>core.getDrawableDynamicFlagIsVisible(i);
+        let nInvis=0; const nd=core.getDrawableCount();
+        for(let i=0;i<nd;i++){ if(!dvis(i)) nInvis++; }
+        for(const id of _HD){
+          const ix=core.getDrawableIndex(id);
+          if(ix<0){ lines.push(id+' ×无此mesh'); continue; }
+          const op=+core.getDrawableOpacity(ix).toFixed(2);
+          const vis=dvis(ix)?1:0;
+          const bl=core.getDrawableBlendMode?core.getDrawableBlendMode(ix):'?';
+          lines.push(id+' op='+op+' vis='+vis+' blend='+bl+' ro='+(ros.length?ros[ix]:'?'));
+          const p=core.getDrawableVertexPositions(ix);
+          if(!p||p.length<4) continue;
+          let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+          for(let k=0;k+1<p.length;k+=2){
+            const st=toStage(p[k],p[k+1]);
+            if(st[0]<x0)x0=st[0]; if(st[0]>x1)x1=st[0];
+            if(st[1]<y0)y0=st[1]; if(st[1]>y1)y1=st[1];
+          }
+          const bad=(op<0.05||!vis);
+          _hdG.lineStyle(2, bad?0xff3355:0x33ff88, 0.9);
+          _hdG.drawRect(x0,y0,x1-x0,y1-y0);
+        }
+        lines.push('—— vis=0 drawable 总数: '+nInvis+'/'+nd);
+        lines.push('mask='+(JSON.stringify(window.__maskDbg)||'?'));
+        _hdBox.textContent=lines.join('\n');
+      }catch(e){ try{ _hdBox.textContent='[handdebug 异常] '+(e&&e.stack?String(e.stack).split('\n').slice(0,2).join(' | '):String(e)); }catch(_){} } };
+      app.ticker.add(_hdTick);
+    }
+    const toggleState=(t,via)=>{ if(!t) return false;
+      try{
+        /* 手动切状态（点 trigger 区）→ 收回装扮让渡，状态机重新接管该参数。
+           否则「先点装扮热区 → 状态区从此永久写不动」这种跨入口污染会很难查。
+           ⚠️ 收回必须**连 pins 一起清掉**（2026-10-29 实测，判据脚本 l2d_click_insync_diag.py）：
+           `stateApply` 末尾有一段**无条件**的 pins 重放（那是给「装扮参数跨动作保留」用的），
+           它跑在本函数 `_tw` 写入**之后**、同一个 beforeModelUpdate 内 ⇒ 只要 pins 里还留着
+           ② 写下的旧值，本函数的渐变写入**当帧即被抹掉**：pill 照报 `▸ on/off`（谎报），
+           画面纹丝不动。这正是用户报的「互动区被另一个互动区覆盖、点了没反应」。
+           实测（ougen_8/ShoseOff，pins 里留着上一段的 -1）：
+             点 touchdrag17 判定区 3/3 轮全部进 ①、`_on` 每轮都翻转、像素变化 **0/3**；
+             同一坐标先 `delete pins[ShoseOff]` 再点 → 画面立刻恢复 6–9 个部件变化（2/2 轮）。
+           ⇒ 收回 = `_costumeOwned` 归 false **且** pins/tween 归零，两者缺一就不算真收回。 */
+        t._costumeOwned=false;
+        { const pm=(window.__costumePinsByModel||{})[sk.key]; if(pm) delete pm[t.id];
+          const tw=(window.__costumeTweens||{})[sk.key]; if(tw) delete tw[t.id];
+          /* 若这个参数另有「产品层默认档」，收回后要回到默认档而不是裸删（否则点击第一下
+             会先掉到 moc3 缺省、第二下才回到默认值）。OUGEN 现无此情形，但表是可扩的。 */
+          const dflt=COSTUME_DEFAULT_ON[sk.key];
+          if(pm&&dflt&&dflt[t.id]!==undefined) pm[t.id]=dflt[t.id]; }
+        if(t._on===undefined||t._on===null) t._on=stateCurOn(t);
+        /* tween 起点必须取**渲染真正读到的值** `t._last`，不能取 getParameterValueById：
+           后者是「最后一次写入」，而 motion 的 loadParameters 每帧会把参数拉回末态，
+           stateApply 再覆盖成本状态值 —— 两者会长期不一致。
+           实测（aersasi_2/touch_drag1，帧源解耦 60fps，打桩 core.update 入口）：
+             开→关 那次点击前 raw(getParameterValueById)=0、entry=10，
+             起点取 raw ⇒ tween 0→0 ⇒ 入口 distinct 恒 [0,10]、中间值 0 个（视觉上瞬跳）。
+           `_last` 由 stateApply 在写参数后同步记录，语义就是「上一次渲染读到的值」。 */
+        const curV=(typeof t._last==='number'&&isFinite(t._last))
+          ? t._last : core.getParameterValueById(t.id);
+        t._tw={from:curV, to:(t._on===t._onV?t._offV:t._onV), t0:performance.now()};
+        t._on=(t._on===t._onV)?t._offV:t._onV;
+        const pill=document.getElementById('l2Hit');
+        if(pill) pill.textContent=(t.label||t.id)+(t._on===t._onV?' ▸ on':' ▸ off')+(via?' ← 拖拽':'');
+        return true;
+      }catch(e){ return false; } };
+    /* slider 型状态（mode:'slider'）：拖动位移连续调参数值，松手保持。
+       位移→值映射：水平位移 240px = 全量程（灵敏度可按条目 sens 覆盖）；
+       stateApply 对 slider 不做每帧重申（值由拖动过程写），只在非拖动时保持 _on 快照。 */
+    const stateIsSlider=t=>!!(t&&t.mode==='slider');
+    const sliderBegin=(t,cx)=>{ t._sl={v0:core.getParameterValueById(t.id), x0:cx};
+      t._on=core.getParameterValueById(t.id); };
+    const sliderMove=(t,cx)=>{ if(!t._sl) return;
+      const v=Math.max(t._offV, Math.min(t._onV,
+        t._sl.v0+(cx-t._sl.x0)/240*(t._onV-t._offV)));
+      t._on=v; core.setParameterValueById(t.id, v);
+      const pill=document.getElementById('l2Hit');
+      if(pill) pill.textContent=(t.label||t.id)+' ▸ '+v.toFixed(1); };
+    const sliderEnd=t=>{ if(t&&t._sl){ t._sl=null; } };
+    /* `panMode`：本次拖动是「平移画面」还是「拖动互动」，在 pointerdown 那一刻由修饰键定死。
+       裸左键拖 = 拖动互动；Ctrl/⌘+左键拖 = 平移画面（与「裸滚轮滚页面 / Ctrl+滚轮缩放」对称）。 */
+    let dragging=false,px=0,py=0,moved=0,stateDown=null,cosDown=null,panMode=false,splitDown=null;
+    /* ---------- 拖动型参数互动区：命中判定（2026-10-30）----------
+       与 COSTUME/判定区不同，这里的「热区」不是一个多边形，而是**沿分屏线的一条带**：
+       分屏线的屏幕位置随参数变化而移动，所以每次按下都要**按当前参数值反解**它此刻在哪。
+       反解方式：在候选值域上二分，找到使 `FanMeng` 左侧斜边在**该屏幕 y** 处的 x 最接近
+       指针 x 的参数值；命中要求横向距离 ≤ band。
+
+       为什么按 y 逐点算而不是取整条线的包围盒：这条线是**斜的**（左上→右下），
+       用包围盒会让整块左上角都变成拖动区，与「点分屏线附近」的直觉不符。
+
+       判据链：`splitScreenX(paramVal, clientY)` → 屏幕 x；|clientX - x| ≤ band ⇒ 命中。 */
+    const splitCfg=()=>((COSTUME_DRAG&&COSTUME_DRAG[sk.key])||[]);
+    /* 参数值 → 分屏线在该屏幕 y 处的屏幕 x。
+       实现方式：**两点标定 + 线性插值**，绝不每次调 update。
+       为什么不能每次 update：`core.update()` 要重算全部 842 件，拖动时 onMove 每帧调一次
+       会明显掉帧（实测探针扫 6 个值就卡到超时）。而遮罩顶点对参数是**线性**响应
+       （实测 Param373 0→20 时左边界 x 从 18.17 → -24.73 严格线性），两点足够。
+       标定后按 v 插值出顶点，再在目标 y 处对**左边界那两点**插值。 */
+    const _splitCal=Object.create(null);
+    const splitCalib=(item)=>{
+      const ck=sk.key+'|'+item.id;
+      if(_splitCal[ck]) return _splitCal[ck];
+      const idx=splitMaskOf(item.id);
+      if(idx<0){ _splitCal[ck]=null; return null; }
+      const grab=(v)=>{
+        try{
+          core.setParameterValueById(item.id, v);
+          core.update();
+          const p=core.getDrawableVertexPositions(idx);
+          if(!p||p.length<8) return null;
+          const out=[]; for(let k=0;k+1<p.length;k+=2) out.push([p[k],p[k+1]]);
+          return out;
+        }catch(e){ return null; }
+      };
+      let saved=null; try{ saved=+core.getParameterValueById(item.id); }catch(e){}
+      let lo=item.lo, hi=item.hi;
+      try{ const ix=core.getParameterIndex(item.id);
+        if(ix>=0){ lo=core.getParameterMinimumValue(ix); hi=core.getParameterMaximumValue(ix); } }catch(e){}
+      const A=grab(lo), B=grab(hi);
+      if(saved!==null&&isFinite(saved)) try{ core.setParameterValueById(item.id, saved); core.update(); }catch(e){}
+      if(!A||!B||A.length!==B.length){ _splitCal[ck]=null; return null; }
+      /* 左边界 = x 最小的两点（不写死顶点序：不同模型的三角带起始点不同，
+         写死索引会在换模型时静默取错边——这条教训在装扮热区上已经吃过一次）。 */
+      const pick=(V)=>{
+        const order=V.map((pt,i)=>[pt[0],i]).sort((a,b)=>a[0]-b[0]).slice(0,2).map(o=>o[1]);
+        return order.map(i=>({x:V[i][0], y:V[i][1]}));
+      };
+      const ca=pick(A), cb=pick(B);
+      /* ---------- 拖动界限（2026-10-30，用户需求：拖动要有界限，不能让一半完全消失）----------
+         两条硬边界，都必须满足：
+
+           ① **内容边界**：遮罩 fan-out 那批件的包围盒 = 有意义的内容范围。
+              遮罩边界越过它时，被裁的那一侧就什么都不剩。
+           ② **画布边界**：遮罩边界跑出画布时，同样一侧全空。
+
+         ⚠️ 只用 ① 会失效（本轮实测踩到）：`FanMeng` 的 fan-out 里包含**全屏背景**，
+            其包围盒是 `[-27.81, 19.78]`（覆盖整个画布），于是「内容范围」≈ 画布，
+            算出的界限几乎等于值域本身（vMin=0 / vMax=19.0），等于没夹。
+         ⇒ 真正的判据必须是「**遮罩边界落在画布内部**」，因为一旦线跑出画布，
+            被遮的那一侧就整块空了（实测 v=19.0 时左侧内容占比 0.0%）。
+
+         实现：把「边界必须落在画布内、并留 margin」翻译成参数值区间。
+         边界 x 随 v 线性（已标定两端），所以可以直接解出 v 的上下界。
+         若算不出（退化），退回「值域内侧 8%」。
+         每侧 margin 用画布宽度的 3%（`item.margin`，0..1 比例）。 */
+      const edgeXs=[ca[0].x, ca[1].x, cb[0].x, cb[1].x];
+      const eMin=Math.min.apply(null, edgeXs), eMax=Math.max.apply(null, edgeXs);
+      let vMin=lo, vMax=hi;
+      if(eMax-eMin>1e-6){
+        /* 画布在 V 空间的范围：画布 x ∈ [0, cux]（V 原点在画布中心） */
+        const mg=(item.margin===undefined?0.03:item.margin)*cux;
+        const canvasLo=-cux/2+mg, canvasHi=cux/2-mg;
+        /* 边界允许停在 [canvasLo, canvasHi] 内 ⇒ 解出对应 v 区间 */
+        const vAt=(x)=>lo+(x-eMin)/(eMax-eMin)*(hi-lo);
+        const v1=vAt(canvasLo), v2=vAt(canvasHi);
+        vMin=Math.max(lo, Math.min(v1, v2));
+        vMax=Math.min(hi, Math.max(v1, v2));
+      }
+      if(!(vMax-vMin>1e-6)){ const m=(hi-lo)*0.08; vMin=lo+m; vMax=hi-m; }
+      const cal={lo, hi, A, B, la:ca, lb:cb, idx, vMin, vMax,
+                 edgeV:[ +eMin.toFixed(2), +eMax.toFixed(2) ],
+                 canvasV:[ +(-cux/2).toFixed(2), +(cux/2).toFixed(2) ]};
+      _splitCal[ck]=cal; return cal;
+    };
+    const splitScreenX=(item, val, clientY)=>{
+      try{
+        const cal=splitCalib(item); if(!cal) return null;
+        const t=(cal.hi-cal.lo)<1e-9 ? 0 : Math.max(0,Math.min(1,(val-cal.lo)/(cal.hi-cal.lo)));
+        const r=wrap.getBoundingClientRect();
+        const s=mdl.scale.x;
+        const V2S=(vx)=>r.left+mdl.x+(vx+cux/2)*ppu*s;
+        const Y2V=(cy)=>cuy/2-((cy-r.top)-mdl.y)/(ppu*s);
+        const Vy=Y2V(clientY);
+        /* 两个标定端的左边界两点各自插值到目标 y，再按 t 在两端之间插值 */
+        const edgeXAt=(pts)=>{
+          const [p0,p1]=pts;
+          const dy=p1.y-p0.y;
+          const k=(Math.abs(dy)<1e-6)?0:((Vy-p0.y)/dy);
+          return p0.x+(p1.x-p0.x)*Math.max(0,Math.min(1,k));
+        };
+        const xa=edgeXAt(cal.la), xb=edgeXAt(cal.lb);
+        return V2S(xa+(xb-xa)*t);
+      }catch(e){ return null; }
+    };
+    /* 反查该模型里「被这个参数驱动、且被别的件当遮罩用」的件索引。
+       缓存按模型+参数 id 存，避免每次按下都扫 842 件。 */
+    const _splitMaskCache=Object.create(null);
+    /* 某遮罩件的 **fan-out**：哪些件把它当遮罩用（这些才是被它裁切的内容）。
+       与 fan-in 相反 —— 判「遮罩边界越过什么就没内容了」必须用 fan-out。 */
+    const _splitUserCache=Object.create(null);
+    const splitMaskUsers=(maskIdx)=>{
+      const ck=sk.key+'|u|'+maskIdx;
+      if(_splitUserCache[ck]) return _splitUserCache[ck];
+      const out=[];
+      try{
+        const m=core._model, n=core.getDrawableCount();
+        for(let i=0;i<n;i++){
+          const cnt=m.drawables.maskCounts[i], arr=m.drawables.masks[i];
+          if(!arr) continue;
+          for(let k=0;k<cnt;k++){ if(arr[k]===maskIdx){ out.push(i); break; } }
+        }
+      }catch(e){}
+      _splitUserCache[ck]=out; return out;
+    };
+    /* 某件在「参数两端」的顶点包围盒并集（V 空间）。用于算内容范围。 */
+    const _splitBoxCache=Object.create(null);
+    const calibBoxOf=(idx, lo, hi)=>{
+      const ck=sk.key+'|b|'+idx;
+      if(_splitBoxCache[ck]!==undefined) return _splitBoxCache[ck];
+      let box=null;
+      try{
+        const p=core.getDrawableVertexPositions(idx);
+        if(p&&p.length>=4){
+          let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+          for(let k=0;k+1<p.length;k+=2){
+            if(p[k]<x0)x0=p[k]; if(p[k]>x1)x1=p[k];
+            if(p[k+1]<y0)y0=p[k+1]; if(p[k+1]>y1)y1=p[k+1]; }
+          box={x0:x0,y0:y0,x1:x1,y1:y1};
+        }
+      }catch(e){}
+      _splitBoxCache[ck]=box; return box;
+    };
+    const splitMaskOf=(pid)=>{
+      const ck=sk.key+'|'+pid;
+      if(_splitMaskCache[ck]!==undefined) return _splitMaskCache[ck];
+      let best=-1;
+      try{
+        const m=core._model, n=core.getDrawableCount();
+        const map=(PARAM_DRAWABLES&&PARAM_DRAWABLES[sk.key])||{};
+        const drv=new Set(map[pid]||[]);
+        /* 遮罩 fan-in：哪些件被当作遮罩 */
+        const fan=Object.create(null);
+        for(let i=0;i<n;i++){
+          const cnt=m.drawables.maskCounts[i], arr=m.drawables.masks[i];
+          if(!arr) continue;
+          for(let k=0;k<cnt;k++){ const mi=arr[k]; fan[mi]=(fan[mi]||0)+1; }
+        }
+        let bestFan=0;
+        for(const key in fan){
+          const i=+key;
+          if(!drv.has(i)) continue;
+          if(fan[i]>bestFan){ bestFan=fan[i]; best=i; }
+        }
+        /* 没有 map 数据时退回「顶点数=4 且 fan-in 最大」的结构遮罩 */
+        if(best<0){
+          for(const key in fan){
+            const i=+key;
+            let vc=0; try{ vc=core.getDrawableVertexCount(i); }catch(e){}
+            if(vc===4&&fan[i]>bestFan){ bestFan=fan[i]; best=i; }
+          }
+        }
+      }catch(e){ best=-1; }
+      _splitMaskCache[ck]=best; return best;
+    };
+    /* 按下时定目标：命中哪条分屏线、当时的参数值、指针 x */
+    const splitHitAt=(cx,cy)=>{
+      for(const it of splitCfg()){
+        let cur=null;
+        try{ cur=+core.getParameterValueById(it.id); }catch(e){ cur=null; }
+        if(cur===null||!isFinite(cur)) continue;
+        const sx=splitScreenX(it, cur, cy);
+        if(sx===null) continue;
+        if(Math.abs(cx-sx)<=it.band) return {it:it, sx:sx, x0:cx, v0:cur};
+      }
+      return null;
+    };
+    /* 拖动推进：**线跟手**（精确反解，不用固定 span）。
+       为什么不用「每像素对应多少参数」：那需要一个人为的 span，而分屏线在屏幕上的可移动
+       范围取决于画布尺寸与模型缩放（实测 1145px 画布上 Param373 0..20 对应 1622px 行程），
+       固定 span 会导致「拖一点就跑到头」或「拖到底线才动一点」，且换分辨率后完全失效。
+       这里直接反解：已知 v=lo 时线在 xa、v=hi 时线在 xb（同一屏幕 y 处），
+       求使 x(v)=clientX 的 v —— 线性插值，与 `splitScreenX` 严格互逆。
+       ⇒ 拖动时线始终贴着指针走，参数值与视觉位置一一对应。 */
+    const splitMove=(st, cx, cy)=>{
+      const it=st.it;
+      const cal=splitCalib(it);
+      if(!cal) return null;
       const r=wrap.getBoundingClientRect();
-      const lp=mdl.toLocal(new PIXI.Point(e.clientX-r.left, e.clientY-r.top));
-      const pv=P2V(lp.x/ppu, lp.y/ppu);
-      const name=hitAt(pv.x, pv.y);
-      const g = name && (groups.includes(name) ? name : groups.find(x=>x.toLowerCase()===name.toLowerCase())) || (name?null:fallbackG);
+      const s=mdl.scale.x;
+      const V2S=(vx)=>r.left+mdl.x+(vx+cux/2)*ppu*s;
+      const Vy=cuy/2-((cy-r.top)-mdl.y)/(ppu*s);
+      const edgeXAt=(pts)=>{
+        const [p0,p1]=pts;
+        const dy=p1.y-p0.y;
+        const k=(Math.abs(dy)<1e-6)?0:((Vy-p0.y)/dy);
+        return p0.x+(p1.x-p0.x)*Math.max(0,Math.min(1,k));
+      };
+      const xa=V2S(edgeXAt(cal.la)), xb=V2S(edgeXAt(cal.lb));
+      if(Math.abs(xb-xa)<1e-6) return null;
+      let t=(cx-xa)/(xb-xa);
+      t=Math.max(0,Math.min(1,t));
+      let v=cal.lo+t*(cal.hi-cal.lo);
+      /* **拖动界限**（见 splitCalib 里的取证注释）：夹到「内容不被切空」的合法区间。
+         用户明确要求「拖动是有限度的，不能让一半分屏完全消失」——
+         所以这里必须夹，而不是只夹到参数值域。 */
+      if(cal.vMin!==undefined && cal.vMax!==undefined){
+        v=Math.max(cal.vMin, Math.min(cal.vMax, v));
+      }
+      const pins=costumePins();
+      pins[it.id]=v;
+      try{ cm.setParameterValueById(it.id, v); }catch(e){}
+      const pill=document.getElementById('l2Hit');
+      if(pill) pill.textContent=(it.label||it.id)+' · '+it.id+' → '+v.toFixed(2);
+      try{ window.__splitLog=(window.__splitLog||[]).concat([[it.id,v,Date.now()]]); }catch(e){}
+      return v;
+    };
+    const localHit=(cx,cy)=>{ const r=wrap.getBoundingClientRect();
+      const lp=mdl.toLocal(new PIXI.Point(cx-r.left, cy-r.top));
+      const pv=P2V(lp.x/ppu, lp.y/ppu); return hitAt(pv.x, pv.y); };
+    /* 同一屏幕点上的**全部**动作判定区候选（含各自的四边形面积），只用于「参数热区 vs
+       动作判定区」的优先级裁决，不参与随机挑选（随机挑选仍由 hitAt 负责）。 */
+    const localHitAll=(cx,cy)=>{ const r=wrap.getBoundingClientRect();
+      const lp=mdl.toLocal(new PIXI.Point(cx-r.left, cy-r.top));
+      const pv=P2V(lp.x/ppu, lp.y/ppu); return hitAll(pv.x, pv.y); };
+    /* 拖拽区→动作组的编号映射（点击路径仍在用：点 TouchDragN 补区时找同名 touch_drag 组）。
+       拖动方向没分组时按编号轮转到现有的 touch_drag1..N，避免有区点不出动作。 */
+    const dragGroupOf=n=>{ if(groups.includes(n)) return n;
+      const _alt=n.replace(/^touchdrag(\d+)$/,'touch_drag$1');
+      if(groups.includes(_alt)) return _alt;
+      const k=parseInt((n.match(/(\d+)$/)||[])[1]||'1',10);
+      // TouchDragN 只是拖拽标记，不是 idleN（脱鞋由玩家拖动完成，不能改成播 idle6）。
+      // 有 touch_dragN 用同名组；没有则轮转到现有 drag 组。
+      const ds=groups.filter(g=>/^touch_drag\d+$/.test(g));
+      if(!ds.length) return null;
+      return ds[(k-1)%ds.length]; };
+    const onDown=e=>{ if(e.button!==0) return; moved=0; px=e.clientX; py=e.clientY;
+      /* ── 拖拽语义（2026-10-29 用户定案，推翻 2026-10-23 的旧决定）──
+         旧行为：裸左键拖 = 平移画面，Ctrl+左键也 = 平移画面，互动只能靠点击。
+         新行为（用户原文）：「鼠标拖动默认为移动画面，应该设置 ctrl+鼠标拖动来移动画面，
+         单独鼠标拖动为拖动互动」⇒
+             裸左键拖 → **拖动互动**（命中判定区/装扮热区就执行，见 onMove/onUp）
+             Ctrl/⌘+左键拖 → **平移画面**
+         与滚轮一致（裸滚轮留给页面滚动、Ctrl+滚轮才缩放），两种输入用同一套修饰键语义。
+         ⚠️ 因此 `panMode` 决定 onMove 是平移还是走互动，onUp 也据此分流。 */
+      panMode=!!(e.ctrlKey||e.metaKey);
+      dragging=true;
+      /* 拖动型参数互动区（分屏线）**优先于**装扮热区：它是一条窄带，
+         且只在贴着线时才命中；装扮热区（鞋/丝袜）覆盖大片腿部，若先判会把线整条吞掉。
+         与 panMode 互斥：Ctrl+拖是平移画面，不抢互动。 */
+      splitDown=null;
+      if(!panMode){ try{ splitDown=splitHitAt(e.clientX,e.clientY); }catch(err){ splitDown=null; } }
+      /* 装扮热区在**按下那一刻**定命中（2026-10-28）。
+         为什么不能等 pointerup 再判：本页原来只在 onUp 里判，而 pointerdown→pointerup 实测
+         相隔 80–160 ms，ougen_8 鞋的可见件 nVis=1、面积仅 6.47（V 空间），idle 的呼吸 + 物理
+         足够把它挪出那个屏幕点 ⇒ 按下确实点在鞋上、抬起已经判不到（用户表现：点了没反应、
+         时灵时不灵）。现在按下就用**当帧新鲜几何**算一次贴上，抬起按「位移 < 6 像素」直接用它,
+         与常规 UI「按下定目标、抬起执行」一致。代价：每次点击只重建一次几何（~1–2 ms）。
+         ⚠️ 拖动互动同样在按下那一刻定目标：拖拽过程中几何一直在动，抬起时再判会点空。 */
+      try{ cosDown=costumeHitAt(e.clientX,e.clientY,freshGeo()); }catch(err){ cosDown=null; } };
+    const onMove=e=>{ if(stateDown && stateIsSlider(stateDown)){
+        sliderMove(stateDown, e.clientX); moved+=Math.abs(e.clientX-px)+Math.abs(e.clientY-py);
+        px=e.clientX; py=e.clientY; return; }
+      if(splitDown){ moved+=Math.abs(e.clientX-px)+Math.abs(e.clientY-py);
+        splitMove(splitDown, e.clientX, e.clientY); px=e.clientX; py=e.clientY; return; }
+      if(!dragging)return; const dx=e.clientX-px,dy=e.clientY-py; moved+=Math.abs(dx)+Math.abs(dy);
+      /* 只有 Ctrl/⌘ 按下时才平移画面；裸拖留给互动（体积参数走 slider；其它互动在 onUp 结算） */
+      if(panMode){ ox+=dx; oy+=dy; clampPan(); apply(); }
+      px=e.clientX; py=e.clientY; };
+    const onUp=e=>{ const cd=cosDown; cosDown=null; const wasPan=panMode; panMode=false;
+      if(splitDown){ const st=splitDown; splitDown=null; dragging=false;
+        /* 分屏线：拖动中已实时写入；松手保持当前值（不回弹）。
+           位移 < 6 px 视为点击——分屏线没有「点击语义」，忽略即可。 */
+        if(moved>=6) vm.touch();
+        return; }
+      if(stateDown){ const st=stateDown; stateDown=null;
+        if(stateIsSlider(st)){ sliderEnd(st); return; }
+        toggleState(st,true); return; }
+      if(!dragging) return; dragging=false;
+      /* Ctrl 拖拽 = 平移画面，抬起时不做互动判定（位移阈值只对平移有意义） */
+      if(wasPan){ if(moved>=6) vm.touch(); return; }
+      if(e.button!==0) return;
+      /* ── 裸拖 = 拖动互动（2026-10-29）──
+         用户定案「单独鼠标拖动为拖动互动」。判据：
+           · 位移 < 6 px ⇒ 当作**点击**（沿用原有语义，不改变已验收的点击行为）
+           · 位移 ≥ 6 px ⇒ 当作**拖动**：命中动作判定区就播对应动作组；
+             命中参数热区就把该参数朝拖动方向推一档（与点击切换同一入口，避免两套状态）
+         为什么拖动不播 touch_drag* 的「按方向轮转」那套：`dragGroupOf` 只做「触控标记名→
+         同名动作组」的映射，方向信息在资产里并不存在（`TouchDragN` 只是标记，没有方向参数），
+         凭空按 dx/dy 选组只会制造用户看不懂的行为。这里只做「有同名组就播」。 */
+      const isDrag=moved>=6;
+      const name=localHit(e.clientX,e.clientY);
+      /* 状态切换区（§132）：点击=切状态，不播动作 */
+      { const st=stateFind(name); if(st){ toggleState(st,false); return; } }
+      /* 参数型互动区（2026-10-24 需求 3）：手工配置的 STATE_TOGGLES 优先，其次这里，最后才是动作。
+         判在 stateFind 之后、动作触发之前——顺序不能反：热区覆盖更广（自动生成的参数热区可能盖住
+         某个手工接线的互动区），若放在前面会把已验收的手工接线行为改掉。
+         命中结果优先用 pointerdown 那一刻算好的（`cd`）：抬起时的几何已晚 80–160 ms，
+         小部件（ougen_8 鞋的可见件面积仅 6.47）早已漂出该屏幕点 ⇒ 按下没判到时才补算。 */
+      { const cb=cd || costumeHitAt(e.clientX,e.clientY,freshGeo());
+        /* ── 与动作判定区重叠时按「谁更具体」裁决（2026-10-29，用户需求③）──
+           过去参数热区**无条件**抢在动作之前，于是它盖住某块判定区时，那块判定区就永久失效
+           （用户报的「互动区无法触发 / 效果被另一个互动区覆盖」）。现在比较两边的**可见多边形
+           覆盖面积**，小的一方更具体、更符合「点这块具体东西」的意图：
+             · 热区面积 < 重叠判定区里最小的那个 ⇒ 热区胜（点戒指/眼睛不该播身体动作）
+             · 否则动作胜（大片丝袜/鞋不该吞掉贴在上面的 touch_idle* 小标记）
+           实测 ougen_8：网格 2065 个「至少一方命中」的点里 351 点发生改判，而 31 个判定区
+           的中心点**一个都没丢**（判定区自己很小，永远赢）；被让出的是 Stock2/Cloth2 那些
+           跨整个腿部的大热区 —— 它们本来就是"窝在别的小标记下面"，不让出就没法点到那些标记。
+           `stateFind` 命中（手工接线）不受此规则影响，仍最高优先。 */
+        if(cb){
+          const areas=localHitAll(e.clientX,e.clientY);
+          if(!areas.length){ costumeToggle(cb); return; }
+          const aMin=Math.min.apply(null, areas.map(o=>(isFinite(o.area)&&o.area>0)?o.area:Infinity));
+          const cArea=costumeAreaOf(cb);
+          /* 幽灵区（该热区此刻没有任何可见件）不参与面积比较：它的可见面积为 0，
+             若按 0 <= aMin 让它在重叠处胜出，就会把判定区整块吞掉。让位给判定区。 */
+          const hidden=!cb.nVis;
+          if(!hidden && cArea<=aMin){ costumeToggle(cb); return; }
+        } }
+      // 普通点击补区（touchdragN）也要能触发：先查同名组，再走 dragGroupOf 的编号映射。
+      const g = name && (groups.includes(name) ? name
+        : (groups.find(x=>x.toLowerCase()===name.toLowerCase()) || dragGroupOf(name))) || (name?null:fallbackG);
       if(!g) return;
+      /* 拖动（位移 ≥6px）与点击走同一条播放入口；`isDrag` 只用来区分文案，
+         让用户知道这次是拖出来的还是点出来的（两者都算"触发成功"）。 */
       if(play(g)){ sel.value=g; const pill=document.getElementById('l2Hit');
-        if(pill) pill.textContent=(name?'部位 '+name+' → ':'')+g; } };
-    const onCancel=()=>{ dragging=false; };
+        if(pill) pill.textContent=(name?'部位 '+name+' → ':'')+g+(isDrag?'（拖动）':''); } };
+    const onCancel=()=>{ dragging=false; cosDown=null; panMode=false; splitDown=null;
+      if(stateDown){ if(stateIsSlider(stateDown)) sliderEnd(stateDown); stateDown=null; } };
     /* 缩放必须按住 Ctrl(或 ⌘/Alt)：裸滚轮要留给页面滚动。
        之前裸滚轮被 preventDefault 劫持，用户浏览列表时鼠标经过模型就会一路放大到 12 倍并累积偏移，
        看起来像「模型乱动/位置不对」 */
@@ -1569,7 +3483,8 @@ async function renderLive2D(s, sk){
     window.addEventListener('blur',onCancel);
     window.addEventListener('pointermove',onMove);
     window.addEventListener('pointerup',onUp);
-    my.off=()=>{ stopSkinVoice(); ro.disconnect(); wrap.removeEventListener('wheel',onWheel);
+    my.off=()=>{ stopSeqAll(); stopSkinVoice(); ro.disconnect(); try{mdl.internalModel.off('beforeModelUpdate', stateApply);}catch(e){}
+      wrap.removeEventListener('wheel',onWheel);
       wrap.removeEventListener('pointerdown',onDown); wrap.removeEventListener('dblclick',onDbl);
       wrap.removeEventListener('pointercancel',onCancel);
       window.removeEventListener('pointercancel',onCancel); window.removeEventListener('blur',onCancel);
@@ -1599,7 +3514,7 @@ async function startSpine(s, sk){
     const wrap=document.getElementById('spcwrap'); wrap.style.cssText='position:absolute;inset:0';
     const cv=document.createElement('canvas'); cv.style.cssText='width:100%;height:100%;display:block;cursor:grab'; wrap.appendChild(cv);
     const bar=document.createElement('div'); bar.className='spine-bar'; wrap.appendChild(bar);
-    const glctx=new spine.webgl.ManagedWebGLRenderingContext(cv,{alpha:true,premultipliedAlpha:true});
+    const glctx=new spine.webgl.ManagedWebGLRenderingContext(cv,{alpha:true,premultipliedAlpha:true,antialias:true});
     const scene=new spine.webgl.SceneRenderer(cv,glctx,false);
     const gl=glctx.gl; gl.clearColor(0,0,0,0); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
 
@@ -1675,8 +3590,17 @@ async function startSpine(s, sk){
     const vm=vmemCommitter(vkey, ()=>({camX:+camX.toFixed(2), camY:+camY.toFixed(2),
                                        zoom:+zoom.toFixed(4), fv:SPINE_FRAME_V}));
     curVM=vm;
-    function resize(){ cv.width=wrap.clientWidth; cv.height=wrap.clientHeight; scene.resize();
-      scene.camera.setViewport(cv.width, cv.height); }  // 关键：scene.resize() 不更新相机视口（比例怪的根因）
+    const SpineDpr=()=>window.devicePixelRatio||1;   // 每帧校正要用当前 DPR（拖动跨显示器时变化）
+    function resize(){ const d=SpineDpr();
+      // 画质：画布 buffer 乘 DPR（CSS 尺寸是 100% 由样式控制）→ 高 DPI 屏不糊。
+      // fit()/pixelFit() 都用 cv.width/height 自身，乘完内部自洽，取景构图不变，只是分辨率提升。
+      cv.width=Math.max(2,Math.round(wrap.clientWidth*d)); cv.height=Math.max(2,Math.round(wrap.clientHeight*d));
+      /* ⚠️ 不能在这里调 scene.resize()：spine-all.js 的 SceneRenderer.resize() 会执行
+         `canvas.width = canvas.clientWidth`，把上面乘过 DPR 的 buffer 当场改回 CSS 尺寸
+         （2026-10-19 实测：DPR=2 时 buffer 仍 1x，页面一直是糊的；旧探针只在 DPR=1 下测，
+         1x 天然满足 want>=1，属假绿灯）。它只额外做两件事——gl.viewport 与 camera.setViewport——
+         这里自己做，顺序与它一致。 */
+      gl.viewport(0,0,cv.width,cv.height); scene.camera.setViewport(cv.width, cv.height); }
     /* ---------- 取景判据：附件"乘完 slot 颜色后有没有落下非近黑的笔" ----------
        两类巨幕会把包围盒撑到可见内容的 2~10 倍（弹窗里画面缩成中间一小块）：
          ① setup alpha=0 的整屏闪黑/白场 —— 一个像素都不落（实测最大 32967×29970 单位），判 alpha 就够；
@@ -2057,6 +3981,12 @@ async function startSpine(s, sk){
     const mu=()=>{ if(!drag) return; drag=false; cv.style.cursor='grab'; vm.touch(); };
     window.addEventListener('mousemove',mm); window.addEventListener('mouseup',mu); window.addEventListener('resize',resize);
     function frame(now){ if(my.cancelled){window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);return;} my.raf=requestAnimationFrame(frame);
+      /* 每帧校正 canvas（Spine 画质要求）：buffer 应恒等于 CSS 尺寸 × 当前 DPR。
+         CSS 尺寸是样式 100% 由浏览器保证，这里只负责驱动 buffer 变化时机——
+         拖动窗口跨 DPR 显示器、全屏进出都会触发 canvas 尺寸变化，用事件监听会漏。
+         尺寸未变（常见情况）时零开销，不打断绘制。 */
+      { const _d=SpineDpr(), _w=Math.max(2,Math.round(wrap.clientWidth*_d)), _h=Math.max(2,Math.round(wrap.clientHeight*_d));
+        if(cv.width!==_w||cv.height!==_h) resize(); }
       const dt=Math.min((now-last)/1000,.1);last=now;
       /* 动画**从头到尾完整播**，循环由 spine 自己的 loop 处理，不做任何区间裁剪
          （为什么这里曾经有过一段"跳过消散段"的回绕、以及为什么必须删掉，见上面 setAnim 处的说明）。 */
@@ -2132,6 +4062,11 @@ paintTheme();
       OPT[k]=!OPT[k]; saveOpt(); paintOpt();
       if(k==='voice' && !OPT.voice) stopSkinVoice();   // 关掉就把手上正在播的那条停掉，别"关了还有声"
       if(k==='lines' && !OPT.lines) hideSub();
+      if(k==='eye' && !OPT.eye){                       // 关跟随 → 视线回正（不留在最后一次鼠标位置）
+        try{ const m=l2State&&l2State.app&&l2State.app.stage.children[0];
+          if(m){ const c=m.internalModel.coreModel;
+            c.setParameterValueById('ParamEyeBallX', 0); c.setParameterValueById('ParamEyeBallY', 0); } }catch(e){}
+      }
       if(tab==='voice') renderVoice();                 // 台词列要随开关显隐，重画一次
     };
   });
@@ -2355,6 +4290,104 @@ bgSync();
    以前这里直接 renderGrid() → 第一屏是未排序的原序（VTuber 联动与 -META 变体排最前），
    用户报的"随便点一个筛选再回来才正常"就是这个（2026-09-26；由 126e16e 引入）。 */
 apply();
+
+/* ?ship=<id> 直达（2026-10-23）：探针与分享链接用。
+   诊断脚本原先只能模拟点击卡片，"真实浏览器点击路径"无法自动化复现；
+   有了这个参数，真实浏览器打开即落到目标模型，真实 GPU/DPI/扩展环境才可被自动取证。
+   参数缺失或未命中时什么都不做，不影响正常打开流程。 */
+(function(){
+  try{
+    const sp=new URLSearchParams(location.search).get('ship');
+    const go=()=>{ try{
+      /* sp 既可以是船 id（ougen），也可以是皮肤 key（ougen_8）。
+         全量索引里船 id 是归一化基名、皮肤 key 才带序号；只按船 id 找会让
+         ?ship=ougen_8 直接落空（用户与探针都按皮肤名点，两种都必须认）。 */
+      let s=null, sk=null;
+      s=((window.GALLERY&&GALLERY.ships)||[]).find(x=>x.id===sp);
+      if(s){ sk=(s.skins||[])[0]||null; }
+      else {
+        for(const sh of ((window.GALLERY&&GALLERY.ships)||[])){
+          const k=(sh.skins||[]).find(z=>z.key===sp);
+          if(k){ s=sh; sk=k; break; }
+        }
+      }
+      if(!s) return;
+      openShip(s);
+      if(sk) setSkin(sk);
+      const tb=[...document.querySelectorAll('#mTabs .tab')].find(x=>x.dataset.k==='live2d');
+      if(tb && !tb.classList.contains('dis')) tb.click();
+      /* &motion=<组名>：模型就绪后自动播该动作（真实浏览器取证用；__l2play 是页面自己的播放入口） */
+      const mo=new URLSearchParams(location.search).get('motion');
+      if(mo){ let n=0; const w=()=>{ n++;
+        if(window.__l2play){ try{ const s2=document.getElementById('l2Motion');
+          if(s2) s2.value=mo; window.__l2play(mo); }catch(e){} }
+        else if(n<80) setTimeout(w,400); };
+        setTimeout(w,600); }
+    }catch(e){} };
+    /* &diagpost=<url>：把真实浏览器的渲染诊断 POST 回本地接收端（scripts/diag/hand_diag_sink.py）。
+       手掌消失只在用户真实浏览器复现，CDP 探针跑独立 profile 拿不到「默认 profile + 真实扩展 +
+       真实 GPU 合成」那一层；让页面自己把全部 drawable 状态回传，才能真正对账。 */
+    const dp=new URLSearchParams(location.search).get('diagpost');
+    if(dp){
+      const _dq=new URLSearchParams(location.search);
+      const diagFrames=Math.max(1, Math.min(12, parseInt(_dq.get('diagframes')||'1',10)||1));
+      const diagStep=Math.max(200, parseInt(_dq.get('diagstep')||'600',10)||600);
+      let left=diagFrames, n=0;
+      const snap=()=>{ n++;
+        try{
+          const app=(typeof l2State!=='undefined'&&l2State)?l2State.app:null;
+          const mdl=app&&app.stage&&app.stage.children[0];
+          if(!mdl||!mdl.internalModel){ if(n<150) setTimeout(snap,400); return; }
+          const im=mdl.internalModel, core=im.coreModel, ppu=im.pixelsPerUnit||1;
+          const cux=im.width/ppu, cuy=im.height/ppu, sc=mdl.scale.x;
+          const toStage=(vx,vy)=>[mdl.x+(vx+cux/2)*ppu*sc, mdl.y+(cuy/2-vy)*ppu*sc];
+          let ros=[]; try{ ros=core.getDrawableRenderOrders()||[]; }catch(e){ ros=[]; }
+          const nd=core.getDrawableCount(), rows=[];
+          for(let i=0;i<nd;i++){
+            let bb=null;
+            try{ const p=core.getDrawableVertexPositions(i);
+              if(p&&p.length>=4){ let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+                for(let k=0;k+1<p.length;k+=2){ const s2=toStage(p[k],p[k+1]);
+                  if(s2[0]<x0)x0=s2[0]; if(s2[0]>x1)x1=s2[0];
+                  if(s2[1]<y0)y0=s2[1]; if(s2[1]>y1)y1=s2[1]; }
+                if(x1>=x0&&y1>=y0) bb=[Math.round(x0),Math.round(y0),Math.round(x1),Math.round(y1)]; }
+            }catch(e){}
+            let id='?', op=null, vis=null;
+            try{ id=core.getDrawableId(i); }catch(e){}
+            try{ op=+core.getDrawableOpacity(i).toFixed(3); }catch(e){}
+            try{ vis=core.getDrawableDynamicFlagIsVisible(i)?1:0; }catch(e){}
+            rows.push({i:i,id:id,op:op,vis:vis,ro:ros.length?ros[i]:null,bb:bb});
+          }
+          let vend='?', rnd='?';
+          try{ const gl=app.renderer&&app.renderer.gl, dbg=gl&&gl.getExtension('WEBGL_debug_renderer_info');
+            if(dbg){ vend=gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL); rnd=gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL); } }catch(e){}
+          let hp=[]; try{
+            /* 参数 ID 的唯一可靠来源是 core._model.parameters.ids（高层 getParameterId
+               在部分封装里不存在/返回空 → 之前手部参数恒为 []） */
+            const _ids=(core._model&&core._model.parameters&&core._model.parameters.ids)||null;
+            if(_ids){ for(let i=0;i<_ids.length;i++){ const pid=_ids[i];
+              if(/Hand|hand/.test(pid)) hp.push([pid, +core.getParameterValueByIndex(i).toFixed(2)]); } }
+          }catch(e){}
+          const payload={frame:n, ts:Date.now(), t:Math.round(performance.now()),
+            url:location.href, dpr:devicePixelRatio,
+            bufW:app.renderer.width, bufH:app.renderer.height,
+            cssW:document.getElementById('l2wrap').clientWidth,
+            cssH:document.getElementById('l2wrap').clientHeight,
+            res:app.renderer.resolution, vendor:vend, renderer:rnd,
+            mdl:{x:+mdl.x.toFixed(2),y:+mdl.y.toFixed(2),scale:+mdl.scale.x.toFixed(5)},
+            handParams:hp, drawables:rows};
+          fetch(dp,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)})
+            .then(()=>{ try{ const b=document.getElementById('l2Hit');
+              if(b) b.textContent='诊断已回传 '+rows.length+' 个 drawable（第'+n+'帧）'; }catch(e){} })
+            .catch(()=>{})
+            .then(()=>{ left--; if(left>0) setTimeout(snap, diagStep); });
+        }catch(e){ if(n<150) setTimeout(snap,400); }
+      };
+      setTimeout(snap,1500);
+    }
+    if(sp) setTimeout(go, 500);
+  }catch(e){}
+})();
 </script>
 </body>
 </html>

@@ -1,0 +1,1910 @@
+[
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "complete.motion3.json",
+    "bytes": 95615,
+    "md5": "F90C90D7E004C5AD54DE020A48494703"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "effect.motion3.json",
+    "bytes": 84162,
+    "md5": "2C9D77546AC79D8CB541524643C2A960"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "home.motion3.json",
+    "bytes": 222558,
+    "md5": "0AB10AEBD23CE44FF12688E560487261"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "idle.motion3.json",
+    "bytes": 78928,
+    "md5": "61B9041D0E5144822F117E0B7CBBB66C"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "idle2.motion3.json",
+    "bytes": 72946,
+    "md5": "1CE9B09A920083C02719F37D76BE827D"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "idle3.motion3.json",
+    "bytes": 67016,
+    "md5": "D81D6EECA66CADEAE6F3F532402EE8AC"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "idle5.motion3.json",
+    "bytes": 84934,
+    "md5": "C485AFDF179C603A15E2CA9941329479"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "login.motion3.json",
+    "bytes": 226081,
+    "md5": "86BC0A7D3941C8019B942B256E772AA0"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "mail.motion3.json",
+    "bytes": 131297,
+    "md5": "4F8FF43AFCD4722E7414177B54572AF8"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "main_1.motion3.json",
+    "bytes": 191175,
+    "md5": "AB4DEA0333A2F69681E5DFF865FC0EE6"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "main_2.motion3.json",
+    "bytes": 252413,
+    "md5": "F95C8ECF2879E5159254F3249BC5D9C9"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "main_3.motion3.json",
+    "bytes": 226939,
+    "md5": "37545599AF75E40250113A44E9F098FE"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "main_4.motion3.json",
+    "bytes": 257018,
+    "md5": "45B38055CAC80DFC10EF2E374F7E0AE8"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "mission_complete.motion3.json",
+    "bytes": 165983,
+    "md5": "19D893819054F7FD882F3778624438C8"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "mission.motion3.json",
+    "bytes": 159972,
+    "md5": "F2A5A06E95EB563ED6864A73632044A7"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_body.motion3.json",
+    "bytes": 146884,
+    "md5": "4F2846D5579FE53FFDE4D5FE2DEFEB6D"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_drag2.motion3.json",
+    "bytes": 64430,
+    "md5": "AB0FEC82921C3532A7A108F2A5E0EC59"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_drag3.motion3.json",
+    "bytes": 107877,
+    "md5": "E36B17827272B65F0E4A3CBC45FD296C"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_drag4.motion3.json",
+    "bytes": 64367,
+    "md5": "9260AFF0422A14D1DD063DD464ABA732"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_drag5.motion3.json",
+    "bytes": 108043,
+    "md5": "53BFE19D15A048D2A2690A7D8B2B3A57"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_head.motion3.json",
+    "bytes": 287729,
+    "md5": "7CE1CBFA5F0AD52EA299155778CC9D23"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_idle1.motion3.json",
+    "bytes": 91063,
+    "md5": "03BBDD1388364585A75B3E3612ECEE96"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_idle2.motion3.json",
+    "bytes": 81709,
+    "md5": "665731FC6E53D31568346D5DBD528CD2"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_idle3.motion3.json",
+    "bytes": 82247,
+    "md5": "DDDEEE8F740098BD75A28D29C0AC4E89"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_idle4.motion3.json",
+    "bytes": 58577,
+    "md5": "6DCC922277AD9C87844FB38DA637F613"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_idle5.motion3.json",
+    "bytes": 41185,
+    "md5": "F6B73E5865E160075D103FC2029FB4E0"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "touch_special.motion3.json",
+    "bytes": 138092,
+    "md5": "CD482BBE5619D6269189A1A5F906C137"
+  },
+  {
+    "dir": "_bak_motion_aersasi_2",
+    "file": "wedding.motion3.json",
+    "bytes": 343989,
+    "md5": "FF1DF70CA9EC8F8F83F7B3B8D845C8BA"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "complete.motion3.json",
+    "bytes": 68441,
+    "md5": "9A5C47ED02E1EE47EE6DDCFAD3E414BC"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "effect.motion3.json",
+    "bytes": 8984,
+    "md5": "FC1374FD921DB2FFE92F0D8C0216D730"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "home.motion3.json",
+    "bytes": 174939,
+    "md5": "A52045CF47E5ED1A8A964E15171555F9"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle.motion3.json",
+    "bytes": 23719,
+    "md5": "680A9A112C4E4A1092D857328C2E8048"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle1.motion3.json",
+    "bytes": 19541,
+    "md5": "FC0AF8D3B5889EFFD9317E1393CE8203"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle10.motion3.json",
+    "bytes": 18770,
+    "md5": "1C12D379DD1E6DA5118125AE769B4C6C"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle11.motion3.json",
+    "bytes": 18588,
+    "md5": "63E1F233A41457E2175BC6F6832573FB"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle12.motion3.json",
+    "bytes": 18134,
+    "md5": "41E718E622F5799F5F82818AA6834FAB"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle13.motion3.json",
+    "bytes": 18173,
+    "md5": "C08C016A12424B2E33CD8E93218C0A52"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle14.motion3.json",
+    "bytes": 18147,
+    "md5": "51553E5A194911DD431057751654146B"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle15.motion3.json",
+    "bytes": 18553,
+    "md5": "FED49ECCDA308CA52661CF3AAB479389"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle16.motion3.json",
+    "bytes": 19940,
+    "md5": "165230FA83EBCF8D540BAB7CFD17B74B"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle17.motion3.json",
+    "bytes": 18130,
+    "md5": "B394170D6114F8B4985B695E924B729A"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle18.motion3.json",
+    "bytes": 19225,
+    "md5": "53F65BF3908E3C8A03BF6F4FA2833C1E"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle19.motion3.json",
+    "bytes": 18672,
+    "md5": "8D1F429DA44AD568E12C81C00816058D"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle2.motion3.json",
+    "bytes": 19566,
+    "md5": "A84A336FC74118A33DD3509055F13F69"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle20.motion3.json",
+    "bytes": 38490,
+    "md5": "BA209F6A34BD5EEBDE1C7AED5FBFEA9D"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle21.motion3.json",
+    "bytes": 103723,
+    "md5": "E80CA231F8F5BADCEC1ED319264A1E5F"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle3.motion3.json",
+    "bytes": 18014,
+    "md5": "DA1A500196FABCD308DEBF152DB27F69"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle4.motion3.json",
+    "bytes": 15690,
+    "md5": "5480EE1D0379328F74B2400F46C4ABA7"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle5.motion3.json",
+    "bytes": 18806,
+    "md5": "E8B3E2172E6952765D535F32051CE213"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle6.motion3.json",
+    "bytes": 18444,
+    "md5": "8761D39469D083359501BF830F56C03E"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle7.motion3.json",
+    "bytes": 17151,
+    "md5": "AFBF2BB19E864982BFF527C7925FA14E"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle8.motion3.json",
+    "bytes": 15719,
+    "md5": "B65BFA5E0D6A6B6BBD47F00AA7420007"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "idle9.motion3.json",
+    "bytes": 18216,
+    "md5": "5561E83FCC980BCF2C46FF101C3B5959"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "login.motion3.json",
+    "bytes": 230089,
+    "md5": "575117BEE01A1BD769A40A1668AE7191"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "mail.motion3.json",
+    "bytes": 85300,
+    "md5": "6C5DDB39E8EC431EEAACDAE87575EB18"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "main_1.motion3.json",
+    "bytes": 108365,
+    "md5": "DC4540C8367DA9C53D31010316CD3C99"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "main_2.motion3.json",
+    "bytes": 159341,
+    "md5": "7575F4A2557EB15C29EF8090F95F55FC"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "main_3.motion3.json",
+    "bytes": 179506,
+    "md5": "3F12C2183D9785350BDF2E939CFE9A55"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "main_4.motion3.json",
+    "bytes": 178878,
+    "md5": "7267AAACF96897FF2C4079A5504428B2"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "mission_complete.motion3.json",
+    "bytes": 106303,
+    "md5": "0EBC8792C0C0CC436DEBFEA0FCB7C3EF"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "mission.motion3.json",
+    "bytes": 74219,
+    "md5": "F110E9BD4F2A3AAE80AF69782ED86AD6"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_body.motion3.json",
+    "bytes": 67995,
+    "md5": "43EAA46AE0ACB977250B4CFD47898024"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_drag1.motion3.json",
+    "bytes": 54127,
+    "md5": "290F5C308836353F9CDACF346F24EEF0"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_head.motion3.json",
+    "bytes": 84975,
+    "md5": "4E92925C20ED896E938CCBB33F7621B0"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle1.motion3.json",
+    "bytes": 9640,
+    "md5": "2A28B37AFE8EB85F29EFA66379A06BB3"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle10.motion3.json",
+    "bytes": 17918,
+    "md5": "4ECC44352C988F0B0165D8CDB58EEC98"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle11.motion3.json",
+    "bytes": 17195,
+    "md5": "90B20DDF9DBDC288F955FD6CD4D40344"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle12.motion3.json",
+    "bytes": 17980,
+    "md5": "7A420FF7ECA4E6FBF4A9CBF228834EDD"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle13.motion3.json",
+    "bytes": 16804,
+    "md5": "AA99F29FF99CA58D2F605C5DDBD2AD01"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle14.motion3.json",
+    "bytes": 17147,
+    "md5": "7B1898C8CB287285B9F907C9053D358E"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle15.motion3.json",
+    "bytes": 17591,
+    "md5": "8D20ECD952985F975A50E28461519D46"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle17.motion3.json",
+    "bytes": 17459,
+    "md5": "017E371B5CAD90D009BAA0FDD9C93562"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle18.motion3.json",
+    "bytes": 16945,
+    "md5": "D36C1535381522B4B5800183FD1378C7"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle19.motion3.json",
+    "bytes": 16742,
+    "md5": "AF85AFC80719B45F244ADA40E86D3D5E"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle2.motion3.json",
+    "bytes": 16453,
+    "md5": "652156A27940AD2B5EAE9C63F3DB1B10"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle22.motion3.json",
+    "bytes": 16873,
+    "md5": "2BAA492FF0B47DBDC8F4D21E111AF69C"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle23.motion3.json",
+    "bytes": 16257,
+    "md5": "1BCC206D174AB31669E51C15E05EC805"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle24.motion3.json",
+    "bytes": 16101,
+    "md5": "B2EAC37D5830FA3426F2D660B27915B0"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle25.motion3.json",
+    "bytes": 16801,
+    "md5": "098DF62A57224F778845FE2EFAB3B13C"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle26.motion3.json",
+    "bytes": 16456,
+    "md5": "211FD5466FDCDA0842A29E336B02C640"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle27.motion3.json",
+    "bytes": 15582,
+    "md5": "B0D031BA9E85EA3B6AEFF3715545EA0D"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle28.motion3.json",
+    "bytes": 18028,
+    "md5": "E23B430257568880AE877E59B16A04F1"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle29.motion3.json",
+    "bytes": 16911,
+    "md5": "1E097943837E7E78673BDC7C00FF53FB"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle3.motion3.json",
+    "bytes": 15626,
+    "md5": "8B03F7F3FB75F1078483DA368B725F9D"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle30.motion3.json",
+    "bytes": 18544,
+    "md5": "BAAF3B93096A42A5E33958C09E70EF83"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle31.motion3.json",
+    "bytes": 17196,
+    "md5": "1706A25B29A79432A102C44D3BB78EA5"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle32.motion3.json",
+    "bytes": 18353,
+    "md5": "F6A33A0DE7936514317DD5A540F56DA5"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle33.motion3.json",
+    "bytes": 16944,
+    "md5": "31505ECD899A3080CED4E32A1A43CE86"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle34.motion3.json",
+    "bytes": 17347,
+    "md5": "F4C07FC3AB17C914EA7FC10836EA114F"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle35.motion3.json",
+    "bytes": 17809,
+    "md5": "39DE47B489BE68548C436EDDAC228B73"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle36.motion3.json",
+    "bytes": 17894,
+    "md5": "7FE3232C01C32FE7734C13172E1ECEF0"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle37.motion3.json",
+    "bytes": 17680,
+    "md5": "CA046337A3F0D1FF602685CA59D84008"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle38.motion3.json",
+    "bytes": 17293,
+    "md5": "ED5908E7608A6B6824D4759D4D478FF1"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle39.motion3.json",
+    "bytes": 22370,
+    "md5": "2E016C52DC5378D4D2A63A366AD6572C"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle4.motion3.json",
+    "bytes": 16091,
+    "md5": "194E49A8CA792D6287A4C3F840B79453"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle40.motion3.json",
+    "bytes": 48305,
+    "md5": "5FD451B6D7A82F4CD52862904D0A530A"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle41.motion3.json",
+    "bytes": 50837,
+    "md5": "5A60D3FB6B86B12219725B3AC461A306"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle42.motion3.json",
+    "bytes": 49868,
+    "md5": "32C03396F8D5DB8915D11878C357F5F1"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle43.motion3.json",
+    "bytes": 47460,
+    "md5": "1BD77D13349728635B8831411997BE95"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle44.motion3.json",
+    "bytes": 47032,
+    "md5": "4EE2C64419D331DD4580972F48216210"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle45.motion3.json",
+    "bytes": 50917,
+    "md5": "6582032A8736D93618EC518BEC891DD8"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle46.motion3.json",
+    "bytes": 46971,
+    "md5": "188A2B2554576B822CD0F8F553F06D52"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle47.motion3.json",
+    "bytes": 47710,
+    "md5": "CE2EF8C5E790054009ED5305E154F784"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle5.motion3.json",
+    "bytes": 16310,
+    "md5": "F1F009FA938A251AE33A01457987E8BA"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle6.motion3.json",
+    "bytes": 16024,
+    "md5": "50278C712AA9386A2AA451A0DC0B8910"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle7.motion3.json",
+    "bytes": 15696,
+    "md5": "B4B9252FE875533D9DA302C9E06B3426"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle8.motion3.json",
+    "bytes": 17079,
+    "md5": "28CC56FC7BD4683408AB7A28451F2F85"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_idle9.motion3.json",
+    "bytes": 15340,
+    "md5": "596F425D06149120B95A5DB2840FF947"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "touch_special.motion3.json",
+    "bytes": 161264,
+    "md5": "698CECA2EDFAD767567CCFFD915C1DB3"
+  },
+  {
+    "dir": "_bak_motion_aersasi_3",
+    "file": "wedding.motion3.json",
+    "bytes": 420343,
+    "md5": "4FB6EB81B1741BF1B78E9262275F17B3"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "complete.motion3.json",
+    "bytes": 285526,
+    "md5": "812CF282E3E5753E6063138133CDA989"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "effect.motion3.json",
+    "bytes": 15430,
+    "md5": "89DF46845E414DDBB76A8744F59B337C"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "home.motion3.json",
+    "bytes": 249838,
+    "md5": "57CCC33EFD99BCB2B3C44C680426E590"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle.motion3.json",
+    "bytes": 191628,
+    "md5": "F6A17DD23C26D77C3447461273A7F037"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle1.motion3.json",
+    "bytes": 144067,
+    "md5": "39B4AFC68E751A8070830FABE9017455"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle13.motion3.json",
+    "bytes": 26321,
+    "md5": "42E6E1D3655DBA48967D9FA14CC27D71"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle14.motion3.json",
+    "bytes": 11364,
+    "md5": "CF814E7DFC8875EA337BD49D0B8A68D7"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle16.motion3.json",
+    "bytes": 50818,
+    "md5": "546B8BA674E4B0916D7F7745A85D5EFF"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle17.motion3.json",
+    "bytes": 40075,
+    "md5": "6F573005CC3D15A3D2E0D65500A55342"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle2.motion3.json",
+    "bytes": 148654,
+    "md5": "62DCF711F1635114393A05130D35C702"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle21.motion3.json",
+    "bytes": 64691,
+    "md5": "573309056D9C6C3CEB54D0D3F633EF11"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle22.motion3.json",
+    "bytes": 53033,
+    "md5": "39F9EFFECF62551FBAFEA841F299D07E"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle23.motion3.json",
+    "bytes": 70254,
+    "md5": "676BD0E602A005DE27BC131A4C783B39"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle24.motion3.json",
+    "bytes": 59801,
+    "md5": "37558404AE9B940B7D750F1BF6D9191F"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle25.motion3.json",
+    "bytes": 54113,
+    "md5": "A015A1966460CAEAAC6B5AE718B7A485"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle3.motion3.json",
+    "bytes": 146609,
+    "md5": "54A5DF152A77B7B71285C6250FD0009B"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle32.motion3.json",
+    "bytes": 99767,
+    "md5": "8A46CFECCDF1C2C19315D3E187E048C2"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle33.motion3.json",
+    "bytes": 107213,
+    "md5": "574DB2A1E3E63451CBDECC05296BBAB1"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle37.motion3.json",
+    "bytes": 124928,
+    "md5": "9870E9B9588D60B3B0C8AC7EC4D709FF"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle38.motion3.json",
+    "bytes": 100123,
+    "md5": "FEF9884619B0A32542CEC320D976B5A3"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle4.motion3.json",
+    "bytes": 196937,
+    "md5": "5C271DC3A4210425654E616041CB5E8F"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle41.motion3.json",
+    "bytes": 85433,
+    "md5": "163E7B4C13C0487E1B6EFFAACF892C43"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle44.motion3.json",
+    "bytes": 64256,
+    "md5": "AC7C83B59F7A06E5CC19205DBB5CE0E4"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle45.motion3.json",
+    "bytes": 75517,
+    "md5": "95D5EF7ECCFEA5C67556B854F4A9353D"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle47.motion3.json",
+    "bytes": 29416,
+    "md5": "64C80409CD132B7F28FDA585CF4628A4"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle48.motion3.json",
+    "bytes": 118708,
+    "md5": "FEDE38CBBE54E956E89A80FDCF112EBD"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle49.motion3.json",
+    "bytes": 51521,
+    "md5": "AD8CA529E5A3DDAE8C797C26FC79ABEB"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle5.motion3.json",
+    "bytes": 22363,
+    "md5": "BE6510B409DC606FD33CD02C9167C4B4"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle6.motion3.json",
+    "bytes": 191549,
+    "md5": "6C3A7F1588D4AFA70A93DDBB28E7C349"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle7.motion3.json",
+    "bytes": 191663,
+    "md5": "209391AF433927E901457C02E4DD6938"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "idle9.motion3.json",
+    "bytes": 60130,
+    "md5": "DF715E1A73100526BAEE37740F8CC5DB"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "login.motion3.json",
+    "bytes": 386077,
+    "md5": "2F0FC0EAE02EBB6368DA7F1236990F68"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "mail.motion3.json",
+    "bytes": 434294,
+    "md5": "008A4EAFC44EF4D7433E340E5C81ED4C"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "main_1.motion3.json",
+    "bytes": 129554,
+    "md5": "6DE3ED64CEFC0E4C8D900192341F6E8B"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "main_2.motion3.json",
+    "bytes": 362769,
+    "md5": "F951CD35049BDB2911E35AC710CFA6A8"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "main_3.motion3.json",
+    "bytes": 316373,
+    "md5": "0A81F61BC457A41DB93F4BA0376C626D"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "mission_complete.motion3.json",
+    "bytes": 368060,
+    "md5": "60F8D245B46415C45716C1196970DBD0"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "mission.motion3.json",
+    "bytes": 387720,
+    "md5": "EB2EC4D785C4F3BFE1E5D345224A2A98"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_body.motion3.json",
+    "bytes": 237689,
+    "md5": "83A2D3DAE04AC659DE5A579B3F4DB603"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_drag11.motion3.json",
+    "bytes": 5322,
+    "md5": "D7108752F386DCB071374C58B794D685"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_drag12.motion3.json",
+    "bytes": 5322,
+    "md5": "1EB394AAA914EB63D6F30AB5526BBE4D"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_drag13.motion3.json",
+    "bytes": 5322,
+    "md5": "75D9E0D80F1B1A91A388CB01BED23F1C"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_drag14.motion3.json",
+    "bytes": 5338,
+    "md5": "B2EAFBDCA023118444763EF7B80C4987"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_drag15.motion3.json",
+    "bytes": 5323,
+    "md5": "F1323B232700BCE612F79B28BD00E9B7"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_drag16.motion3.json",
+    "bytes": 5323,
+    "md5": "C7555C3636DE94B86B88EC5E3C64B4FD"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_drag5.motion3.json",
+    "bytes": 100273,
+    "md5": "33DDA22B964D5F3083AABAE07A91DE83"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_drag6.motion3.json",
+    "bytes": 103665,
+    "md5": "D8D7CC52C63CC19C820AEBDE71C43550"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_head.motion3.json",
+    "bytes": 187225,
+    "md5": "C6563985540A4D2E4FC8549BE8376608"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle1.motion3.json",
+    "bytes": 135557,
+    "md5": "C080382A761818608E1F0A4B784F3A09"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle10.motion3.json",
+    "bytes": 116092,
+    "md5": "EEBEF797A4560CFC462BE9414401F7F7"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle11.motion3.json",
+    "bytes": 36219,
+    "md5": "2687092EA97D69969737E89F5EFF8078"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle12.motion3.json",
+    "bytes": 47133,
+    "md5": "65CF51DCCB2C81E5DD84541525F44D46"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle13.motion3.json",
+    "bytes": 20565,
+    "md5": "E31B11B3E156C580295C76200EEC6C33"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle14.motion3.json",
+    "bytes": 32072,
+    "md5": "E934622376CE2099A2878050C90E35BA"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle15.motion3.json",
+    "bytes": 110564,
+    "md5": "D9863C0ED0277A5B5A8442665045EB07"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle16.motion3.json",
+    "bytes": 41451,
+    "md5": "A8D52D0E06A68A2B4CE7F5DB8BC26ED8"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle17.motion3.json",
+    "bytes": 49148,
+    "md5": "A500DE6C91F5545D2E85CFA4F812C67F"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle18.motion3.json",
+    "bytes": 145560,
+    "md5": "94AE5D7241B08A3D442CC1FF9DAD9FEE"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle19.motion3.json",
+    "bytes": 58321,
+    "md5": "7B7E355DE6C84DA2CEDAEE085967EE56"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle2.motion3.json",
+    "bytes": 62720,
+    "md5": "B0FC138BD490C2B9B1FB8AA3A8CEEA67"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle20.motion3.json",
+    "bytes": 74386,
+    "md5": "B6E49B798D4507224EE8D961B4789FB2"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle21.motion3.json",
+    "bytes": 39933,
+    "md5": "E936820F54B7AED0BE9D009E351921C5"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle22.motion3.json",
+    "bytes": 41479,
+    "md5": "5947DA4C91CBAFAF43B3F30D1E7F7F28"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle23.motion3.json",
+    "bytes": 81922,
+    "md5": "60AD4A2316223248573725E9BB72E8B7"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle24.motion3.json",
+    "bytes": 68001,
+    "md5": "02CDFE57822AD9639B957338D25BB88B"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle25.motion3.json",
+    "bytes": 59616,
+    "md5": "3F61861407AACF360B087EDACB56C401"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle26.motion3.json",
+    "bytes": 81924,
+    "md5": "6A6A8B96C47128B30E5B89B5354795A5"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle27.motion3.json",
+    "bytes": 82690,
+    "md5": "3ABEFEADB8253A7E5397305450ACE283"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle28.motion3.json",
+    "bytes": 97629,
+    "md5": "DF645A8A103D5A60153573D585CE0D89"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle29.motion3.json",
+    "bytes": 48050,
+    "md5": "BA523C323A105D9FDA0C61D9B2A62133"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle3.motion3.json",
+    "bytes": 61295,
+    "md5": "44C34E2F4C839F1F2D32A6EC47E7FF7C"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle30.motion3.json",
+    "bytes": 46337,
+    "md5": "946B0338A3AED1C10B7589C2F7B5D65D"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle31.motion3.json",
+    "bytes": 44477,
+    "md5": "6EBAC824B838720820EE6ADB7EE5071A"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle32.motion3.json",
+    "bytes": 76964,
+    "md5": "9026728A8BC2AD0C510F09D521A9FED5"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle33.motion3.json",
+    "bytes": 95247,
+    "md5": "6A5949FEDA1E46BEF5C06DBC9BF3C4E9"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle34.motion3.json",
+    "bytes": 96301,
+    "md5": "9EFCB87E879E4BECE06E7C8533F1706B"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle35.motion3.json",
+    "bytes": 60554,
+    "md5": "97A2A3712CC3DF71E5BBCD7F5BA03181"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle36.motion3.json",
+    "bytes": 57023,
+    "md5": "6E76FA5734F924DB2DA93C1FA3EA2C97"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle37.motion3.json",
+    "bytes": 53275,
+    "md5": "F0EEB6D57A8DF9642A35866E715222AB"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle38.motion3.json",
+    "bytes": 73166,
+    "md5": "A905075DAABF6236770072CD39730180"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle39.motion3.json",
+    "bytes": 52857,
+    "md5": "0DA79027DBBDDFE65EF5FFF1BAF90590"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle4.motion3.json",
+    "bytes": 80896,
+    "md5": "0AA94B7C9FB3613A5E066E75144FA382"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle40.motion3.json",
+    "bytes": 104646,
+    "md5": "11E8BBA2657D6A24B5B5C2CE6BFB497A"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle41.motion3.json",
+    "bytes": 95394,
+    "md5": "05E094E357359C7AA2796C93C50258AF"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle42.motion3.json",
+    "bytes": 260880,
+    "md5": "58BAE102FDB45F0D206E6F708B6EAAB5"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle43.motion3.json",
+    "bytes": 196526,
+    "md5": "1162FCB5F8D461B253561C442CD0281E"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle44.motion3.json",
+    "bytes": 34987,
+    "md5": "C5EF01E79A79193D87850BB496637B9D"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle47.motion3.json",
+    "bytes": 47394,
+    "md5": "C151311AEC3F2786A4B458DF59630F08"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle48.motion3.json",
+    "bytes": 26711,
+    "md5": "DC3094BA623C21320CD2DFC89EBB1866"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle49.motion3.json",
+    "bytes": 27768,
+    "md5": "615B7353EED756899DA81EEC47E12E65"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle5.motion3.json",
+    "bytes": 154788,
+    "md5": "4C198F676AABF3B3063365A32BE56A58"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle50.motion3.json",
+    "bytes": 88032,
+    "md5": "36400A74BF24A06F1B0941270982EDAB"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle6.motion3.json",
+    "bytes": 92385,
+    "md5": "7A0A6071800AA7EFC43F03A414E06826"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle7.motion3.json",
+    "bytes": 99957,
+    "md5": "254922C07D80653F8A4FA1D826980356"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle8.motion3.json",
+    "bytes": 20957,
+    "md5": "B48E8923470B87D4533458C9BFCCAB9D"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_idle9.motion3.json",
+    "bytes": 46056,
+    "md5": "059F7FA608A0255BCA2C2EFC3DF33B95"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "touch_special.motion3.json",
+    "bytes": 74478,
+    "md5": "B593DCD6CEBFC65FD29F69FB87A204A4"
+  },
+  {
+    "dir": "_bak_motion_benningdun_2",
+    "file": "wedding.motion3.json",
+    "bytes": 358397,
+    "md5": "E0F8453391B47CF2A9D0A9B38A59A17F"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "complete.motion3.json",
+    "bytes": 275723,
+    "md5": "57519599E1106992ECC33B39EDFEA102"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "effect.motion3.json",
+    "bytes": 3520,
+    "md5": "8AA07A4B974970A42DCCC6EFF1E62808"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "home.motion3.json",
+    "bytes": 517671,
+    "md5": "EBF27C7DCA2386D0CDC951839264CC3C"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle.motion3.json",
+    "bytes": 277451,
+    "md5": "0D54207AABDD291E5826FB86B23DFF2A"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle10.motion3.json",
+    "bytes": 134276,
+    "md5": "651A18B977AF1B1B916C1766A894A9E5"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle11.motion3.json",
+    "bytes": 156165,
+    "md5": "AB89E7806A812E37E7CACDE5DFF33F89"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle12.motion3.json",
+    "bytes": 112018,
+    "md5": "1BE7D7F71AE9E922276AD07898120A0C"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle13.motion3.json",
+    "bytes": 173864,
+    "md5": "C4E85325C59AE69149C94C0B40A35353"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle2.motion3.json",
+    "bytes": 88829,
+    "md5": "81D82B0D5DC84BEEDF8E218331227F4E"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle3.motion3.json",
+    "bytes": 144548,
+    "md5": "64365EC39A94AE7D84BAD39169BDE03A"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle4.motion3.json",
+    "bytes": 269948,
+    "md5": "52DF06832D6907EB5D3638D28BC1615F"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle5.motion3.json",
+    "bytes": 280947,
+    "md5": "68721CD94BF012F4B0F0E0899C39F28D"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle6.motion3.json",
+    "bytes": 148269,
+    "md5": "99C98C7B4EA9428F6EEAE3248A269D3B"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle7.motion3.json",
+    "bytes": 156202,
+    "md5": "B314FE7A01D1A15ABB93A323675B7261"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle8.motion3.json",
+    "bytes": 1276409,
+    "md5": "6D3ED82A8851AE0E31A6709C0554191C"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "idle9.motion3.json",
+    "bytes": 102817,
+    "md5": "3EDF814DFBD9EDD3D98788617A57AE9B"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "login.motion3.json",
+    "bytes": 422830,
+    "md5": "796E5605D9B40393BD8738E6E39DE73E"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "mail.motion3.json",
+    "bytes": 182222,
+    "md5": "84BCF94F44A8713096E61AB27D492EC2"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "main_1.motion3.json",
+    "bytes": 345337,
+    "md5": "27CFFFD08B476D41E226E0EF42795B28"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "main_2.motion3.json",
+    "bytes": 353913,
+    "md5": "6B63273A90F21174E4F1035DD700533F"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "main_3.motion3.json",
+    "bytes": 460405,
+    "md5": "A021CFCB74C6F2F1608DF36D74D6C150"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "mission_complete.motion3.json",
+    "bytes": 213626,
+    "md5": "8EE19226FDF0DB83A528A9262C234050"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "mission.motion3.json",
+    "bytes": 128246,
+    "md5": "52A4EDAAF30965E8366065A670BD965E"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_body.motion3.json",
+    "bytes": 337079,
+    "md5": "03E0C4915DCA2276D480F54408063DA9"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_drag1.motion3.json",
+    "bytes": 75101,
+    "md5": "7ED2AA7A55191D3CD03485932D9990CD"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_drag2.motion3.json",
+    "bytes": 73787,
+    "md5": "5712864387CCC61F0CDC990C2DFF259B"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_drag3.motion3.json",
+    "bytes": 91273,
+    "md5": "B880FE33D503B44031B1AC707C91A1BF"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_head.motion3.json",
+    "bytes": 327301,
+    "md5": "FF03106339E2C935B19B667898F56493"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle1.motion3.json",
+    "bytes": 50569,
+    "md5": "B36F71B0C3B9DA5D860F415E591B39B8"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle10.motion3.json",
+    "bytes": 150220,
+    "md5": "2098A222CB949289E98458AB198BC460"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle11.motion3.json",
+    "bytes": 389503,
+    "md5": "0DABD3DEDC1880E0405E2E469AAD7B85"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle12.motion3.json",
+    "bytes": 191968,
+    "md5": "F11EDFA11068271312BBF71EC3498FE7"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle13.motion3.json",
+    "bytes": 98253,
+    "md5": "7EA67750F1ECD1F0A7EAE0B74B8C9D50"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle14.motion3.json",
+    "bytes": 90560,
+    "md5": "26B040D29131C80203645B70BE19A34C"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle15.motion3.json",
+    "bytes": 56646,
+    "md5": "4AB5862D6AC40C7D6EEA5293FA756FC0"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle16.motion3.json",
+    "bytes": 150982,
+    "md5": "DB06214F08D605C952D8ADA48B4731B3"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle17.motion3.json",
+    "bytes": 458809,
+    "md5": "671678220ADC7DBA7C5858468B192035"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle18.motion3.json",
+    "bytes": 157688,
+    "md5": "BB8E782E2835976060810335B8148007"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle19.motion3.json",
+    "bytes": 97147,
+    "md5": "8ACF37809F378021C40698831D6D03F0"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle2.motion3.json",
+    "bytes": 140390,
+    "md5": "1D12CCA4A3BD3898D047B4AC7EAA4486"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle20.motion3.json",
+    "bytes": 256465,
+    "md5": "4033137A83A10CC7F8C3EA75A8194D22"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle21.motion3.json",
+    "bytes": 91488,
+    "md5": "776155D5E9E5244596CBEF74D2C6B32A"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle22.motion3.json",
+    "bytes": 121711,
+    "md5": "94F1318C9D9271EDFF22A828465E2051"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle23.motion3.json",
+    "bytes": 100652,
+    "md5": "191065001157C01120AEB3E90E497119"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle24.motion3.json",
+    "bytes": 140358,
+    "md5": "30A0256ADCE1E709B607A8E1565ACEE8"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle25.motion3.json",
+    "bytes": 53624,
+    "md5": "CC02DAD9960363BFAB2A3B5A24243362"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle26.motion3.json",
+    "bytes": 94380,
+    "md5": "B43176764AD94EC60124174EF5C09ECA"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle3.motion3.json",
+    "bytes": 97511,
+    "md5": "91F41B4DFF8EAB283DBE2137254BC59A"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle4.motion3.json",
+    "bytes": 174169,
+    "md5": "A0B1D0FA9D25643E4168A7B78BE9FDF5"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle5.motion3.json",
+    "bytes": 218271,
+    "md5": "1256CF0AFA7F8B22233FB5D3319A5489"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle7.motion3.json",
+    "bytes": 116749,
+    "md5": "58D918E68A82E19B27E5711B31DA2332"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle8.motion3.json",
+    "bytes": 73048,
+    "md5": "3BBB48757532FA154FADF8C6338A6390"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_idle9.motion3.json",
+    "bytes": 73541,
+    "md5": "6F6E5BEE00F942DDAA5B15E8E130CA80"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "touch_special.motion3.json",
+    "bytes": 283517,
+    "md5": "F240EB11BAEEE9D4F3C6DA74257061C4"
+  },
+  {
+    "dir": "_bak_motion_ougen_8",
+    "file": "wedding.motion3.json",
+    "bytes": 684182,
+    "md5": "89507736FC9DD49EF1F46B6ADB266DEA"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "complete.motion3.json",
+    "bytes": 259618,
+    "md5": "C32254666489B17DE7A54842BACD4A51"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "effect.motion3.json",
+    "bytes": 3520,
+    "md5": "8AA07A4B974970A42DCCC6EFF1E62808"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "home.motion3.json",
+    "bytes": 483896,
+    "md5": "29FDF582572C303FD510FF96E0F2C476"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle.motion3.json",
+    "bytes": 235890,
+    "md5": "4FC4CE2A5FC67EA43EBAE79DF6C927B9"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle10.motion3.json",
+    "bytes": 95463,
+    "md5": "86E75C6F97DC0D68E9638DC8F2F96A11"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle11.motion3.json",
+    "bytes": 125977,
+    "md5": "2B29EEFE8DC3F547A59E42CCBC52691F"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle12.motion3.json",
+    "bytes": 71051,
+    "md5": "E877DA3D9EE10549CEA42702D48169C3"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle13.motion3.json",
+    "bytes": 133461,
+    "md5": "B9C690072FE7F07BE1C5946DC2A9571D"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle2.motion3.json",
+    "bytes": 65410,
+    "md5": "D55FFF995EC50442BECF973522FDC8EB"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle3.motion3.json",
+    "bytes": 125044,
+    "md5": "EE1E04A1418F7CE41158D7FA68CEEF89"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle4.motion3.json",
+    "bytes": 244036,
+    "md5": "DC8969FF6E4A18198A8D49A7DE2F538A"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle5.motion3.json",
+    "bytes": 244555,
+    "md5": "EAF11E079367CEF69F40B8E0E0D9E2AC"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle6.motion3.json",
+    "bytes": 126153,
+    "md5": "BE48EB5E28B89BCE955C7BB63D5AB51F"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle7.motion3.json",
+    "bytes": 126165,
+    "md5": "7737EBCAC67979C5672B564CDAE00BB6"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle8.motion3.json",
+    "bytes": 1271241,
+    "md5": "8547115E4289709E6D0EEB5C8DF495BF"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "idle9.motion3.json",
+    "bytes": 95315,
+    "md5": "CDE780B0F61F5CDC7CF236812D90ED74"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "login.motion3.json",
+    "bytes": 388800,
+    "md5": "7BF2692B8062D70A7B15F6CD0563C8AF"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "mail.motion3.json",
+    "bytes": 144596,
+    "md5": "9CA45EB64578D27D76281E3B55F20B69"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "main_1.motion3.json",
+    "bytes": 329123,
+    "md5": "4436A132771381FD1812CBF7B861AD10"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "main_2.motion3.json",
+    "bytes": 336755,
+    "md5": "21BD3B2FE6BC7F03CBBFEE5871E4B980"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "main_3.motion3.json",
+    "bytes": 442832,
+    "md5": "4C3A8E29335FC05B3F94871EED9529DE"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "mission_complete.motion3.json",
+    "bytes": 210085,
+    "md5": "E092C7EB17B7A0899B17F968EDF59B41"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "mission.motion3.json",
+    "bytes": 124777,
+    "md5": "2492966B000FAA1A1FDD84C219239E0B"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_body.motion3.json",
+    "bytes": 320528,
+    "md5": "ABE1853A77979E6537162EEEC147A141"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_drag1.motion3.json",
+    "bytes": 66747,
+    "md5": "879BD1ADCC9B105697F8E0127208FD7B"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_drag2.motion3.json",
+    "bytes": 65187,
+    "md5": "325F787415B801447307C4DBE2AAEE9F"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_drag3.motion3.json",
+    "bytes": 50279,
+    "md5": "37B153CC9D4352D8C27B2B9DC6FDD910"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_head.motion3.json",
+    "bytes": 310509,
+    "md5": "239EE13E3607EC40C465CAF09374223A"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle1.motion3.json",
+    "bytes": 27760,
+    "md5": "0EEE701BEE880422CF30ACFE90E07B2E"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle10.motion3.json",
+    "bytes": 110150,
+    "md5": "9FCC987343D4DE84507A7ED36B659220"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle11.motion3.json",
+    "bytes": 362175,
+    "md5": "A9223B0398E3153146F9369E6C2B2137"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle12.motion3.json",
+    "bytes": 158738,
+    "md5": "81A3AD92EDA9F44476CE937077955632"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle13.motion3.json",
+    "bytes": 57279,
+    "md5": "02F90B905BA0DC456AB93FCA816522DD"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle14.motion3.json",
+    "bytes": 66564,
+    "md5": "F19712C3624CF10E8D89755FA1FBAE40"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle15.motion3.json",
+    "bytes": 49670,
+    "md5": "06D01DCEC8CC4361A865E5BF2BDBA48C"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle16.motion3.json",
+    "bytes": 114246,
+    "md5": "B6DB5693D64356110ACB35EA9FEFA963"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle17.motion3.json",
+    "bytes": 427293,
+    "md5": "4FC1A69C50149D6A7BBF214E3F76E260"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle18.motion3.json",
+    "bytes": 118075,
+    "md5": "294540F31AE92F19F2B2862F53B257CA"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle19.motion3.json",
+    "bytes": 56477,
+    "md5": "0DE0344367BAA571A4CD1BA9B2B3B5ED"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle2.motion3.json",
+    "bytes": 105786,
+    "md5": "DDC513019E8F30B841B001D8E67C7F03"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle20.motion3.json",
+    "bytes": 220042,
+    "md5": "345F538CA78CEABB1B1641FF95E85FB1"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle21.motion3.json",
+    "bytes": 53625,
+    "md5": "027F94AF00125265AC2ACD8DE1967109"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle22.motion3.json",
+    "bytes": 79245,
+    "md5": "7E634E6F653F037A835309A4915B7D46"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle23.motion3.json",
+    "bytes": 58271,
+    "md5": "500BD19BC8A634CCE97FCB7FB36712AE"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle24.motion3.json",
+    "bytes": 105269,
+    "md5": "EFA0D0403A59FCC0BA1A984DC959D0D1"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle25.motion3.json",
+    "bytes": 28168,
+    "md5": "94BCA48F940DAE8E14DE17AD355040A7"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle26.motion3.json",
+    "bytes": 49798,
+    "md5": "8F4859F98B9CCD71B7B947240F30C111"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle3.motion3.json",
+    "bytes": 56009,
+    "md5": "B65F40A76100C06E03D85E9CCFE968BF"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle4.motion3.json",
+    "bytes": 133736,
+    "md5": "795E9914462F4B487704B631876EB60E"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle5.motion3.json",
+    "bytes": 190160,
+    "md5": "451F8B7B7AB0ED31192738657F1967E3"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle7.motion3.json",
+    "bytes": 79766,
+    "md5": "7D6D7071DAB2261CEAEC1F20CBA979EB"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle8.motion3.json",
+    "bytes": 52029,
+    "md5": "5EF5EE8C26EAC95D2E5BD9AC0C2D270A"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_idle9.motion3.json",
+    "bytes": 52204,
+    "md5": "E95C578E54105A791883BEBB4A18B967"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "touch_special.motion3.json",
+    "bytes": 246790,
+    "md5": "DE7E779F22C407623849A0AB7517D057"
+  },
+  {
+    "dir": "_bak_ougen8_motion",
+    "file": "wedding.motion3.json",
+    "bytes": 649257,
+    "md5": "A0C435E96EF2C6CD293794B78921C726"
+  }
+]

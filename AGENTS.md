@@ -2,6 +2,11 @@
 
 本文件包含碧蓝航线 AssetBundles 解包项目的 agent 行为规则。每次对话自动加载。
 
+## 新对话开工前
+
+**先读 `PROJECT_STATUS.md`**，再问「接下来做哪块」——不要凭本文件猜进度，
+也不要指望对话历史被继承（新对话只带本文件）。
+
 ## 进度文档维护
 
 `PROJECT_STATUS.md` 是**精简的当前进度快照**，供跨会话快速对接，采用「就地更新」而非「追加流水」。每次完成一个任务阶段后：
@@ -55,10 +60,45 @@ PROJECT_STATUS.md 各部分进度使用以下格式：
 - 脚本位于 `scripts/` 目录；**可复用的诊断/验证/一次性管线工具放 `scripts/diag/`（必须入库）**。
 - `.diag/` 是**临时产物区**（截图、headless Chrome profile、扫描中间件），已写进 `.gitignore`，**不放任何唯一副本的代码**。
 - ⚠️ **清理磁盘前必须先核对 `docs/WORKFLOWS.md` WF-15 的「承重文件白名单」**：`inputs/azdata/*.json` 是 `scripts/build_ship_meta.py` 的唯一权威元数据输入，且社区快照会滞后、游戏配置包 `sharecfgdata/*` 为自定义加密无法本机重取——误删不可复原。2026-09-24 已从 `.diag/` 迁到 `inputs/azdata/`（数据本体不入库，台账 `inputs/azdata/MANIFEST.json`，校验 `py -3 scripts/diag/check_inputs.py`）。
-- 使用 Python 3.13 + UnityPy 1.25.0
-- 运行前先确认依赖已安装
+- 使用 Python **3.15** + UnityPy 1.25.4（2026-10-23 起约定）。⚠️ 本机同时存在 3.14，`py -3` 指向谁由 `%APPDATA%\py.ini` 决定（已固定 3.15）；**跑脚本前先 `py -3 scripts/diag/check_env.py`** —— 它做载荷级验证，能抓出「import 成功但 C 扩展其实没加载」这类假绿灯
+- 运行前先确认依赖已安装（`scan_build_deps.py` 只做 AST 静态扫描、不验证安装，**不能**当可用性判据）
 - 大批量操作（>1000 文件）先小规模测试
 - **全量运行前必须确认**：修改脚本后，先用 1-3 个样本测试，将结果展示给用户确认正确后，再执行全量运行。未经用户确认不得全量运行。
+- 🔴 **任何启动无头/有头浏览器的脚本，启动必须走 `chrome_tree.launch(cmd, **popen_kw)`，不许自己写 `subprocess.Popen`。**
+  `finally` 和 `atexit` 在**强杀下都不执行**（实测：正常退出 / `sys.exit()` → atexit 跑；`Stop-Process -Force` / `taskkill /F` → atexit **不跑**，Chrome 整棵树 18 个进程全存活）。被强杀的那一刻，脚本里写得再规范的 `finally: kill_tree()` 都等于没写。⚠️ **强杀的来源不是宿主超时**（实测 `initial_wait` 到点只转后台、不杀进程，909 秒前台命令也能正常 exit 0），而是会话关闭时附着的后台命令被终止、或外部 `Stop-Process`。所以兜底必须是**进程外/内核级**的，`launch()` 一次做齐三层：
+  - **A Job Object**：`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`，父进程一死内核自动杀光 job 内所有进程（含 Chromium 重新孵化的主进程，靠启动窗口内的 daemon 线程补 assign）。
+  - **B 启动前清理**：按 `--user-data-dir` **精确**匹配清掉上一轮残留。除了防泄漏，还防「Chrome 复用旧实例并忽略你新传的 URL」这个假绿灯。
+  - **C 收尾**：`atexit` 整树清理 + profile 回读确认（判据落回读，不落 `taskkill` 退出码——`taskkill /T` 在 Edge 上是假绿灯）。
+  - ⚠️ **老调用点 `chrome_tree.install(proc)` 也带 A 了**（2026-10-28 补漏）：全库仍有 11 个探针是「先 `Popen` 再 `install(proc)`」的写法，改动前的 `install()` **只注册 atexit** ⇒ 它们在强杀下 100% 泄漏，A 层等于没落地。现在 `install()` 内部也调 `_attach_job()` 事后 assign（`AssignProcessToJobObject` 不要求进程是 job 的创建子进程），所以两种写法都有 A。**新代码仍应优先 `launch()`**，因为它还能顺带带上 `CREATE_BREAKAWAY_FROM_JOB` 与 B 层。
+  - 自检：`py -3 scripts/diag/chrome_lifecycle_selftest.py`（**五判据**，含 `AL_NO_JOB=1` 阴性对照：阴性侧**必须漏**，否则阳性侧的绿没有区分力；⑤ 专测「老写法 install 被强杀」）。
+  ⚠️ **收尾固定跑一次残留自检，非空即泄漏，必须当场清理**（本规则因 2026-10-28 事故而设：6 个孤儿实例、62 个进程、5.83 GB、CPU 96%，横跨 6 次脚本运行累积）：
+  `Get-CimInstance Win32_Process -Filter "Name='msedge.exe' or Name='chrome.exe'" | Where-Object { $_.CommandLine -match 'azur\\\.diag' }`
+  （先按 `$_.Name` 过滤再匹配，否则会匹配到执行查询的 shell 自己。）
+- **不要用 `os.kill(pid, 0)` 探活**：Windows 上 CPython 把它实现成 `OpenProcess + TerminateProcess`，它不是探活，是**真杀**。用 `chrome_tree` 里的 `OpenProcess + GetExitCodeProcess == 259`。
+
+## 看图预算（截图/图片进上下文前必须先过这一关）
+
+**事故**（2026-10-28）：置顶会话因上下文超限（**213 万 token**）中断，其中**一张 1.7 MB 的 PNG 就占 76%**。
+机制不是"一次算一次"：图片一旦进入上下文，**之后每一轮对话都会重发一遍**，代价 ≈ 体积 × 剩余轮数。
+
+**默认动作：能不看图就不看图。** 判「四周是不是黑底 / 这块区域有没有内容 / 两版差异在哪」，
+用 `py -3 scripts/diag/shot_budget.py <img> --text-only` 拿**尺寸 + 3×3 分块平均色/alpha 覆盖率 + 非透明包围盒**，
+这几十个字足够回答上述问题，且不占上下文预算。两版对比用 `--diff <baseline>` 拿「变化像素占比 + 变化包围盒」，
+比肉眼比对两张缩略图可靠（0.00% 就是没变）。
+
+**必须看图时，四条硬约束**：
+
+1. **先压后看**。默认预算 **≤200 KB、最长边 ≤1024**：`shot_budget.py <img> --max-kb 200 --max-edge 1024`。
+   压完再决定要不要送进上下文；**原图永远不进上下文**（原图留在 `.diag/` 供复查）。
+2. **只截关键区域**。先裁再压：`--crop x0,y0,x1,y1`（**相对比例** 0~1，不是像素——像素坐标跨分辨率不复用）。
+   一张 2560×1600 的整屏里真正要判定的常常只有中间一块，裁掉边框能省 80% 体积。
+3. **一次一张，判完即弃**。同一次取证里连续看 5 张图 = 5 份体积 × 剩余轮数，且**下一轮仍在**。
+   需要看多张就做成拼图（`make_review_sheet.py` / `make_pair_sheet.py` 那类），一张顶多张。
+4. **分析完立刻收尾**。看完图得出的结论要**当场写进 `docs/`**，不要指望"图还在上下文里，后面再回头看"——
+   那正是把大图留在上下文里的原因。长取证任务建议看完图就另起新对话（结论已在文档里）。
+
+**收尾体检**（DoD 第 4 步一并跑）：`py -3 scripts/diag/shot_budget.py --audit .diag --max-kb 200`
+（退出码即结论；列出超预算文件即为提示，不是失败——但**这些图不许直接送进上下文**）。
 
 ## Git 规则
 

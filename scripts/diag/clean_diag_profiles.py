@@ -30,12 +30,19 @@ def dir_bytes(path):
 
 
 def running_profile_names():
-    """返回被活跃浏览器进程引用的 profile 目录名集合。"""
+    """返回被活跃浏览器进程引用的 profile 目录名集合。
+
+    ⚠️ 不要在这里加仓库名/docroot 过滤。曾写过 `-match 'Azur Lane Assets'`（那是旧机的
+    docroot），换到 `D:\\azur` 后该模式恒匹配 0 个进程 —— 判据 2「无进程占用」就成了
+    空判据，正在被写的 profile 也会被算进可删清单。现在的口径是**所有** chrome/msedge
+    命令行里出现的 `chrome_*` 名字都算「在用」（超集 ⇒ 只会少删不会误删）。
+    """
     ps = (
         "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe' or Name='msedge.exe'\" "
         "| ForEach-Object { $_.CommandLine } "
-        f"| Where-Object {{ $_ -and $_ -match 'Azur Lane Assets' }} "
-        "| ForEach-Object { if ($_ -match 'chrome_[A-Za-z0-9_]+') { $matches[0] } }"
+        "| Where-Object { $_ -match 'chrome_[A-Za-z0-9_]+' } "
+        "| ForEach-Object { [regex]::Matches($_, 'chrome_[A-Za-z0-9_]+') "
+        "| ForEach-Object { $_.Value } }"
     )
     try:
         out = subprocess.run(['powershell.exe', '-NoProfile', '-Command', ps],
