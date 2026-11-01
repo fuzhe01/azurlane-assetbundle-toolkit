@@ -89,7 +89,6 @@ def main():
             'aersasi_3', 'chicheng_4', 'adiliao_2', 'i168', 'i168_2', 'moermansike_2',
             'gezi_2', 'baixue_2', 'beier', 'banerwei_2', 'i404']
     pool = [h for h in hard if h in allstems]
-    rng = random.Random(20261006)
     stride = max(1, len(allstems) // max(1, n))
     pool += allstems[::stride]
     seen, todo = set(), []

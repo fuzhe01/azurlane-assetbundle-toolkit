@@ -28,7 +28,9 @@ sys.stdout.reconfigure(encoding='utf-8')
 import websocket
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
+CHROME = P.chrome_or_die()
 SPINE_DIR = os.path.join(ROOT, 'Output', 'Spine_v2')
 BASE = 'http://127.0.0.1:8777/gallery_v2/index.html'
 PORT = 9351

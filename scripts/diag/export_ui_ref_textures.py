@@ -11,6 +11,7 @@
 
 输出 `.diag/ui_ref/<图集名>/`（临时区，不入库）。
 """
+# 本脚本当前无调用方：属一次性取证工具，保留作可复用的方法参照（不被任何管线/测试引用）。
 import os, sys, argparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))

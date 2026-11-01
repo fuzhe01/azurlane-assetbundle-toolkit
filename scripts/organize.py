@@ -35,6 +35,9 @@ import re
 import shutil
 import json
 from pathlib import Path
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 from collections import defaultdict
 
 # ============================================================
@@ -42,10 +45,10 @@ from collections import defaultdict
 # ============================================================
 
 # Raw 导出目录（AssetStudio 导出到这里）
-RAW_DIR = r"D:\Azur Lane Assets\Output\Raw"
+RAW_DIR = os.path.join(P.OUT, "Raw")
 
 # 整理后的输出目录
-OUTPUT_DIR = r"D:\Azur Lane Assets\Output"
+OUTPUT_DIR = P.OUT
 
 # 立绘文件名映射（舰名拼音 → 中文名）
 # 这个映射需要根据实际情况补充

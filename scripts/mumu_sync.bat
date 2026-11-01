@@ -1,19 +1,21 @@
 @echo off
 chcp 65001 >nul 2>&1
-set "PY=C:\Users\KLLM\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+set "PY="
+where py >nul 2>nul && set "PY=py -3"
+if not defined PY where python >nul 2>nul && set "PY=python"
 set "SCRIPT=%~dp0mumu_sync.py"
 
-if not exist "%PY%" (
-    echo [ERROR] Python not found: %PY%
+if not defined PY (
+    echo [ERROR] Python not found: install Python 3.13+, or put py/python on PATH
     pause
     exit /b 1
 )
 
 if "%~1"=="" (
     echo Running: diff
-    "%PY%" "%SCRIPT%" diff
+    %PY% "%SCRIPT%" diff
 ) else (
-    "%PY%" "%SCRIPT%" %*
+    %PY% "%SCRIPT%" %*
 )
 
 echo.

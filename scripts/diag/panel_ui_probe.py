@@ -937,7 +937,7 @@ def main():
     chk('数据面底色全部不透明（alpha=1）', not opaque, '漏: ' + str(opaque))
     open_detail(pg)      # 几何包含判据量的是抽屉里的面板与卡片
     quiesce(pg)
-    boxes = card_boxes(pg)
+    card_boxes(pg)      # 只为把抽屉滚到已知位；本段不用它的返回值
     pg.shot('stars_on')
     pg.ev(EV("document.querySelector('#bSea').click(); return 1"))
     time.sleep(0.7)

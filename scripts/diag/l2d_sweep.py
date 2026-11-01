@@ -23,7 +23,9 @@ sys.stdout.reconfigure(encoding='utf-8')
 import websocket
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
+CHROME = P.chrome_or_die()
 PORT = int(os.environ.get('L2D_SWEEP_PORT', '9338'))
 SRV_PORT = int(os.environ.get('L2D_SWEEP_SRV', '8777'))
 URL = f'http://127.0.0.1:{SRV_PORT}/gallery_v2/index.html'

@@ -41,7 +41,7 @@ def measure(bundle_name):
         for part in by_rect.get(pid, []):
             try:
                 res = C.build_part(dict(part))
-            except Exception as e:
+            except Exception:
                 detail.append(f'{part["name"]}:ERR')
                 continue
             if res is None:

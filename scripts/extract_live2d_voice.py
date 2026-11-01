@@ -28,10 +28,13 @@ L2D_DIR = os.path.join(ROOT, 'Output', 'Live2D')
 OUT_AUDIO = os.path.join(ROOT, 'Output', 'Audio', 'L2D')
 OUT_MAP = os.path.join(ROOT, 'Output', 'gallery_v2', 'l2d_voice.json')
 DIAG = os.path.join(ROOT, '.diag')
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 AZDATA = os.path.join(ROOT, 'inputs', 'azdata')   # 权威快照，台账 inputs/azdata/MANIFEST.json
 
-VGMSTREAM = r'C:\Users\KLLM\AppData\Local\vgmstream\vgmstream-cli.exe'
-FFMPEG = shutil.which('ffmpeg') or r'C:\Users\KLLM\AppData\Local\Microsoft\WinGet\Links\ffmpeg.exe'
+VGMSTREAM = P.VGMSTREAM
+FFMPEG = P.FFMPEG
 OPUS_BITRATE = '48k'
 
 # 动作组 → ACB cue 名别名。以前只有猜的两条（注释里自承"需人工试听确认"）；

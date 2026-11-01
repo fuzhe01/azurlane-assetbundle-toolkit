@@ -307,16 +307,15 @@ def build_motion(clip, targets, verbose=False, const_info=None):
 
     # 结构自检：按运行时的消费方式重放一遍（segments 是按 TotalSegmentCount 预分配的，
     # 少算一位就会在浏览器里炸成 "basePointIndex of undefined"，且只表现为"这个模型不动"）。
+    # 只重放计数器（o=段号、a=点号）；这里不需要每段的起点下标，别顺手加回去。
     o = a = 0
     for c in curves:
         segs = c["Segments"]
         l = 0
         while l < len(segs):
             if l == 0:
-                o_seg_base, a = a, a + 1
+                a += 1
                 l += 2
-            else:
-                o_seg_base = a - 1
             typ = segs[l]
             if typ == 1:
                 l += 7

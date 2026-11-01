@@ -13,9 +13,13 @@ MuMu 模拟器 ADB 文件操作工具 —— 不用在模拟器界面里点来�
 import argparse
 import subprocess
 import sys
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 import time
 
-ADB = r"C:\Program Files\Netease\MuMuPlayer\nx_main\adb.exe"
+# 路径出口在 paths.py：AL_ADB 优先 → PATH → 两个已知安装位置
+ADB = P.MUMU_ADB
 HOST = "127.0.0.1:16384"
 PKG = "com.bilibili.azurlane"
 

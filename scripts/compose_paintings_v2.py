@@ -771,7 +771,6 @@ def compose(bundle_name, out_dir, faces=None, save=True):
         print(f"  ! {bundle_name}: {len(parts)} 层全为关闭态，未过滤（交人工裁定）")
     boxes, mirrors, roots = layout_all(rects, father_map, children_map)
     order = draw_order(rects, father_map, children_map)
-    rank = {p: i for i, p in enumerate(order)}
 
     # face 节点：GameObject 名为 'face' 的 RectTransform（其 m_Sprite 常为空，故不在 parts 里）。
     # 真脸在独立 paintingface/<name> 包，需按此节点世界矩形叠回，否则 _rw 留脸洞者出白块。

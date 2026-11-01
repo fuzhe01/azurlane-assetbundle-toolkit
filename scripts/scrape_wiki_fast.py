@@ -8,10 +8,13 @@ import time
 import os
 import re
 import concurrent.futures
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 from collections import defaultdict
 
 WIKI_API = "https://wiki.biligame.com/blhx/api.php"
-OUTPUT_DIR = r"D:\Azur Lane Assets\Output\WikiData"
+OUTPUT_DIR = os.path.join(P.OUT, "WikiData")
 
 HEADERS = {
     "User-Agent": "AzurLaneScraper/1.0 (Educational)",
@@ -27,7 +30,7 @@ def api_request(params, retries=3):
             resp = requests.get(WIKI_API, params=params, headers=HEADERS, timeout=30)
             resp.raise_for_status()
             return resp.json()
-        except Exception as e:
+        except Exception:      # 重试耗尽的失败一律返回 None，调用方按"没拿到"处理
             if attempt < retries - 1:
                 time.sleep(1)
             else:
@@ -121,7 +124,7 @@ def scrape_single_ship(name):
                 return None, name
         else:
             return None, name
-    except Exception as e:
+    except Exception:          # 单条解析失败只丢这一条，不打断整趟爬取
         return None, name
 
 

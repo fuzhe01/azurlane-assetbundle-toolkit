@@ -13,6 +13,7 @@
 ⚠️ 三态之间要把指针**移回空白处**再拍"静止"，否则上一张卡的 hover 会留在画面里；
    悬停要边小幅挪边轮询到 `matches(':hover')` 为真——单次 mouseMoved 不一定刷新命中测试。
 """
+# 本脚本当前无调用方：属一次性取证工具，保留作可复用的方法参照（不被任何管线/测试引用）。
 import sys, os, time, json, base64, io, argparse
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -300,7 +300,7 @@ def t_timeout_tree():
     except subprocess.TimeoutExpired:
         ck('超时抛 TimeoutExpired（阶段据此判红）', True)
     time.sleep(1.0)
-    n = subprocess.run(['taskkill'], capture_output=True)  # 只为拿一次 shell 句柄，不用其结果
+    subprocess.run(['taskkill'], capture_output=True)   # 只为拿一次 shell 句柄，不用其结果
     out = subprocess.run(['powershell', '-NoProfile', '-Command',
                           '@((Get-CimInstance Win32_Process | Where-Object '
                           '{ $_.Name -eq "python.exe" -and $_.CommandLine -match "time.sleep\\(120\\)" }).Count)'],

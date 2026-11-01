@@ -2,11 +2,18 @@
 """生成 paintingface_mapping.json"""
 import os
 import json
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 from collections import defaultdict
 
-FACE_DIR = r"D:\Azur Lane Assets\files\AssetBundles\paintingface"
-PAINT_DIR = r"D:\Azur Lane Assets\files\AssetBundles\painting"
-OUTPUT = r"D:\Azur Lane Assets\paintingface_mapping.json"
+FACE_DIR = os.path.join(P.AB, "paintingface")
+PAINT_DIR = os.path.join(P.AB, "painting")
+OUTPUT = os.path.join(P.OUT, "paintingface_mapping.json")
+
+for _d in (FACE_DIR, PAINT_DIR):
+    if not os.path.isdir(_d):
+        raise SystemExit(f"[ERROR] 目录不存在: {_d}（资产放 P.AB 下，或用 AL_ASSETS_ROOT 指过去）")
 
 face_files = sorted(os.listdir(FACE_DIR))
 paint_files = set(os.listdir(PAINT_DIR))

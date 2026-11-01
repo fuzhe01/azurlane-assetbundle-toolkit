@@ -23,6 +23,7 @@
 
   py -3 scripts/diag/spine_dialog_report.py 天津风 tianjinfeng_2
 """
+# 本脚本当前无调用方：属一次性取证工具，保留作可复用的方法参照（不被任何管线/测试引用）。
 import json
 import os
 import socket

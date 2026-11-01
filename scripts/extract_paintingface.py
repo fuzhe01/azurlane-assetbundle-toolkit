@@ -25,11 +25,14 @@ except ImportError:
     print("[ERROR] 需要安装 UnityPy: pip install UnityPy")
     sys.exit(1)
 
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 from UnityPy.export.Texture2DConverter import get_image_from_texture2d
 
-FACE_DIR = r"D:\Azur Lane Assets\files\AssetBundles\paintingface"
-OUTPUT_DIR = r"D:\Azur Lane Assets\Output\Paintingface"
-ERROR_LOG = r"D:\Azur Lane Assets\ERRORS.log"
+FACE_DIR = os.path.join(P.AB, "paintingface")
+OUTPUT_DIR = os.path.join(P.OUT, "Paintingface")
+ERROR_LOG = P.ERRORS_LOG
 
 
 def extract_face_bundle(args):

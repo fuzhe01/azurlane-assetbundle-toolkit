@@ -5,9 +5,12 @@
 
 import struct
 import os
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 import subprocess
 
-FFMPEG = r"C:\Users\KLLM\AppData\Local\ffmpeg\ffmpeg.exe"
+FFMPEG = P.FFMPEG
 
 # 碧蓝航线 HCA 密钥
 HCA_KEY = bytes.fromhex("95356C720002354E")
@@ -62,27 +65,34 @@ def extract_raw_streams(data, output_dir, base_name):
 
 def try_ffmpeg_demux(input_path, output_dir, base_name):
     """尝试用 ffmpeg 解复用"""
+    if not FFMPEG:
+        print("  缺 ffmpeg：设环境变量 AL_FFMPEG 指向 ffmpeg.exe 再跑（本步跳过）")
+        return False
     video_out = os.path.join(output_dir, f"{base_name}.mpg")
     audio_out = os.path.join(output_dir, f"{base_name}.wav")
-    
-    # 尝试直接提取
+
+    # 两个 map 各出各的：USM 里视频/音频是**独立流**，只给一个输出文件时
+    # ffmpeg 会把音频丢掉（`-c:a pcm_s16le` 只作用于被选中的输出流）。
     cmd = [
         FFMPEG, "-y",
         "-i", input_path,
-        "-c:v", "mpeg1video",
-        "-c:a", "pcm_s16le",
-        video_out
+        "-map", "0:v:0", "-c:v", "mpeg1video", video_out,
+        "-map", "0:a:0", "-c:a", "pcm_s16le", audio_out,
     ]
-    
+
+    ok_video = False
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
         if result.returncode == 0 and os.path.exists(video_out):
             print(f"  ffmpeg 成功: {video_out}")
-            return True
+            ok_video = True
+        if os.path.exists(audio_out):
+            print(f"  ffmpeg 成功: {audio_out}")
+            ok_video = ok_video or True
     except Exception as e:
         print(f"  ffmpeg 失败: {e}")
-    
-    return False
+
+    return ok_video
 
 
 def process_cpk_dir(cpk_dir, output_dir):
@@ -106,7 +116,13 @@ def process_cpk_dir(cpk_dir, output_dir):
         bytes_file = os.path.join(unpack_dir, f"{base_name}.bytes")
         
         if not os.path.exists(bytes_file):
-            cmd = ["D:\\Azur Lane Assets\\tools\\CriPakTools\\CriPakTools.exe", cpk_path, "all"]
+            CRIPAK = P.tool("AL_CRIPAK", "CriPakTools",
+                            os.path.join(P.ROOT, "tools", "CriPakTools", "CriPakTools.exe"))
+            if not CRIPAK:
+                print("  缺 CriPakTools：设环境变量 AL_CRIPAK 指向 CriPakTools.exe 再跑")
+                failed.append(cpk_name)
+                continue
+            cmd = [CRIPAK, cpk_path, "all"]
             try:
                 subprocess.run(cmd, capture_output=True, timeout=60)
             except Exception as e:
@@ -143,6 +159,6 @@ def process_cpk_dir(cpk_dir, output_dir):
 
 
 if __name__ == "__main__":
-    cpk_dir = r"D:\Azur Lane Assets\files\AssetBundles\originsource\cpk"
-    output_dir = r"D:\Azur Lane Assets\Output\CPK"
+    cpk_dir = os.path.join(P.AB, "originsource", "cpk")
+    output_dir = os.path.join(P.OUT, "CPK")
     process_cpk_dir(cpk_dir, output_dir)

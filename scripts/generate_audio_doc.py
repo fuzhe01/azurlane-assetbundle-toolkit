@@ -4,6 +4,9 @@
 """
 
 import os
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 import json
 
 # ============================================================
@@ -317,7 +320,7 @@ def get_ship_type(cv_id):
 
 def main():
     # 读取 CV 文件
-    cv_dir = r"D:\Azur Lane Assets\Output\Audio\CV"
+    cv_dir = os.path.join(P.AUDIO_OUT, "CV")
     cv_files = sorted([f for f in os.listdir(cv_dir) if f.endswith('.wav')])
 
     # 解析 CV ID
@@ -336,7 +339,7 @@ def main():
                 pass
 
     # 生成文档
-    output_path = r"D:\Azur Lane Assets\Output\Audio\音频资源文档.md"
+    output_path = os.path.join(P.AUDIO_OUT, "音频资源文档.md")
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write("# 碧蓝航线音频资源文档\n\n")
         f.write("> **生成时间**: 2026-06-21  ")
@@ -404,7 +407,7 @@ def main():
 
         # BGM
         f.write("## 3. BGM 背景音乐\n\n")
-        bgm_dir = r"D:\Azur Lane Assets\Output\Audio\BGM"
+        bgm_dir = os.path.join(P.AUDIO_OUT, "BGM")
         bgm_files = sorted([f for f in os.listdir(bgm_dir) if f.endswith('.wav')])
 
         f.write(f"共 {len(bgm_files)} 个 BGM 文件\n\n")
@@ -443,7 +446,7 @@ def main():
 
         # Other
         f.write("## 4. Other 其他音频\n\n")
-        other_dir = r"D:\Azur Lane Assets\Output\Audio\Other"
+        other_dir = os.path.join(P.AUDIO_OUT, "Other")
         other_files = sorted([f for f in os.listdir(other_dir) if f.endswith('.wav')])
 
         # 分类
@@ -491,7 +494,7 @@ def main():
 
         # SE
         f.write("## 5. SE 音效\n\n")
-        se_dir = r"D:\Azur Lane Assets\Output\Audio\SE"
+        se_dir = os.path.join(P.AUDIO_OUT, "SE")
         se_files = sorted([f for f in os.listdir(se_dir) if f.endswith('.wav')])
         f.write("| 文件名 | 说明 |\n")
         f.write("|--------|------|\n")

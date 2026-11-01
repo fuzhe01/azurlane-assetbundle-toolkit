@@ -23,6 +23,9 @@ import struct
 import argparse
 from pathlib import Path
 from datetime import datetime
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 from collections import defaultdict
 
 # ============================================================
@@ -52,17 +55,18 @@ except ImportError:
 # ============================================================
 
 # AssetBundles 源目录
-ASSET_BUNDLES_DIR = r"D:\Azur Lane Assets\files\AssetBundles"
+ASSET_BUNDLES_DIR = P.AB
 
 # 输出根目录
-OUTPUT_ROOT = r"D:\Azur Lane Assets\Output"
+OUTPUT_ROOT = P.OUT
 RAW_OUTPUT = os.path.join(OUTPUT_ROOT, "Raw")
 
 # 错误日志
-ERROR_LOG = r"D:\Azur Lane Assets\docs\ERRORS.log"
+ERROR_LOG = P.ERRORS_LOG
 
-# AssetStudioCLI（可选，增强导出能力）
-ASSETSTUDIO_CLI = r"D:\Azur Lane Assets\tools\AssetStudioModGUI.net8.0\AssetStudio.CLI.exe"
+# AssetStudioCLI（可选，增强导出能力）；找不到就空串，UnityPy 主路径不受影响
+ASSETSTUDIO_CLI = P.tool("AL_ASSETSTUDIO", "AssetStudio.CLI",
+                         os.path.join(P.ROOT, "tools", "AssetStudioModGUI.net8.0", "AssetStudio.CLI.exe"))
 
 # 导出目标配置
 EXPORT_TARGETS = {

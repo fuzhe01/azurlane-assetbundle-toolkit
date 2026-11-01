@@ -78,8 +78,6 @@ def scan_one(bundle_name):
             continue
         x, y, w, h = b
         if x < -1 or y < -1:
-            ax = max(0.0, -x) * max(0.0, min(w, -x + w))
-            ay = max(0.0, -y) * max(0.0, min(h, -y + h))
             # 越界面积（px²）：左侧 + 下侧的 L 形，别重复计角落
             area = max(0.0, -x) * h + max(0.0, -(y)) * max(0.0, w - (-x))
             neg.append((go_names.get(pid, '?'), x, y, w, h, area))

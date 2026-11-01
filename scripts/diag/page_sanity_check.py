@@ -7,7 +7,9 @@ import websocket
 import chrome_tree
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
+CHROME = P.chrome_or_die()
 PORT = 9379
 P = os.path.join(ROOT, '.diag', 'chrome_galprobe3')
 os.makedirs(P, exist_ok=True)

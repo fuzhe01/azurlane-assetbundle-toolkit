@@ -84,9 +84,25 @@ MUMU_ADB = tool('AL_ADB', 'adb', *MUMU_ADB_CANDIDATES) or next(
     (p for p in MUMU_ADB_CANDIDATES if os.path.isfile(p)), '')
 MUMU_MANAGER = (os.path.join(os.path.dirname(MUMU_ADB), 'MuMuManager.exe')
                 if MUMU_ADB else '')
+# Chrome 家族：Chrome 优先，Edge 兜底（两者都是 Chromium，同样支持 `--headless=new` + CDP，
+# 这样"只有 Edge 的机器"也能跑 diag 探针，而不是 30 个脚本集体 filenotfound）。
 CHROME = tool('AL_CHROME', 'chrome',
               r'C:\Program Files\Google\Chrome\Application\chrome.exe',
-              r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe')
+              r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+              r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+              r'C:\Program Files\Microsoft\Edge\Application\msedge.exe')
+
+
+def chrome_or_die():
+    """`diag/` 探针专用：找不到浏览器就**当场给出可执行的补救句**再退出。
+
+    不要把 `CHROME = P.CHROME` 直接喂给 `subprocess.Popen`——空了只会得到
+    `FileNotFoundError: [WinError 2]`，读的人根本不知道缺的是环境变量。
+    """
+    if not CHROME:
+        raise SystemExit('找不到 Chrome/Edge：设环境变量 AL_CHROME 指向浏览器 exe 再跑，'
+                         '或把 chrome.exe 放进 PATH')
+    return CHROME.replace(os.sep, '/')
 
 
 def rel(p):

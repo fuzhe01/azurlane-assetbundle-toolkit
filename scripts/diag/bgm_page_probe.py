@@ -28,8 +28,7 @@ import paths as P                    # noqa: E402
 sys.path.insert(0, os.path.join(ROOT, 'gallery_src'))
 import _gallery_server as GS         # noqa: E402
 
-CHROME = P.tool('AL_CHROME', 'chrome', r'C:/Program Files/Google/Chrome/Application/chrome.exe',
-                r'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe')
+CHROME = P.chrome_or_die()          # env AL_CHROME → PATH → 已知安装位置（Chrome 优先，Edge 兜底）
 PORT, PROFILE = cdp_slot.slot(ROOT, 'bgmp')
 OUT_SHOTS = os.path.join(P.ROOT, '.diag')
 FAIL = []

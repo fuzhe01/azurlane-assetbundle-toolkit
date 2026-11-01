@@ -6535,3 +6535,64 @@ git show 12eb0db^:scripts/compose_paintings_v2.py > .diag/oldpipe/compose_painti
 `scripts/scan_assets.py`（`bg` 去重）、`scripts/diag/{gallery_motion_probe,ship_meta_authority_diff}.py`（死代码）、
 `scripts/install_git_hooks.py`（新增）、`scripts/diag/check_lint_baseline.py`（新增）。
 相关：WF-30（接手自检）、WF-31（基线闸门）、§71（"永远红的检查必然被绕过"）。
+
+## §116 路径闸门自己有漏检：只扫 `.py` + 正则要求盘符前有引号（2026-11-01 全库路径迁移）
+
+**症状**：43 个 `.py` + 2 个 `.bat` 批量迁到 `scripts/paths.py` 后，`check_paths.py` 报 `[PASS]`。
+但里面还压着**未迁移的写死路径**，闸门看不见。不是"迁干净了"，是"闸门没有眼"。
+
+**根因是两层叠加**（只做掉一层仍会假绿，**这两层必须一起看**）：
+
+1. **扩展名白名单只放 `.py`**：
+   ```python
+   if not fn.endswith('.py'): continue    # ← .bat / .ps1 全逃检
+   ```
+   而 `.bat` 恰恰是硬编码最凶的地方（双击启动器里写死解释器绝对路径
+   `set "PY=C:\Users\<用户名>\...\python.exe"`）——换机器必炸，却是唯一检不到的。
+
+2. **正则的前置锚过严**：
+   ```python
+   DRIVE = re.compile(r'''["'][A-Za-z]:[\\/](?:Users|Program Files|...)''')
+   ```
+   要求"盘符前必须是引号"。而 `set "PY=C:\Users\..."` 里 `C:` 前面是 `=PY`，不是引号
+   → **这条最典型的硬编码被判为"不匹配"**。放宽前置约束（去掉前引号要求）、**捕获边界不动**，
+   两层都补上才真正变绿。
+
+**怎么发现的第一层之外还有第二层**：做阴性对照时**第一次没变红**。
+如果只做"改完闸门就报告"、不做阴性对照，这个漏检会被当成已修好。
+
+**第三个坑：闸门被我自己的注释触发了**。写完闸门顺手在注释里写了一个字面
+`C:\Users\...` 举例 → 闸门扫到自己 → 判红。措辞改成 `<盘符>:\Users\...`。
+
+**第四个坑：阴性对照选错了构造方式**。想验证"`.bat` 里必须有解释器探测"这条判据，
+我用 `rem` 注释掉了探测行 → **闸门仍变绿**，因为 `rem` 之后子串 `where py` 还在。
+改成**整行删除**才正确变红。⇒ 判据实现里必须**先过滤 `rem`/`::`/`@rem` 开头的行**
+再判"有没有真执行的探测"，否则注释一行假的就能骗过闸门。
+
+**修法**：`SCAN_EXTS=('.py','.bat','.ps1')`；`DRIVE` 去掉前引号要求；新增
+`BAT_LAUNCHERS` + `_check_launchers()`（逐行过滤注释后要求有真执行的 `where py`/`where python`）；
+`SOFT_DIRS`/`SOFT_FILES` 清空、`--strict` 设为默认（留 `--no-strict` 逃逸口）。
+"留一个默认只报数不判红的软档" = 留一个永远没人看的失败（同 §71）。
+
+**怎么在没有 Chrome / 没有 ffmpeg 的机器上做负控**：不靠真跑。
+把 `AL_CHROME` 指向不存在路径 → 必须打出补救句并 `exit 1`；
+闸门负控靠造坏样本（`.bat` 写死路径 / `.ps1` 无引号 / `.bat` 删探测行）三种，逐一确认变红后删样本。
+唯一能真跑的是浏览器兜底：本机无 Chrome 但有 Edge
+（`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`），同为 Chromium，
+`--headless=new` + CDP 有效 —— 用它跑了一个探针，浏览器真起来了、只因缺 8777 服务器才超时退出，
+**这才证到"接线对"**；`py_compile` 通只说明语法对，说明不了接线。
+
+**`.bat` 引号陷阱**（迁移 `.bat` 时必踩）：`set "PY=py -3"` 之后写
+`"%PY%" "%SCRIPT%"` → cmd 把 `py -3` 当成**一个文件名** → `WinError 2`。
+必须 `%PY% "%SCRIPT%"`（变量裸用、脚本路径带引号）。`.bat` 没有 `py_compile`，
+**改完必须实跑一次** `cmd /c call <bat> --help`。
+
+**已排除的假设**：
+- ~~"闸门报 PASS 就是迁干净了"~~ —— 闸门的扫描范围本身就是待验证对象，它的 PASS 只覆盖它看得见的部分。
+- ~~"用 `rem` 注释掉坏行就能做负控"~~ —— 子串仍在，闸门不变红；必须整行删除。
+- ~~"`CHROME = P.CHROME` 拿不到就给空串让它自己报错"~~ —— 空串喂 `Popen` 只有
+  `FileNotFoundError: [WinError 2]`，读的人不知道缺的是 `AL_CHROME`；要 `chrome_or_die()` 给补救句。
+
+**涉及文件**：`scripts/diag/check_paths.py`（四层漏检全部补齐）、`scripts/paths.py`
+（Edge 兜底 + `chrome_or_die()`）、`scripts/mumu_adb.bat` / `scripts/mumu_sync.bat`、43 个 `.py`。
+相关：WF-32（批量机械迁移流程）、§77（上一轮路径收账：软档只报数不判红）、§71（永远红的检查必然被绕过）。

@@ -19,7 +19,9 @@ sys.path.insert(0, HERE)
 import websocket, chrome_tree
 
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
-CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
+CHROME = P.chrome_or_die()
 BASE = 'http://127.0.0.1:8777/gallery_v2'
 WAIT = {'painting': 4.0, 'live2d': 11.0, 'spine': 11.0, 'voice': 4.0}
 

@@ -13,6 +13,9 @@ import os
 import json
 import hashlib
 from pathlib import Path
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 from collections import defaultdict
 
 # ============================================================
@@ -20,10 +23,10 @@ from collections import defaultdict
 # ============================================================
 
 # AssetBundles 根目录（源数据，只读扫描）
-ASSET_BUNDLES_DIR = r"D:\Azur Lane Assets\files\AssetBundles"
+ASSET_BUNDLES_DIR = P.AB
 
 # 输出清单路径
-OUTPUT_JSON = r"D:\Azur Lane Assets\asset_manifest.json"
+OUTPUT_JSON = os.path.join(P.OUT, "asset_manifest.json")
 
 # ============================================================
 # 分类规则 — 根据 DEV_LOG_DRAFT.md 的审计结果定义

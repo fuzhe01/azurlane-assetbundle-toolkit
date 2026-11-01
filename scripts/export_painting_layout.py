@@ -20,12 +20,15 @@ import os
 import sys
 
 import UnityPy
+import sys as _p_sys, os as _p_os
+_p_sys.path.insert(0, _p_os.path.dirname(_p_os.path.abspath(__file__)))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
 from UnityPy import config
 
 # 游戏把 UnityFS header 的版本字段改成了 "5.x.x"，需要显式 fallback
 config.FALLBACK_UNITY_VERSION = "2022.3.62f3"
 
-ASSET_ROOT = r"D:\Azur Lane Assets\files\AssetBundles"
+ASSET_ROOT = P.AB
 
 
 def vec(v):

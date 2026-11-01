@@ -19,7 +19,9 @@ from PIL import Image
 import io as _io
 
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
-CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
+CHROME = P.chrome_or_die()
 BASE = 'http://127.0.0.1:8777/gallery_v2'
 INK = 26          # 落笔阈值（底色已在 measure() 里刷成纯黑；棋盘亮格 max=42，不刷黑任何阈值都挡不住）
 WAIT = {'painting': 3.5, 'live2d': 10.0, 'spine': 10.0}

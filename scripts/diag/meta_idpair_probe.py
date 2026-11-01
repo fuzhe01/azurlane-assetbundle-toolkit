@@ -54,7 +54,6 @@ def main():
     stats = B.load()[1]
     p2s, pci, sbg, sbid = B.build_indexes(skin, stats)
     sid2skin = {v['id']: v for v in skin.values() if 'id' in v}
-    stats_by_id = {v['id']: v for v in stats.values() if 'id' in v}
     fails = []
 
     # ---- 1) 救援集 ----

@@ -98,7 +98,6 @@ def face_layer(bundle):
     rects, go_names, fm, cm, parts, deps = C.parse_painting(bundle)
     boxes, mirrors, roots = C.layout_all(rects, fm, cm)
     allb = list(boxes.values())
-    cw = int(max(b[0] + b[2] for b in allb))
     ch = int(max(b[1] + b[3] for b in allb))
     face_pid = next((rp for rp in rects if go_names.get(rp) == 'face'), None)
     if face_pid is None or face_pid not in boxes:

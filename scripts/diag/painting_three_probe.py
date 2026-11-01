@@ -25,7 +25,6 @@ def tree(bundle):
     rects, go_names, father_map, children_map, parts, deps = C.parse_painting(bundle)
     boxes, mirrors, roots = C.layout_all(rects, father_map, children_map)
     order = C.draw_order(rects, father_map, children_map)
-    depth = {}
 
     def d_of(pid):
         d, cur, seen = 0, pid, set()

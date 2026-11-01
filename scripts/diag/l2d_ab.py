@@ -19,7 +19,9 @@ import sys, os, json, time, base64, shutil, subprocess, urllib.request
 sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CHROME = r'C:/Program Files/Google/Chrome/Application/chrome.exe'
+sys.path.insert(0, os.path.join(ROOT, 'scripts'))
+import paths as P  # 仓库根与外部工具位置：见 scripts/paths.py（AL_ASSETS_ROOT 可覆盖）
+CHROME = P.chrome_or_die()
 PORT = 9336
 SRV_PORT = 8791
 DEBUG_DIR = os.path.join(ROOT, '.diag', 'chrome_l2d_ab')

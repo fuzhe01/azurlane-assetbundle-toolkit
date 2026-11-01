@@ -1,7 +1,7 @@
 ---
 name: windows-hardlink-dedup-verify
 description: Windows/NTFS 批量资产的硬链接去重安全流程——把逐字节相同的重复文件转成硬链接省磁盘，同时证明「按文件名引用的消费方（画廊/静态站/gallery index/图片墙）零破坏」。当用户想去重/省空间/清理重复文件但担心删了断链、磁盘被大量同内容资产占满、或明确说「硬链接去重」时使用。也覆盖第二种用法：把「手写正本 ↔ 构建/运行目录里的同名副本」硬链成同一份数据，从而彻底消掉"改完忘部署"这类静默失败（含漂移探测器与并发会话闸门）。触发词：硬链接去重、hardlink、重复文件省空间、删重复怕断链、按文件名引用不能删、去重后校验画廊能打开、逐字节重复、两份重复副本/点不开、改了忘部署、drift/漂移检查。
-version: 1.4.0
+version: 1.4.1
 ---
 
 # Windows 硬链接去重 + 三重校验安全流程
@@ -26,7 +26,8 @@ version: 1.4.0
 ## 前置约定
 
 - Python 3（`os.link` 在 Windows 上创建硬链接），需在同一 NTFS 卷内。
-- 三个脚本在 `scripts/` 下，通过环境变量 `DEDUP_ROOT`（产物根目录）与 `.diag/_dedup_plan.json` 传递方案；按需改脚本顶部 `DIRS`（要扫描的子目录列表）与扩展名。
+- 三个脚本在 `scripts/diag/` 下（`dedup_plan.py` / `dedup_apply.py` / `dedup_httpverify.py`），通过环境变量 `DEDUP_ROOT`（产物根目录）与 `.diag/_dedup_plan.json` 传递方案；按需改环境变量或脚本顶部默认值 `DEDUP_DIRS`（要扫描的子目录列表）与 `DEDUP_EXT`。
+- ⚠️ **本技能目录下不再自带脚本副本**（2026-10-08 删）：历史上 `scripts/diag/` 是 72 行的早期精简版、技能自带 122 行的参数化完整版，两份各自演化导致「文档写 `scripts/`、实际改的却是技能副本」这类分叉。现在唯一正本在 `scripts/diag/`，本技能只讲流程。**别把脚本复制进技能目录**——复制出去的第二天就会跟正本漂移。
 - 遵守「先只读出方案 → 小样本 → 用户确认 → 全量」的项目红线：未展示小样本结果前不得全量。
 
 ## 工作流（5 步）
@@ -57,26 +58,30 @@ version: 1.4.0
 
 ### 1. 只读扫描，生成去重方案
 
-跑 `scripts/dedup_plan.py`。它按 **size 分组 → 同尺寸算 sha256 → 组内真实字节比对确认逐字节相同 → 跳过已互为硬链（同 `st_ino`）→ 每组选一个 canonical**，输出 `.diag/_dedup_plan.json` 与人类汇总（组数 / 重复文件数 / 预估可省空间）。不落盘任何资产改动。
+跑 `scripts/diag/dedup_plan.py`。它按 **size 分组 → 同尺寸算 sha256 → 组内真实字节比对确认逐字节相同 → 跳过已互为硬链（同 `st_ino`）→ 每组选一个 canonical**，输出 `.diag/_dedup_plan.json` 与人类汇总（组数 / 重复文件数 / 预估可省空间）。不落盘任何资产改动。
 
 ```
 cd "<项目根>"
-DEDUP_ROOT="Output" PYTHONIOENCODING=utf-8 py -3 scripts/dedup_plan.py
+DEDUP_ROOT="Output" PYTHONIOENCODING=utf-8 py -3 scripts/diag/dedup_plan.py
 ```
+（上面是 bash 写法。本项目环境是 Windows PowerShell / cmd，等价写法是
+`$env:DEDUP_ROOT='Output'; $env:PYTHONIOENCODING='utf-8'; py -3 scripts/diag/dedup_plan.py`——
+**bash 的 `VAR=值 命令` 前缀在 PowerShell 里不成立**，直接粘会报「无法将 'DEDUP_ROOT=Output' 识别为 cmdlet」。
+不设 `DEDUP_ROOT` 时默认就是 `Output`，本机跑通常不用设。）
 
 把汇总（尤其是重复对是否都是**真实冗余**）展示给用户确认后再进入第 2 步。
 
 ### 2. 小样本试链（1–3 组）
 
-跑 `scripts/dedup_apply.py 2`（参数 = 前 N 组，或 `all`）。逐 dup 流程：**建链前再次真实字节复核 → `os.remove` + `os.link` → 失败自动回退 `copy` → 逐文件校验 `nlink≥2` + sha256 与 canonical 全等**。把已应用路径写进 `.diag/_dedup_applied.txt`。期望「N 文件建链、0 问题」。
+跑 `scripts/diag/dedup_apply.py 2`（参数 = 前 N 组，或 `all`）。逐 dup 流程：**建链前再次真实字节复核 → `os.remove` + `os.link` → 失败自动回退 `copy` → 逐文件校验 `nlink≥2` + sha256 与 canonical 全等**。把已应用路径写进 `.diag/_dedup_applied.txt`。期望「N 文件建链、0 问题」。
 
 ### 3. 端到端 HTTP 校验（小样本）
 
-跑 `scripts/dedup_httpverify.py`：进程内起 `ThreadingHTTPServer` 根于产物目录，GET `_dedup_applied.txt` 里每个受影响路径，核对 **HTTP 200 + Content-Length + 下载字节 sha256 三重一致**。这一步证明硬链文件经画廊的 http.server 能正常打开——是「画廊零破坏」的直接证据。期望 `x/x 全部通过`。
+跑 `scripts/diag/dedup_httpverify.py`：进程内起 `ThreadingHTTPServer` 根于产物目录，GET `_dedup_applied.txt` 里每个受影响路径，核对 **HTTP 200 + Content-Length + 下载字节 sha256 三重一致**。这一步证明硬链文件经画廊的 http.server 能正常打开——是「画廊零破坏」的直接证据。期望 `x/x 全部通过`。
 
 ### 4. 全量应用 + 全量校验
 
-确认后跑 `scripts/dedup_apply.py all`，再对**全部**受影响路径重跑第 3 步。
+确认后跑 `scripts/diag/dedup_apply.py all`，再对**全部**受影响路径重跑第 3 步。
 
 > 幂等性：`all` 会把小样本那几组再处理一遍。已链的 dup 此时 `st_nlink` 已 >1，`remove`+`link` 回来是无害的，`freed` 因测的是 nlink 增量而**不重复计**——所以全量实际释放会略低于「小样本+预估」之和，属正常，不是丢链。
 

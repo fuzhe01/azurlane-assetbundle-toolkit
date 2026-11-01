@@ -246,7 +246,6 @@ def extract_one(name):
                    and d != key]
 
     for aname, ascript in atlases.items():
-        base = aname[:-len(".atlas")]
         atext = to_bytes(ascript).decode("utf-8", "replace")
         pages = atlas_pages(atext)
         for pg in pages:

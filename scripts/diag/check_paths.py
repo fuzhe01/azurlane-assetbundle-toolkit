@@ -9,6 +9,13 @@
     py -3 scripts/diag/check_paths.py --verbose  # 列出每条命中
 
 允许出现绝对路径的只有两处：`paths.py` 自己的候选清单、以及明确标了 legacy 的归档脚本。
+
+⚠️ **扫的范围必须是整棵 `scripts/`（`.py` + `.bat` + `.ps1`），不能只认 `.py`。**
+2026-11-01 实测漏网：`scripts/mumu_adb.bat` / `mumu_sync.bat` 第 3 行把某个用户目录下的
+python.exe 写死成绝对路径，本检查完全看不见（`endswith('.py')` 一律 continue）⇒
+换机器后双击**必然报 "Python not found"**，而闸门一直显示 PASS。批处理/PS 脚本
+和 Py 脚本一样是会被人双击的入口，属于同一个失效模式。逃检是两层原因叠加的：
+扩展名筛 + 正则要求盘符前有引号（`set "PY=<盘符>:..."` 不满足）。
 """
 import argparse
 import io
@@ -20,9 +27,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 S = os.path.dirname(HERE)                       # scripts/
 ROOT = os.path.dirname(S)
 
-DRIVE = re.compile(r'''["'][A-Za-z]:[\\/](?:Users|Program Files|Azur Lane Assets|azur)''')
+# 不再要求盘符前有引号：`set "PY=<盘符>:\\Users\\..."` 里盘符前面是 `=PY` 而不是引号，
+# 这正是两份 .bat 逃检的第二个原因（只放宽**前引号**，捕获内容的边界没变）。
+DRIVE = re.compile(r'''[A-Za-z]:[\\/](?:Users|Program Files|Azur Lane Assets|azur)''')
 # 允许：路径出口本身（它的职责就是列已知安装位置）
 ALLOW = {'paths.py'}
+# 批处理/PS 也是"会被人双击的入口"，必须一起扫（2026-11-01：两份 .bat 写死 python.exe 逃检一轮）
+SCAN_EXTS = ('.py', '.bat', '.ps1')
 # 归档/一次性脚本：不在调用链上，改它们等于扩大战线；新增条目要写明理由
 LEGACY = set()
 
@@ -33,33 +44,52 @@ MUST_USE_PATHS = ['compose_paintings_v2.py', 'extract_spine_v2.py', 'reconstruct
                   'export_dependency_manifest.py', 'mumu_sync.py',
                   os.path.join('diag', 'run_cg_export.py'), 'update_pipeline.py']
 
-# 分两档，是为了让这个闸门**现在就能绿**并且一直拦得住回归：
-# 一次扫出 46 个文件全判红 = 闸门当天就被绕过（本项目对"永远红的检查"的态度见 §71）。
-# 硬档 = 会被日常跑到的链路；软档 = 一次性诊断脚本（多数只是那一行 Chrome 路径），
-# 只报数不判红，等谁去动那个脚本时顺手迁。
-SOFT_DIRS = ('diag/',)
-SOFT_FILES = {'export_assets.py', 'scan_assets.py', 'organize.py', 'probe_matching.py',
-              'generate_audio_doc.py', 'gen_face_mapping.py', 'extract_paintingface.py',
-              'export_painting_layout.py', 'export_cue_audio.py', 'extract_cpk.py',
-              'extract_live2d_voice.py', 'scrape_wiki_fast.py', 'mumu_adb.py'}
+# 分两档曾经是为了让这个闸门**当时就能绿**（一次扫出 46 个文件全判红 = 闸门当天就被绕过，
+# 见 §71）。2026-11-01 账已清完 ⇒ **软档清零、--strict 变成默认**，
+# 再多一条写死路径就是直接红。新增条目要写明理由，别把它当"先放过去"的口袋。
+SOFT_DIRS = ()
+SOFT_FILES = set()
 
 
 def tier_of(rel):
-    if rel.startswith(SOFT_DIRS) or rel.split('/')[-1] in SOFT_FILES:
+    if (SOFT_DIRS and rel.startswith(SOFT_DIRS)) or rel.split('/')[-1] in SOFT_FILES:
         return 'soft'
     return 'hard'
+
+
+# 双击启动器也必须是"换机器能跑"的：不许写死解释器绝对路径（闸门管的是这个失效模式本身）。
+BAT_LAUNCHERS = ['mumu_adb.bat', 'mumu_sync.bat']
+
+
+def _check_launchers():
+    """`.bat` 里写死 python.exe 的路径就算 DRIVE 正则抓不到（不含 Users/Program Files 等），
+    换机器同样必然报 "Python not found"。这里直接按"有没有 py/python 探测"判。"""
+    bad = []
+    for fn in BAT_LAUNCHERS:
+        p = os.path.join(S, fn)
+        if not os.path.isfile(p):
+            continue
+        txt = io.open(p, encoding='utf-8', errors='replace').read()
+        lines = [l.strip() for l in txt.splitlines()]
+        # 注释掉的探测不算数（`rem where py ...` 仍含子串，必须逐行判"真执行"）
+        live = [l for l in lines if l and not l.lower().startswith(('rem', '::', '@rem'))]
+        if not any(('where py' in l) or ('where python' in l) for l in live):
+            bad.append(fn)
+    return bad
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--verbose', action='store_true')
-    ap.add_argument('--strict', action='store_true', help='软档也算判红（清完账之后把它设成默认）')
+    ap.add_argument('--no-strict', dest='strict', action='store_false',
+                    help='软档只报数不判红（仅在还有明确待迁条目时临时用）')
+    ap.set_defaults(strict=True)
     a = ap.parse_args()
     bad, missing, soft_n = [], [], 0
     for dirpath, dirnames, files in os.walk(S):
         dirnames[:] = [d for d in dirnames if d not in ('__pycache__', '_archive')]
         for fn in files:
-            if not fn.endswith('.py'):
+            if not fn.endswith(SCAN_EXTS):
                 continue
             rel = os.path.relpath(os.path.join(dirpath, fn), S).replace('\\', '/')
             base = rel.split('/')[-1]
@@ -84,17 +114,22 @@ def main():
         if 'import paths as P' not in txt:
             missing.append(rel)
 
-    if a.verbose or bad or missing:
+    launcher_bad = _check_launchers()
+
+    if a.verbose or bad or missing or launcher_bad:
         for rel, hits in bad:
             print(f'  写死了绝对路径: {rel}')
             for n, l in hits[:4]:
                 print(f'      {n}: {l}')
         for rel in missing:
             print(f'  调用链上的脚本没走 paths: {rel}')
-    n = len(bad) + len(missing)
-    print(f'{"[FAIL] " if n else "[PASS] "}调用链上绝对路径 {len(bad)} 个文件'
+        for fn in launcher_bad:
+            print(f'  启动器没有 py/python 探测（换机器双击必炸）: {fn}')
+    n = len(bad) + len(missing) + len(launcher_bad)
+    print(f'{"[FAIL] " if n else "[PASS] "}写死绝对路径 {len(bad)} 个文件'
           f'，未接 paths 的链路脚本 {len(missing)} 个'
-          f'；另有一次性脚本 {soft_n} 个待迁（--strict 把它们也算红）')
+          f'，无解释器探测的启动器 {len(launcher_bad)} 个'
+          f'；软档待迁 {soft_n} 个（默认也判红，`--no-strict` 才只报数）')
     return 1 if n else 0
 
 
