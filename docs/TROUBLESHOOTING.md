@@ -6967,28 +6967,6 @@ texColor.rgb = (texColor.rgb + u_screenColor.rgb * texColor.a) - (texColor.rgb *
 2. **idle9 数据实情**：只含 16 条小幅度 ParamNNN 曲线（极差 4.0，零标准可见参数）→ 目视主体近乎静止。idle10 同样。属数据事实，非 bug；观感问题留产品层决策。
 3. **真 bug（已修）**：login 把 ParamAngleX 写到 -28 后残留复位渐变从未发生 → 头部拧死，叠加 ② 造成「卡住」观感。
 
-**根因（__REST 日志铁证：['build','idle',1,0]+['empty',0]）**： 里  先执行； 是 **async**（未预载组要先 fetch 再 createMotion 才登记 ）。加载窗口内 currentGroup 还是旧 idle 组（∈idleSet）→ restTick 立即消费 played，但  尚未登记 → 空集 → want=∅ →  提前把这组动作吞掉 → 它真正播完后残留永不复位。
-
-**修法（gallery_src/index.html restTick）**： 记录 play 时刻；消费前若  未登记且  且距 play <5s → 本帧不消费（等登记）；超时按空集消费防死等。
-
-**验证（实验 A，禁 login 排除开场竞态后）**：play(touch_idle7) 4s 残留（ay=-8.3/ax=2/az=9.99）→ play(idle9) → REST_DELAY 400ms 保持 → 700ms 线性渐变 → ay 回 -0.78、axw 铁证 [2,0,1,0]（k=1 写 0 读回 0）。WF-16 回归 ALL PASS。其它动作抽查（touch_body/login/touch_drag1）：管线泛化生效；login/drag 组在 headless 下「不回落」是时钟伪影（见下），真机不受影响。
-
-**headless 时钟伪影（重要判据，勿再当 bug 查）**：vendored 库动作时钟 = （onTickerUpdate 累计，_render 时传 internalModel.update）→ **PIXI Ticker 低帧率下 deltaMS 被 maxElapsedMS cap → 时钟慢于真实时间数倍** → entry 的  finished 判定迟迟不达 → 动作「播不完」、回落延迟、restTick 与 fadeOut 末帧写入交错出现稳态残差。**识别法**：entry.et 固定而真实时间远超仍 fin:0、_userTimeSeconds 恒 0 不可用、fadeWeight 却在推进。**验证时序敏感逻辑必须绕开自然 finished**：直接切 idleSet 组（play(idle9)）触发 restTick 路径，或用 localStorage 注入禁开场 login（gallery.opt.v1）。
-
-**已排除的假设（别再重跑）**：restTick 写入被 loadParameters 覆盖（axw 同帧写后读回 0 推翻）；cm 实例不同/方法被遮蔽（同一性 true、原型方法 false=无遮蔽）；MotionState 无 isFinished 导致看门狗失效是主因（看门狗在 cg≠null 时本就不触发，主路径是库内置回落）；FadeOutTime 配置过长导致对抗（全库 FadeOutTime 均缺省=-1 → endTime=ut-1 即时掐）；物理/呼吸/focus 写 Angle 参数（物理输出不含、breath 已关、focus 写入在 save 之后被 load 撤销）。
-
-**涉及**：（restTick/playedAt/play）、（复现+验证）、（entry 快照裁决时钟伪影）。相关 §21（残留复位原始设计）、§128（回落语义）、WF-16。
-
-
-## §133. idle9「卡住」真相：restTick 竞态吞掉 played → login 残留永不复位（2026-10-20）
-
-**现象**：用户报「ougen_8 的 idle9 无法播放，直接卡住了，其它动作可能也有类似问题」。
-
-**裁决（三层，勿混）**：
-1. **idle9 本身没有冻结**——队列 entry 时间正常推进、fadeWeight=1、16 条 ParamNNN 曲线持续写入。首轮「冻结」是探针误诊（盯了 idle9 不驱动的 ParamAngleX/Y）。
-2. **idle9 数据实情**：只含 16 条小幅度 ParamNNN 曲线（极差 4.0，零标准可见参数）→ 目视主体近乎静止。idle10 同样。属数据事实，非 bug；观感问题留产品层决策。
-3. **真 bug（已修）**：login 把 ParamAngleX 写到 -28 后残留复位渐变从未发生 → 头部拧死，叠加 ② 造成「卡住」观感。
-
 **根因（__REST 日志铁证：['build','idle',1,0]+['empty',0]）**：`play(g)` 里 `played.add(g)` 先执行；`mm.startMotion` 是 **async**（未预载组要先 fetch 再 createMotion 才登记 `paramSets[g]`）。加载窗口内 currentGroup 还是旧 idle 组（∈idleSet）→ restTick 立即消费 played，但 `paramSets[g]` 尚未登记 → 空集 → want=∅ → `played.clear()` 提前把这组动作吞掉 → 它真正播完后残留永不复位。
 
 **修法（gallery_src/index.html restTick）**：`playedAt[g]=performance.now()` 记录 play 时刻；消费前若 `paramSets[g]` 未登记且 `motionGroups[g][0]===undefined` 且距 play <5s → 本帧不消费（等登记）；超时按空集消费防死等。
@@ -10125,3 +10103,82 @@ py -3 scripts/diag/sync_session_model.py --sync-from-copilot-model b05ca5fd
 `scripts/diag/check_merge_numbering.py`（新）、`scripts/diag/check_diag_hygiene.py`、
 `docs/WORKFLOWS.md` WF-63。
 相关：§71（常亮的闸门等于没有闸门）、§177（一批沉默型缺陷）、§178（路径闸门自己有漏检）。
+
+---
+
+## §180. 闸门自己的判据有盲区：匹配太窄 → 假绿灯；重复条目被吞反引号 → 正文静默损坏（2026-11-01）
+
+**怎么发现的**：合并 fork 97 提交后重跑 `check_merge_numbering.py --worktree`，报告「合并产物无重复编号」。
+但准备写收尾说明、手数「WORKFLOWS 有多少篇正篇」时，用宽正则数出 **64 篇**，而工具说 **44 篇**。
+差的 20 篇不是笔误 —— 是判据根本没看见它们。
+
+**缺陷一：判据把标题形态钉死了（假绿灯）**
+
+工具原来只有两条正则：
+
+```python
+('docs/TROUBLESHOOTING.md', re.compile(r'^## §(\d+)'), '§'),
+('docs/WORKFLOWS.md',       re.compile(r'^### WF-(\d+)[:：]'), 'WF-'),
+```
+
+而文档里真实存在**四种**标题写法：
+
+| 写法 | 实例 | 旧正则 |
+|---|---|---|
+| `## §N. 标题` | `## §133. idle9…` | 命中 |
+| `### §N. 标题` | `### §136. 手掌消失排查…` | **漏 7 篇**（136..142、155） |
+| `### WF-N: 标题` | `### WF-16: 元数据「取行规则」…` | 命中 |
+| `## WF-N 标题`（无冒号、双井号） | `## WF-42 …` | **漏 19 篇**（42..59） |
+
+后果不是"少报几篇"这类无害偏差，而是**结论方向反了**：漏掉的那批里恰好包含重复与撞号，
+于是工具输出 `[PASS] 合并产物无重复编号`。**常亮的绿灯和没装闸门是同一种失效**（§71 的同类），
+区别只在于它会让你以为查过了。
+
+**修法**：井号级数不固定（`#{2,4}`），号后形态放开（`:` / `：` / 空格+标题皆可），
+同时**必须**排除两类非正篇，否则会刷出 4→13 个假阳性：
+
+- **续篇**：`### WF-16 追加（…）：`、`### §22 追加（…）：`、`### §134 续. …`、`## §37 补：…`
+  → 判据是「号后尾巴以 `追加/续/补/更正` 开头即排除」，不能靠"号后必须是冒号"（`## WF-42 标题` 就没有冒号）。
+- **子节**：`### §58.1 全库比对结果` → 判据是「号后紧跟 `.数字` 即排除」，它不是第 58 篇。
+
+**缺陷二：`§133` 重复，且坏的那份把反引号全吞了（正文静默损坏）**
+
+同一篇 `§133` 在文档里出现两次（6961 行与 6983 行），两份**标题行逐字相同**，
+肉眼看很像纯复制粘贴，但实测差异极大：
+
+| | 前一份 | 后一份 |
+|---|---|---|
+| 反引号数量 | **0** | 28 |
+| `play(g) 里 played.add(g)` | 退化成 `里  先执行` | 完整 |
+| `elapsedTime += Ticker.shared.deltaMS` | 只剩 `= （onTickerUpdate 累计…` | 完整 |
+| `gallery_src/index.html` | 只剩 `（restTick/playedAt/play）` | 完整 |
+
+即：前一份是**反引号被整体剥离**后的残骸。剥离后句子仍读得通（`里  先执行； 是 async`
+—— 主语和谓语都掉了，但因为中英混排，扫一眼不觉得异常），所以能长期不被发现。
+**判据**：两份同号条目的「非空行数」相同、不带反引号时逐行 diff 才只剩 3 处差异 ⇒
+坏的那份不是"另一个版本"，而是**同一份的降级副本**。处置 = 删掉坏的那份，保留完整的。
+
+**教训（可复用到任何"按标题抓条目"的工具）**
+
+1. **判据的覆盖范围要拿数据反证，不能靠记忆**：改完先问「全库一共有多少篇？我这个正则抓到多少？」
+   两个数不一致，就是判据有盲区，此时**绿不绿没有意义**。
+2. **阴性对照要覆盖每一种形态**：本轮对两种真实写法各造一次重复（`### WF-63:` 与
+   `## §179 标题`），必须红；删掉后必须绿。只对其中一种造样本，另一种的漏检就永远不会暴露。
+3. **"两份完全一样"是必须先验证的假设**：同号重复里可能混着被工具/编辑器降级的副本
+   （剥反引号、剥行内代码、把表格压平）。只比标题就删，会把唯一完整的那份删掉。
+   核对方式：反引号计数 + 去反引号后的逐行 diff，两样都要看。
+4. **存量重复不动**：`§175`、`WF-26` 在 base 里就重复（两篇不同内容共用一号），
+   改号会让全部自引用错链 ⇒ 工具按「继承的（WARN）/ 本分支新造的（FAIL）」分开判，
+   这一条在 §179 已经立过，本轮只是再次验证它有效（修完判据后它们仍被判为 WARN）。
+
+**已排除的假设（别再重跑）**
+
+- ~~「44 篇就是全部，剩下的是别的文档里的引用」~~ → 宽正则实数是 64 篇，44 是漏检数。
+- ~~「§133 两份是同一段被复制两遍，随便删一份即可」~~ → 前一份 0 个反引号、后一份 28 个，删错就丢正文。
+- ~~「续篇也得算正篇，否则重复判据不完整」~~ → 续篇算正篇会立刻刷出 `§22/§33/§37/§39/§40/§46/§58/§84/§134/§156/§158`
+  与 `WF-26` 的一串假阳性，而这些都不是"两篇不同内容共用一号"。
+
+**涉及文件**：`scripts/diag/check_merge_numbering.py`（`TARGETS` 改为 `(文件, tag)`，新增 `heading_ids()` 统一抽号）、
+`docs/TROUBLESHOOTING.md`（删除 `§133` 的降级副本，10128 → 10106 行；纯 CRLF，bareLF 0）。
+相关：§179（存量不是你的债、编号撞车不是内容冲突）、§71（常亮的闸门等于没有闸门）、§177（一批沉默型缺陷）。
+

@@ -13,10 +13,17 @@
   theirs = 要并进来的分支
 只有「本分支新增」∩「对方新增」的号才是撞车；base 里已有的号两边都在用，不算冲突。
 
-⚠️ **「追加」不算撞号**：`### WF-16 追加（2026-09-28）：…` 是同一流程的续篇，
-不是第二个 WF-16。判据是标题号后紧跟 `:` 才算正篇（`### WF-16:`），续篇一律排除；
-否则本仓会被自己的续篇样式刷出一堆假撞号（实测 4 个假阳性）。
-`## §37` 这类真重复要报，但要分清是**谁带进来的**：base 就有 → 历史遗留不许顺手改
+⚠️ **「续篇」不算撞号**：`### WF-16 追加（2026-09-28）：…`、`## §37 补：…`、`### §134 续. …`
+是同一流程/条目的续篇或补注，不是第二个 WF-16 / §37。判据是标题号后的尾巴以
+「追加 / 续 / 补 / 更正」开头就排除；否则本仓会被自己的续篇样式刷出一堆假撞号。
+
+⚠️ **标题形态必须按宽规则抓**（本工具曾因此给出过假绿灯）：井号级数不固定
+（`## §133.` 与 `### §136.` 并存）、号后可以是 `:`/`：`/空格+标题
+（`## WF-42 标题` 与 `### WF-16: 标题` 并存）。窄规则 `^### WF-N:` + `^## §N` 实测漏掉
+19 篇 WF（42..59）与 7 篇 §（136..142、155），使「WORKFLOWS 44 正篇无重复」成为
+**假绿灯**（真实 64 篇且有重复）。`§58.1` 这类子节也排除。
+
+`## §133` 这类真重复要报，但要分清是**谁带进来的**：base 就有 → 历史遗留不许顺手改
 （它的自引用会全炸），只有本分支或对方**新增**的重复才需要处理。
 
 用法:
@@ -41,11 +48,36 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-# (文件, 正篇编号正则, 编号前缀) —— 新增一个「带唯一编号的长文档」就往这里加一行
+# (文件, 编号前缀) —— 新增一个「带唯一编号的长文档」就往这里加一行
 TARGETS = [
-    ('docs/TROUBLESHOOTING.md', re.compile(r'^## §(\d+)'), '§'),
-    ('docs/WORKFLOWS.md', re.compile(r'^### WF-(\d+)[:：]'), 'WF-'),
+    ('docs/TROUBLESHOOTING.md', '§'),
+    ('docs/WORKFLOWS.md', 'WF-'),
 ]
+
+# 标题形态必须按**宽**规则抓，否则判据自带盲区（实测踩过两次）：
+#   ① 井号级数不能钉死：`## §133.` 与 `### §136.` 是同一类正篇，只认 `^## ` 会整块漏掉 7 篇；
+#      同理 `## WF-42 标题`（双井号、无冒号）与 `### WF-16: 标题` 并存，只认 `^### WF-N:` 漏掉 19 篇。
+#   ② 号后允许三种尾巴：`:`/`：`/空格+标题，以及 `§58.1` 这类子节（**不算**第 58 篇）。
+# 用错过窄规则会得出「WORKFLOWS 44 正篇无重复」的假绿灯（真实 64 篇且有重复）。
+_HEAD_HEAD = r'^(#{2,4})\s*'
+_HEAD_TAIL = r'(\d+)(\.\d+)?(.*)$'
+# 续篇/补注不是「第 N 篇」：`## §37 补：…`、`### §22 追加（…）：…`、`### §134 续. …`
+_CONT = ('追加', '续', '补', '更正')
+
+
+def heading_ids(text, tag):
+    """从标题行抽出正篇编号；排除续篇与子节。tag 形如 '§' 或 'WF-'。"""
+    rx = re.compile(_HEAD_HEAD + re.escape(tag) + _HEAD_TAIL)
+    out = []
+    for line in text.split('\n'):
+        m = rx.match(line)
+        if not m or m.group(3):
+            continue
+        tail = m.group(4).strip()
+        if tail.startswith(_CONT):
+            continue
+        out.append(int(m.group(2)))
+    return out
 
 
 def git(*args):
@@ -53,7 +85,7 @@ def git(*args):
     return r.stdout if r.returncode == 0 else None
 
 
-def ids_at(rev, path, rx, worktree=False):
+def ids_at(rev, path, tag, worktree=False):
     if worktree:
         abs_ = os.path.join(ROOT, path)
         if not os.path.exists(abs_):
@@ -64,7 +96,7 @@ def ids_at(rev, path, rx, worktree=False):
         text = git('show', f'{rev}:{path}')
         if text is None:
             return None
-    return [int(m.group(1)) for line in text.split('\n') if (m := rx.match(line))]
+    return heading_ids(text, tag)
 
 
 def dup_of(ids, base_ids):
@@ -75,12 +107,12 @@ def dup_of(ids, base_ids):
     return old, new
 
 
-def check_merged(a, path, rx, tag):
+def check_merged(a, path, tag):
     """合并产物自检（--worktree）：合并 = 两边并集，所以「新增编号」这个词已经失效，
     此时唯一该问的是：**合并产物里有没有重复的标题**，以及重复是继承的还是本分支造出来的。"""
-    b = ids_at(a.base, path, rx) or []
-    t = ids_at(a.theirs, path, rx) or []
-    cur = ids_at(None, path, rx, worktree=True)
+    b = ids_at(a.base, path, tag) or []
+    t = ids_at(a.theirs, path, tag) or []
+    cur = ids_at(None, path, tag, worktree=True)
     if cur is None:
         print(f'{path}: 工作树里没有该文档，跳过')
         return 0, -1
@@ -124,12 +156,12 @@ def main():
     mode = '合并产物自检（ours 从工作树读）' if a.worktree else '合并前三方撞号'
     print(f'base={a.base}  ours={a.ours}  theirs={a.theirs}  [{mode}]\n')
     bad = 0
-    for path, rx, tag in TARGETS:
+    for path, tag in TARGETS:
         if a.worktree:
-            n, _ = check_merged(a, path, rx, tag)
+            n, _ = check_merged(a, path, tag)
             bad += n
             continue
-        b, o, t = ids_at(a.base, path, rx), ids_at(a.ours, path, rx), ids_at(a.theirs, path, rx)
+        b, o, t = ids_at(a.base, path, tag), ids_at(a.ours, path, tag), ids_at(a.theirs, path, tag)
         if o is None or t is None:
             print(f'{path}: 有一侧没有该文档，跳过'
                   f'（base {len(b or [])} / ours {len(o or [])} / theirs {len(t or [])} 个正篇编号）')
